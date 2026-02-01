@@ -1,1 +1,4 @@
 cadence-go-client/
+
+target/
+*.log
