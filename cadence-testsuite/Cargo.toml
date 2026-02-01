@@ -1,0 +1,25 @@
+[package]
+name = "cadence-testsuite"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Testing utilities for Cadence workflows and activities"
+
+[dependencies]
+cadence-proto = { path = "../cadence-proto" }
+cadence-core = { path = "../cadence-core" }
+cadence-workflow = { path = "../cadence-workflow" }
+cadence-activity = { path = "../cadence-activity" }
+tokio = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tempfile = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

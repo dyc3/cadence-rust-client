@@ -1,0 +1,203 @@
+//! Workflow and activity registry.
+//!
+//! This module provides the registry for registering workflows and activities.
+
+use dashmap::DashMap;
+use std::any::Any;
+use std::sync::Arc;
+
+/// Workflow trait
+pub trait Workflow: Send + Sync {
+    fn execute(&self, ctx: &mut dyn WorkflowContext) -> Result<Vec<u8>, WorkflowError>;
+    fn clone_box(&self) -> Box<dyn Workflow>;
+}
+
+impl Clone for Box<dyn Workflow> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+/// Activity trait
+pub trait Activity: Send + Sync {
+    fn execute(&self, ctx: &mut dyn ActivityContext) -> Result<Vec<u8>, ActivityError>;
+    fn clone_box(&self) -> Box<dyn Activity>;
+}
+
+impl Clone for Box<dyn Activity> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+/// Workflow context trait
+pub trait WorkflowContext: Send + Sync {
+    fn workflow_id(&self) -> &str;
+    fn run_id(&self) -> &str;
+}
+
+/// Activity context trait
+pub trait ActivityContext: Send + Sync {
+    fn activity_id(&self) -> &str;
+    fn task_token(&self) -> &[u8];
+}
+
+/// Workflow error
+#[derive(Debug, thiserror::Error)]
+pub enum WorkflowError {
+    #[error("Workflow execution failed: {0}")]
+    ExecutionFailed(String),
+    #[error("Non-deterministic workflow: {0}")]
+    NonDeterministic(String),
+}
+
+/// Activity error
+#[derive(Debug, thiserror::Error)]
+pub enum ActivityError {
+    #[error("Activity execution failed: {0}")]
+    ExecutionFailed(String),
+    #[error("Activity panicked: {0}")]
+    Panic(String),
+}
+
+/// Registry trait
+pub trait Registry: Send + Sync {
+    /// Register a workflow
+    fn register_workflow(&self, name: &str, workflow: Box<dyn Workflow>);
+
+    /// Register a workflow with options
+    fn register_workflow_with_options(
+        &self,
+        workflow: Box<dyn Workflow>,
+        options: WorkflowRegisterOptions,
+    );
+
+    /// Get registered workflow info
+    fn get_registered_workflows(&self) -> Vec<RegistryInfo>;
+
+    /// Register an activity
+    fn register_activity(&self, name: &str, activity: Box<dyn Activity>);
+
+    /// Register an activity with options
+    fn register_activity_with_options(
+        &self,
+        activity: Box<dyn Activity>,
+        options: ActivityRegisterOptions,
+    );
+
+    /// Get registered activity info
+    fn get_registered_activities(&self) -> Vec<RegistryInfo>;
+
+    /// Get workflow by name
+    fn get_workflow(&self, name: &str) -> Option<Box<dyn Workflow>>;
+
+    /// Get activity by name
+    fn get_activity(&self, name: &str) -> Option<Box<dyn Activity>>;
+}
+
+/// Workflow register options
+#[derive(Debug, Clone, Default)]
+pub struct WorkflowRegisterOptions {
+    pub name: Option<String>,
+    pub disable_already_registered_check: bool,
+}
+
+/// Activity register options
+#[derive(Debug, Clone, Default)]
+pub struct ActivityRegisterOptions {
+    pub name: Option<String>,
+    pub disable_already_registered_check: bool,
+}
+
+/// Registry information
+#[derive(Debug, Clone)]
+pub struct RegistryInfo {
+    pub name: String,
+    pub type_name: String,
+}
+
+/// Workflow registry implementation using DashMap for concurrent access
+pub struct WorkflowRegistry {
+    workflows: Arc<DashMap<String, Box<dyn Workflow>>>,
+    activities: Arc<DashMap<String, Box<dyn Activity>>>,
+}
+
+impl WorkflowRegistry {
+    pub fn new() -> Self {
+        Self {
+            workflows: Arc::new(DashMap::new()),
+            activities: Arc::new(DashMap::new()),
+        }
+    }
+}
+
+impl Default for WorkflowRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clone for WorkflowRegistry {
+    fn clone(&self) -> Self {
+        Self {
+            workflows: Arc::clone(&self.workflows),
+            activities: Arc::clone(&self.activities),
+        }
+    }
+}
+
+impl Registry for WorkflowRegistry {
+    fn register_workflow(&self, name: &str, workflow: Box<dyn Workflow>) {
+        self.workflows.insert(name.to_string(), workflow);
+    }
+
+    fn register_workflow_with_options(
+        &self,
+        workflow: Box<dyn Workflow>,
+        options: WorkflowRegisterOptions,
+    ) {
+        let name = options.name.unwrap_or_else(|| "workflow".to_string());
+        self.register_workflow(&name, workflow);
+    }
+
+    fn get_registered_workflows(&self) -> Vec<RegistryInfo> {
+        self.workflows
+            .iter()
+            .map(|entry| RegistryInfo {
+                name: entry.key().clone(),
+                type_name: "workflow".to_string(),
+            })
+            .collect()
+    }
+
+    fn register_activity(&self, name: &str, activity: Box<dyn Activity>) {
+        self.activities.insert(name.to_string(), activity);
+    }
+
+    fn register_activity_with_options(
+        &self,
+        activity: Box<dyn Activity>,
+        options: ActivityRegisterOptions,
+    ) {
+        let name = options.name.unwrap_or_else(|| "activity".to_string());
+        self.register_activity(&name, activity);
+    }
+
+    fn get_registered_activities(&self) -> Vec<RegistryInfo> {
+        self.activities
+            .iter()
+            .map(|entry| RegistryInfo {
+                name: entry.key().clone(),
+                type_name: "activity".to_string(),
+            })
+            .collect()
+    }
+
+    fn get_workflow(&self, name: &str) -> Option<Box<dyn Workflow>> {
+        self.workflows.get(name).map(|entry| entry.clone())
+    }
+
+    fn get_activity(&self, name: &str) -> Option<Box<dyn Activity>> {
+        self.activities.get(name).map(|entry| entry.clone())
+    }
+}

@@ -1,0 +1,23 @@
+[package]
+name = "cadence-proto"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Protocol definitions and generated code for Cadence client"
+
+[dependencies]
+thrift = { workspace = true }
+tonic = { workspace = true, optional = true }
+prost = { workspace = true, optional = true }
+serde = { workspace = true }
+async-trait = { workspace = true }
+
+[build-dependencies]
+thrift = { workspace = true }
+
+[features]
+default = ["thrift"]
+thrift = []
+grpc = ["tonic", "prost"]

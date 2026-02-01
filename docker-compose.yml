@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  cassandra:
+    image: cassandra:3.11
+    ports:
+      - "9042:9042"
+    environment:
+      - HEAP_NEWSIZE=1M
+      - MAX_HEAP_SIZE=2048M
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - cadence-network
+
+  cadence:
+    image: ubercadence/server:master-auto-setup
+    ports:
+      - "7933:7933"
+      - "7934:7934"
+      - "7935:7935"
+      - "7939:7939"
+      - "7833:7833"
+    environment:
+      - CASSANDRA_SEEDS=cassandra
+      - ENABLE_ES=false
+      - POD_NAME=cadence
+      - SERVICES=history,matching,frontend,worker
+      - LOG_LEVEL=debug
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    networks:
+      - cadence-network
+
+  cadence-web:
+    image: ubercadence/web:latest
+    ports:
+      - "8088:8088"
+    environment:
+      - CADENCE_TCHANNEL_PEERS=cadence:7933
+    depends_on:
+      - cadence
+    networks:
+      - cadence-network
+
+networks:
+  cadence-network:
+    driver: bridge
