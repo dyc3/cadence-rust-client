@@ -1,0 +1,23 @@
+[package]
+name = "examples-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared utilities and helpers for Cadence examples"
+
+[dependencies]
+cadence-core = { path = "../../cadence-core" }
+cadence-testsuite = { path = "../../cadence-testsuite" }
+cadence-workflow = { path = "../../cadence-workflow" }
+cadence-activity = { path = "../../cadence-activity" }
+cadence-worker = { path = "../../cadence-worker" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

@@ -1,0 +1,25 @@
+[package]
+name = "local_activities"
+version = "0.1.0"
+edition = "2021"
+description = "Local activity execution patterns"
+
+[dependencies]
+cadence-client = { path = "../../cadence-client" }
+cadence-worker = { path = "../../cadence-worker" }
+cadence-workflow = { path = "../../cadence-workflow" }
+cadence-activity = { path = "../../cadence-activity" }
+cadence-core = { path = "../../cadence-core" }
+cadence-testsuite = { path = "../../cadence-testsuite" }
+examples-common = { path = "../examples-common" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = "0.3"
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

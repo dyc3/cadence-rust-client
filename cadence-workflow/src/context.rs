@@ -135,6 +135,11 @@ impl WorkflowContext {
         chrono::Utc::now()
     }
 
+    /// Get current workflow time (alias for `now`)
+    pub fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
+        self.now()
+    }
+
     /// Create a timer
     pub fn new_timer(&self, duration: Duration) -> TimerFuture {
         Box::pin(tokio::time::sleep(duration))

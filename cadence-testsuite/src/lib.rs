@@ -6,3 +6,6 @@
 pub mod suite;
 
 pub use suite::*;
+
+// Re-export WorkflowError for convenience
+pub use cadence_workflow::context::WorkflowError;

@@ -49,6 +49,18 @@ pub enum WorkflowError {
     ExecutionFailed(String),
     #[error("Non-deterministic workflow: {0}")]
     NonDeterministic(String),
+    #[error("Workflow cancelled")]
+    Cancelled,
+    #[error("Workflow panicked: {0}")]
+    Panic(String),
+    #[error("Activity failed: {0}")]
+    ActivityFailed(String),
+    #[error("Child workflow failed: {0}")]
+    ChildWorkflowFailed(String),
+    #[error("Generic error: {0}")]
+    Generic(String),
+    #[error("Continue as new")]
+    ContinueAsNew,
 }
 
 /// Activity error
@@ -58,6 +70,36 @@ pub enum ActivityError {
     ExecutionFailed(String),
     #[error("Activity panicked: {0}")]
     Panic(String),
+    #[error("Retryable activity error: {0}")]
+    Retryable(String),
+    #[error("Non-retryable activity error: {0}")]
+    NonRetryable(String),
+    #[error("Application error: {0}")]
+    Application(String),
+    #[error("Retryable with delay: {0}ms")]
+    RetryableWithDelay(String, u64),
+}
+
+impl ActivityError {
+    /// Create a retryable error
+    pub fn retryable(msg: impl Into<String>) -> Self {
+        Self::Retryable(msg.into())
+    }
+
+    /// Create a non-retryable error
+    pub fn non_retryable(msg: impl Into<String>) -> Self {
+        Self::NonRetryable(msg.into())
+    }
+
+    /// Create an application error
+    pub fn application(msg: impl Into<String>) -> Self {
+        Self::Application(msg.into())
+    }
+
+    /// Check if error is retryable
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::Retryable(_) | Self::RetryableWithDelay(_, _))
+    }
 }
 
 /// Registry trait
