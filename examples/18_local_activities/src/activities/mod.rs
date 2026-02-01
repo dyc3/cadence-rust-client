@@ -210,17 +210,17 @@ pub async fn make_decision_activity(
     let (decision, confidence, reasoning) = match input.decision_type.as_str() {
         "approve" => {
             // Check approval criteria
-            let mut reasons = vec!["Criteria check passed".to_string()];
+            let reasons = vec!["Criteria check passed".to_string()];
             let conf = 0.95;
             let dec = if conf > 0.9 { "APPROVED" } else { "REJECTED" };
             (dec.to_string(), conf, reasons)
         }
         "route" => {
-            let mut reasons = vec!["Default routing".to_string()];
+            let reasons = vec!["Default routing".to_string()];
             ("ROUTE_A".to_string(), 0.85, reasons)
         }
         "classify" => {
-            let mut reasons = vec!["Classification complete".to_string()];
+            let reasons = vec!["Classification complete".to_string()];
             ("CLASS_B".to_string(), 0.92, reasons)
         }
         _ => ("UNKNOWN".to_string(), 0.0, vec!["Unknown decision type".to_string()]),

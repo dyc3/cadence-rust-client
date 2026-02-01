@@ -1,6 +1,6 @@
 //! Workflow implementations for the hello workflow example.
 
-use crate::activities::{HelloInput, HelloOutput, GreetingType};
+use crate::activities::{HelloInput, HelloOutput};
 use cadence_core::ActivityOptions;
 use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;

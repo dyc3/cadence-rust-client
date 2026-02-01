@@ -5,7 +5,7 @@ use cadence_core::ActivityOptions;
 use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
 use std::time::Duration;
-use tracing::{info, error};
+use tracing::info;
 
 /// Workflow that demonstrates activity heartbeats and resumption
 pub async fn file_processing_workflow(

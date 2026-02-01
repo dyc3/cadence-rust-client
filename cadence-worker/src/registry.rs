@@ -3,7 +3,6 @@
 //! This module provides the registry for registering workflows and activities.
 
 use dashmap::DashMap;
-use std::any::Any;
 use std::sync::Arc;
 
 /// Workflow trait

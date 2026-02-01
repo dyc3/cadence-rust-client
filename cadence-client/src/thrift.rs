@@ -7,13 +7,14 @@ use cadence_core::{CadenceError, CadenceResult};
 use cadence_proto::workflow_service::*;
 use cadence_proto::shared::*;
 use async_trait::async_trait;
-use std::sync::Arc;
 use std::time::Duration;
 
 /// Thrift-based workflow service client
 pub struct ThriftWorkflowServiceClient {
     // TODO: Add thrift client connection
+    #[allow(dead_code)]
     domain: String,
+    #[allow(dead_code)]
     config: ClientConfig,
 }
 
@@ -56,7 +57,7 @@ impl WorkflowService for ThriftWorkflowServiceClient {
 
     async fn start_workflow_execution(
         &self,
-        request: StartWorkflowExecutionRequest,
+        _request: StartWorkflowExecutionRequest,
     ) -> Result<StartWorkflowExecutionResponse, Self::Error> {
         // TODO: Implement Thrift call
         Ok(StartWorkflowExecutionResponse {

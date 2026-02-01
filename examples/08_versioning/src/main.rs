@@ -21,7 +21,6 @@
 //! cargo test -p versioning
 //! ```
 
-use versioning::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

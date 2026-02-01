@@ -59,7 +59,7 @@ pub async fn batch_process_activity<T: Serialize + for<'de> Deserialize<'de> + S
     info!("Starting batch processing of {} items", total_items);
     
     let mut processed = 0;
-    let mut failed = 0;
+    let failed = 0;
     
     // Process in batches
     for (batch_idx, batch) in input.items.chunks(input.batch_size).enumerate() {

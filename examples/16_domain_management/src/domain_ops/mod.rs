@@ -4,10 +4,9 @@
 //! registration, description, updates, and failover.
 
 use cadence_client::domain::*;
-use cadence_core::{CadenceError, CadenceResult};
 use std::collections::HashMap;
 use std::time::Duration;
-use tracing::{info, warn, error};
+use tracing::info;
 
 /// Example: Register a new domain with full configuration
 pub fn create_domain_registration_request(
@@ -157,7 +156,7 @@ pub async fn demonstrate_domain_lifecycle() -> Result<(), String> {
     info!("Created global domain request: {}", global_request.name);
     
     // 3. Create update request
-    let update_request = create_domain_update_request(
+    let _update_request = create_domain_update_request(
         "example-domain",
         "Updated description",
         "new-owner@example.com"

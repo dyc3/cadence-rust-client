@@ -5,7 +5,7 @@ use cadence_core::ActivityOptions;
 use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 /// Order processing workflow input
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -296,7 +296,7 @@ pub async fn parent_workflow(
         input.parent_id, input.child_count
     );
 
-    let workflow_info = ctx.workflow_info();
+    let _workflow_info = ctx.workflow_info();
     let child_options = cadence_core::ChildWorkflowOptions {
         workflow_id: format!("{}-child-{}", input.parent_id, uuid::Uuid::new_v4()),
         execution_start_to_close_timeout: Duration::from_secs(60),

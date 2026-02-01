@@ -4,8 +4,6 @@
 //! heartbeats, context access, and activity information.
 
 use cadence_core::RetryPolicy;
-use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Activity context for executing activity logic
@@ -32,7 +30,7 @@ impl ActivityContext {
     }
 
     /// Record a heartbeat with optional details
-    pub fn record_heartbeat(&self, details: Option<&[u8]>) {
+    pub fn record_heartbeat(&self, _details: Option<&[u8]>) {
         // TODO: Implement heartbeat recording
         // This should send heartbeat to Cadence server
     }
@@ -243,7 +241,7 @@ impl Gauge for NoopGauge {
 }
 
 /// Register an activity globally
-pub fn register<F, R>(activity_fn: F)
+pub fn register<F, R>(_activity_fn: F)
 where
     F: Fn(&ActivityContext) -> R + Send + Sync + 'static,
     R: Send + 'static,
@@ -252,7 +250,7 @@ where
 }
 
 /// Register an activity with options globally
-pub fn register_with_options<F, R>(activity_fn: F, options: ActivityRegisterOptions)
+pub fn register_with_options<F, R>(_activity_fn: F, _options: ActivityRegisterOptions)
 where
     F: Fn(&ActivityContext) -> R + Send + Sync + 'static,
     R: Send + 'static,

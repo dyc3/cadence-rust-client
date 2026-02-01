@@ -8,7 +8,7 @@ use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 /// Input for file processing activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -323,7 +323,7 @@ pub async fn deadline_aware_activity(
     let mut stopped_by_deadline = false;
 
     // Simulate processing items with deadline checks
-    for i in 0..100 {
+    for _i in 0..100 {
         // Check deadline before each item
         if let Some(remaining) = ctx.get_remaining_time() {
             if remaining < Duration::from_millis(200) {

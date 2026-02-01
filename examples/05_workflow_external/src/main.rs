@@ -21,7 +21,6 @@
 //! cargo test -p workflow_external
 //! ```
 
-use workflow_external::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

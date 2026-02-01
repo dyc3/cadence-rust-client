@@ -5,7 +5,6 @@
 
 use cadence_worker::registry::{Registry, WorkflowRegistry};
 use cadence_worker::worker::{CadenceWorker, NonDeterministicWorkflowPolicy, WorkerOptions};
-use cadence_worker::ActivityError;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;

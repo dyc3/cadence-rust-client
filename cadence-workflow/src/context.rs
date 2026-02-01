@@ -3,9 +3,7 @@
 //! This module provides the main API for implementing workflows including
 //! scheduling activities, child workflows, handling signals, and more.
 
-use cadence_core::{ActivityOptions, ChildWorkflowOptions, WorkflowExecution, RetryPolicy, WorkflowInfo};
-use std::future::Future;
-use std::pin::Pin;
+use cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 use std::time::Duration;
 
 /// Workflow context for executing workflow logic
@@ -27,9 +25,9 @@ impl WorkflowContext {
     /// Execute an activity
     pub async fn execute_activity(
         &self,
-        activity_type: &str,
-        args: Option<Vec<u8>>,
-        options: ActivityOptions,
+        _activity_type: &str,
+        _args: Option<Vec<u8>>,
+        _options: ActivityOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
         // TODO: Implement activity scheduling
         unimplemented!("Activity execution not yet implemented")
@@ -38,9 +36,9 @@ impl WorkflowContext {
     /// Execute a local activity (executed synchronously in workflow thread)
     pub async fn execute_local_activity(
         &self,
-        activity_type: &str,
-        args: Option<Vec<u8>>,
-        options: LocalActivityOptions,
+        _activity_type: &str,
+        _args: Option<Vec<u8>>,
+        _options: LocalActivityOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
         // TODO: Implement local activity execution
         unimplemented!("Local activity execution not yet implemented")
@@ -49,9 +47,9 @@ impl WorkflowContext {
     /// Execute a child workflow
     pub async fn execute_child_workflow(
         &self,
-        workflow_type: &str,
-        args: Option<Vec<u8>>,
-        options: ChildWorkflowOptions,
+        _workflow_type: &str,
+        _args: Option<Vec<u8>>,
+        _options: ChildWorkflowOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
         // TODO: Implement child workflow execution
         unimplemented!("Child workflow execution not yet implemented")
@@ -66,10 +64,10 @@ impl WorkflowContext {
     /// Signal an external workflow
     pub async fn signal_external_workflow(
         &self,
-        workflow_id: &str,
-        run_id: Option<&str>,
-        signal_name: &str,
-        args: Option<Vec<u8>>,
+        _workflow_id: &str,
+        _run_id: Option<&str>,
+        _signal_name: &str,
+        _args: Option<Vec<u8>>,
     ) -> Result<(), WorkflowError> {
         // TODO: Implement external workflow signaling
         unimplemented!("External workflow signaling not yet implemented")
@@ -78,8 +76,8 @@ impl WorkflowContext {
     /// Request cancellation of an external workflow
     pub async fn request_cancel_external_workflow(
         &self,
-        workflow_id: &str,
-        run_id: Option<&str>,
+        _workflow_id: &str,
+        _run_id: Option<&str>,
     ) -> Result<(), WorkflowError> {
         // TODO: Implement external workflow cancellation
         unimplemented!("External workflow cancellation not yet implemented")
@@ -95,7 +93,7 @@ impl WorkflowContext {
     }
 
     /// Execute a mutable side effect (cached side effect)
-    pub async fn mutable_side_effect<F, R>(&self, id: &str, f: F) -> R
+    pub async fn mutable_side_effect<F, R>(&self, _id: &str, f: F) -> R
     where
         F: FnOnce() -> R,
         R: Clone,
@@ -105,13 +103,13 @@ impl WorkflowContext {
     }
 
     /// Get version for backwards-compatible workflow changes
-    pub fn get_version(&self, change_id: &str, min_supported: i32, max_supported: i32) -> i32 {
+    pub fn get_version(&self, _change_id: &str, min_supported: i32, _max_supported: i32) -> i32 {
         // TODO: Implement versioning
         min_supported
     }
 
     /// Set a query handler
-    pub fn set_query_handler<F>(&self, query_type: &str, handler: F)
+    pub fn set_query_handler<F>(&self, _query_type: &str, _handler: F)
     where
         F: Fn(Vec<u8>) -> Vec<u8> + Send + Sync + 'static,
     {
@@ -119,7 +117,7 @@ impl WorkflowContext {
     }
 
     /// Upsert search attributes
-    pub fn upsert_search_attributes(&self, search_attributes: Vec<(String, Vec<u8>)>) {
+    pub fn upsert_search_attributes(&self, _search_attributes: Vec<(String, Vec<u8>)>) {
         // TODO: Implement search attributes upsert
     }
 
@@ -158,9 +156,9 @@ impl WorkflowContext {
     /// Continue workflow as new
     pub fn continue_as_new(
         &self,
-        workflow_type: &str,
-        args: Option<Vec<u8>>,
-        options: ContinueAsNewOptions,
+        _workflow_type: &str,
+        _args: Option<Vec<u8>>,
+        _options: ContinueAsNewOptions,
     ) -> ! {
         // TODO: Implement continue as new
         panic!("Continue as new not yet implemented")
@@ -200,6 +198,7 @@ pub struct ContinueAsNewOptions {
 
 /// Signal channel for receiving signals
 pub struct SignalChannel {
+    #[allow(dead_code)]
     signal_name: String,
     // TODO: Add receiver
 }
@@ -236,27 +235,8 @@ impl CancellationChannel {
     }
 }
 
-/// Timer future type
-pub type TimerFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
-
-/// Workflow error
-#[derive(Debug, thiserror::Error)]
-pub enum WorkflowError {
-    #[error("Activity failed: {0}")]
-    ActivityFailed(String),
-    #[error("Child workflow failed: {0}")]
-    ChildWorkflowFailed(String),
-    #[error("Signal failed: {0}")]
-    SignalFailed(String),
-    #[error("Cancel failed: {0}")]
-    CancelFailed(String),
-    #[error("Continue as new")]
-    ContinueAsNew,
-    #[error("Workflow cancelled")]
-    Cancelled,
-    #[error("Generic error: {0}")]
-    Generic(String),
-}
+// Re-export types from future module
+pub use crate::future::{ActivityError, TimerFuture, WorkflowError};
 
 /// Logger trait
 pub trait Logger: Send + Sync {

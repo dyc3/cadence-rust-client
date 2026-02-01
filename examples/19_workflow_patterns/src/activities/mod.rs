@@ -4,7 +4,7 @@ use cadence_activity::ActivityContext;
 use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Payment transaction input
 #[derive(Debug, Clone, Serialize, Deserialize)]

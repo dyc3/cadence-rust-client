@@ -21,7 +21,6 @@
 //! cargo test -p error_handling
 //! ```
 
-use error_handling::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

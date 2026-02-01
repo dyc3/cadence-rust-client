@@ -28,7 +28,6 @@
 //! cargo test -p best_practices
 //! ```
 
-use best_practices::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

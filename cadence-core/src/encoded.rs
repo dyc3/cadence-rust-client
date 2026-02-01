@@ -3,7 +3,7 @@
 //! This module provides traits and types for encoding and decoding data
 //! passed to and from the Cadence server.
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use std::fmt;
 
 /// Trait for data converters/serializers
@@ -157,6 +157,7 @@ pub fn decode<T: DeserializeOwned>(data: &[u8]) -> Result<T, EncodingError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     struct TestStruct {

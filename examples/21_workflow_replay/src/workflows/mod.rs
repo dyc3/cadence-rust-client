@@ -6,7 +6,7 @@ use tracing::info;
 
 /// A simple workflow for replay demonstration
 pub async fn replay_demo_workflow(
-    ctx: &mut WorkflowContext,
+    _ctx: &mut WorkflowContext,
     input: String,
 ) -> Result<String, WorkflowError> {
     info!("Starting replay_demo_workflow with input: {}", input);

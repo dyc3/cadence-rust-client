@@ -22,7 +22,6 @@
 //! cargo test -p child_workflows
 //! ```
 
-use child_workflows::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

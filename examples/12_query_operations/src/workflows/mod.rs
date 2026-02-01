@@ -112,7 +112,7 @@ pub async fn batch_processing_with_queries_workflow(
     ctx: &mut WorkflowContext,
     batches: Vec<BatchProcessingInput>,
 ) -> Result<Vec<BatchProcessingResult>, WorkflowError> {
-    let workflow_id = ctx.workflow_info().workflow_execution.workflow_id.clone();
+    let _workflow_id = ctx.workflow_info().workflow_execution.workflow_id.clone();
     
     info!(
         "Starting batch processing workflow with {} batches",
@@ -169,14 +169,14 @@ pub async fn simple_status_query_workflow(
 ) -> Result<ProcessingResult, WorkflowError> {
     info!("Starting simple status query workflow");
     
-    let mut current_status = "starting".to_string();
+    let mut _current_status = "starting".to_string();
     
     // Update status and process
-    current_status = "validating".to_string();
+    _current_status = "validating".to_string();
     
     ctx.sleep(Duration::from_millis(100)).await;
     
-    current_status = "processing".to_string();
+    _current_status = "processing".to_string();
     
     let result = ctx
         .execute_activity(
@@ -189,7 +189,7 @@ pub async fn simple_status_query_workflow(
     let processing_result: ProcessingResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
     
-    current_status = "completed".to_string();
+    _current_status = "completed".to_string();
     
     info!("Simple status query workflow completed");
     

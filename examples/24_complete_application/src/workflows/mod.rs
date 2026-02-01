@@ -6,7 +6,6 @@
 //! - Order fulfillment workflow
 //! - Cancellation and refund workflow
 
-use crate::activities::*;
 use crate::models::*;
 use cadence_core::ActivityOptions;
 use cadence_workflow::WorkflowContext;
@@ -71,7 +70,7 @@ pub async fn order_processing_saga(
         )
         .await?;
     
-    let (subtotal, tax, shipping, total): (f64, f64, f64, f64) = 
+    let (_subtotal, _tax, _shipping, total): (f64, f64, f64, f64) = 
         serde_json::from_slice(&total_result)
             .map_err(|e| WorkflowError::Generic(format!("Failed to parse totals: {}", e)))?;
     
@@ -135,7 +134,7 @@ pub async fn order_processing_saga(
             notification_data.insert("order_id".to_string(), order_id.clone());
             notification_data.insert("total".to_string(), format!("{:.2}", total));
             
-            let notification_request = NotificationRequest {
+            let _notification_request = NotificationRequest {
                 user_id: input.user_id.clone(),
                 notification_type: NotificationType::OrderConfirmation,
                 channels: vec![NotificationChannel::Email { address: "user@example.com".to_string() }],
@@ -145,7 +144,7 @@ pub async fn order_processing_saga(
             let notification_result = ctx
                 .execute_activity(
                     "send_notification",
-                    Some(serde_json::to_vec(&notification_request).unwrap()),
+                    Some(serde_json::to_vec(&_notification_request).unwrap()),
                     ActivityOptions::default(),
                 )
                 .await?;
@@ -218,7 +217,7 @@ pub async fn order_fulfillment_workflow(
     info!("Starting order fulfillment for order: {}", order.order_id);
     
     // Create shipment
-    let shipping_address = Address {
+    let _shipping_address = Address {
         street: "123 Main St".to_string(),
         city: "Anytown".to_string(),
         state: "CA".to_string(),
@@ -229,7 +228,7 @@ pub async fn order_fulfillment_workflow(
     let shipment_result = ctx
         .execute_activity(
             "create_shipment",
-            Some(serde_json::to_vec(&(order.order_id.clone(), shipping_address)).unwrap()),
+            Some(serde_json::to_vec(&(order.order_id.clone(), _shipping_address)).unwrap()),
             ActivityOptions::default(),
         )
         .await?;

@@ -15,7 +15,6 @@
 //! cargo run -p local_activities
 //! ```
 
-use local_activities::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

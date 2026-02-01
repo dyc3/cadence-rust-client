@@ -9,7 +9,7 @@ use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{info, error};
+use tracing::info;
 
 /// Data processing workflow input
 #[derive(Debug, Clone, Serialize, Deserialize)]

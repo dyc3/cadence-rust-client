@@ -21,9 +21,7 @@
 //! cargo test -p time_and_sleep
 //! ```
 
-use time_and_sleep::*;
 use examples_common::tracing_setup::init_tracing;
-use chrono::{Duration, Utc};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

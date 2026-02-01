@@ -21,9 +21,8 @@
 //! cargo test -p hello_workflow
 //! ```
 
-use hello_workflow::{hello_workflow, format_greeting_activity, HelloInput, HelloOutput, GreetingType};
+use hello_workflow::{HelloInput, GreetingType};
 use examples_common::tracing_setup::init_tracing;
-use serde::{Deserialize, Serialize};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

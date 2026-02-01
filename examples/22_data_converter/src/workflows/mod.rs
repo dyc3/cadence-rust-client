@@ -6,7 +6,7 @@ use tracing::info;
 
 /// A workflow demonstrating custom serialization
 pub async fn data_converter_workflow(
-    ctx: &mut WorkflowContext,
+    _ctx: &mut WorkflowContext,
     input: String,
 ) -> Result<String, WorkflowError> {
     info!("Starting data_converter_workflow with input: {}", input);

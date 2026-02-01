@@ -22,7 +22,6 @@
 //! cargo test -p performance
 //! ```
 
-use performance::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

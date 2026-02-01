@@ -9,7 +9,7 @@ use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
 use tracing::{info, warn};
 use std::time::Duration;
-use chrono::{DateTime, Utc, Duration as ChronoDuration};
+use chrono::{DateTime, Utc};
 
 /// A workflow that demonstrates basic sleep/timer functionality
 pub async fn sleep_demo_workflow(

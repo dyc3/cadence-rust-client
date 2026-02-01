@@ -119,7 +119,9 @@ impl DecisionStateMachineBase {
 pub struct ActivityDecisionStateMachine {
     base: DecisionStateMachineBase,
     attributes: ScheduleActivityTaskDecisionAttributes,
+    #[allow(dead_code)]
     scheduled_event_id: Option<i64>,
+    #[allow(dead_code)]
     started_event_id: Option<i64>,
 }
 

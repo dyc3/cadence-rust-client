@@ -6,9 +6,9 @@ use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
 use std::time::Duration;
 use tracing::{error, info, warn};
-use futures::future::join_all;
 
 /// Saga step with compensation
+#[allow(dead_code)]
 struct SagaStep<T, C> {
     name: String,
     action: T,
@@ -16,6 +16,7 @@ struct SagaStep<T, C> {
 }
 
 impl<T, C> SagaStep<T, C> {
+    #[allow(dead_code)]
     fn new(name: &str, action: T, compensate: C) -> Self {
         Self {
             name: name.to_string(),

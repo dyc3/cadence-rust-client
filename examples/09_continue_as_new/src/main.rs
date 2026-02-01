@@ -21,7 +21,6 @@
 //! cargo test -p continue_as_new
 //! ```
 
-use continue_as_new::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

@@ -262,9 +262,9 @@ pub async fn structured_logging_workflow(
 }
 
 /// Version-aware workflow
-#[instrument(skip(ctx, input))]
+#[instrument(skip(_ctx, input))]
 pub async fn version_aware_workflow(
-    ctx: &mut WorkflowContext,
+    _ctx: &mut WorkflowContext,
     input: String,
 ) -> Result<String, WorkflowError> {
     let workflow_version = WorkflowVersion::new(1, 0, 0);

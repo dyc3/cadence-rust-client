@@ -320,7 +320,7 @@ impl TestWorkflowEnvironment {
         self.executed_activities.contains(&name.to_string())
     }
 
-    /// Track activity execution
+    #[allow(dead_code)]
     fn track_activity_execution(&mut self, name: &str) {
         self.executed_activities.push(name.to_string());
     }
@@ -799,7 +799,7 @@ mod tests {
     async fn test_signal_workflow() {
         let mut env = TestWorkflowEnvironment::new();
 
-        env.register_workflow("signal_workflow", |mut ctx, _input: ()| async move {
+        env.register_workflow("signal_workflow", |ctx, _input: ()| async move {
             let mut channel = ctx.get_signal_channel("test_signal");
             let signal = channel.recv().await;
             assert!(signal.is_some());

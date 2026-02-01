@@ -3,7 +3,6 @@
 //! These workflows demonstrate local activity execution patterns.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
 use cadence_workflow::{WorkflowContext, LocalActivityOptions};
 use cadence_workflow::context::WorkflowError;
 use serde::{Deserialize, Serialize};

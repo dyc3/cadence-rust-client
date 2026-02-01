@@ -21,7 +21,6 @@
 //! cargo test -p activity_advanced
 //! ```
 
-use activity_advanced::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

@@ -3,7 +3,7 @@
 //! This module provides the worker for polling tasks from the Cadence server
 //! and executing workflow and activity implementations.
 
-use crate::registry::{ActivityRegisterOptions, Registry, WorkflowRegisterOptions};
+use crate::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -177,10 +177,15 @@ impl Default for AutoScalerOptions {
 
 /// Worker implementation
 pub struct CadenceWorker {
+    #[allow(dead_code)]
     domain: String,
+    #[allow(dead_code)]
     task_list: String,
+    #[allow(dead_code)]
     options: WorkerOptions,
+    #[allow(dead_code)]
     registry: Arc<dyn Registry>,
+    #[allow(dead_code)]
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
 }
 

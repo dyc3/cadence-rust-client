@@ -18,7 +18,6 @@
 
 use worker_configuration::*;
 use examples_common::tracing_setup::init_tracing;
-use cadence_worker::worker::WorkerOptions;
 use cadence_worker::registry::WorkflowRegistry;
 
 #[tokio::main]
@@ -107,7 +106,7 @@ fn demonstrate_worker_setup() {
     println!("\n--- Worker Setup Demonstration ---\n");
 
     let options = create_development_options();
-    let worker = setup_worker("example-domain", "example-task-list", options.clone());
+    let _worker = setup_worker("example-domain", "example-task-list", options.clone());
 
     println!("Worker Setup Complete:");
     println!("  Domain: example-domain");

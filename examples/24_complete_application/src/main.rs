@@ -24,7 +24,6 @@
 //! cargo test -p complete_application
 //! ```
 
-use complete_application::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

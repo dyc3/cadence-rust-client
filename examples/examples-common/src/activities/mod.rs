@@ -27,7 +27,7 @@ pub async fn reserve_inventory_activity(
     
     // Mock implementation - always succeeds
     let results = order.items.iter()
-        .map(|item| InventoryReservation::Success)
+        .map(|_item| InventoryReservation::Success)
         .collect();
     
     Ok(results)

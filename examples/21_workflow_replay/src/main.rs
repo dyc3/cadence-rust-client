@@ -2,7 +2,6 @@
 //!
 //! This example demonstrates workflow replay for debugging.
 
-use workflow_replay::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

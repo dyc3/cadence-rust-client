@@ -3,7 +3,7 @@
 use crate::activities::{
     ReportRequest, ReportResult, ScheduledTaskInput, TaskExecutionResult,
 };
-use cadence_core::{ActivityOptions, WorkflowIdReusePolicy};
+use cadence_core::ActivityOptions;
 use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
 use std::time::Duration;

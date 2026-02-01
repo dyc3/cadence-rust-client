@@ -9,7 +9,6 @@ use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
-use uuid::Uuid;
 
 /// Order information
 #[derive(Debug, Clone, Serialize, Deserialize)]

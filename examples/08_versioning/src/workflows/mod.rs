@@ -118,7 +118,7 @@ pub async fn side_effect_workflow(
         }),
     };
     
-    let result = ctx
+    let _result = ctx
         .execute_activity(
             "external_api_call",
             Some(serde_json::to_vec(&api_input).unwrap()),
@@ -126,7 +126,7 @@ pub async fn side_effect_workflow(
         )
         .await?;
     
-    let api_result: ApiCallResult = serde_json::from_slice(&result)
+    let _api_result: ApiCallResult = serde_json::from_slice(&_result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
     
     Ok(format!(

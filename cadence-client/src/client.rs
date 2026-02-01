@@ -3,7 +3,7 @@
 //! This module provides the main client interface for starting workflows,
 //! querying workflow state, sending signals, and managing workflow executions.
 
-use cadence_core::{CadenceError, CadenceResult, EncodedValue, WorkflowExecution, WorkflowIdReusePolicy, ParentClosePolicy, QueryConsistencyLevel, RetryPolicy};
+use cadence_core::{CadenceError, CadenceResult, EncodedValue, WorkflowExecution, WorkflowIdReusePolicy, QueryConsistencyLevel, RetryPolicy};
 use cadence_proto::workflow_service::*;
 use cadence_proto::shared::*;
 use async_trait::async_trait;
@@ -483,8 +483,11 @@ pub struct PollersInfo {
 
 /// Client implementation
 pub struct WorkflowClient {
+    #[allow(dead_code)]
     service: Arc<dyn WorkflowService<Error = CadenceError>>,
+    #[allow(dead_code)]
     domain: String,
+    #[allow(dead_code)]
     options: ClientOptions,
 }
 

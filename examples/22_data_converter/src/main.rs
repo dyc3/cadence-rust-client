@@ -2,7 +2,6 @@
 //!
 //! This example demonstrates custom data converter and serialization patterns.
 
-use data_converter::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

@@ -10,8 +10,7 @@
 use cadence_activity::ActivityContext;
 use cadence_worker::ActivityError;
 use crate::models::*;
-use serde::{Deserialize, Serialize};
-use tracing::{info, error, debug, warn};
+use tracing::{info, debug, warn};
 use std::time::Duration;
 use uuid::Uuid;
 use chrono::Utc;
@@ -49,7 +48,7 @@ pub async fn send_welcome_email_activity(
 ) -> Result<NotificationResult, ActivityError> {
     info!("Sending welcome email to: {}", user.email);
     
-    let notification_request = NotificationRequest {
+    let _notification_request = NotificationRequest {
         user_id: user.id.clone(),
         notification_type: NotificationType::WelcomeEmail,
         channels: vec![NotificationChannel::Email { address: user.email.clone() }],
@@ -240,7 +239,7 @@ pub async fn send_notification_activity(
 pub async fn create_shipment_activity(
     ctx: &ActivityContext,
     order_id: String,
-    shipping_address: Address,
+    _shipping_address: Address,
 ) -> Result<ShippingResult, ActivityError> {
     info!("Creating shipment for order: {}", order_id);
     

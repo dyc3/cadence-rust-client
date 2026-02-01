@@ -7,8 +7,7 @@ use crate::activities::*;
 use cadence_core::ActivityOptions;
 use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
-use tracing::{info, warn};
-use std::time::Duration;
+use tracing::info;
 
 /// Maximum number of iterations before continuing as new
 const MAX_ITERATIONS: u32 = 5;
@@ -24,7 +23,7 @@ pub async fn batched_processor_workflow(
     checkpoint: Option<CheckpointData>,
 ) -> Result<BatchSummary, WorkflowError> {
     // Extract state from checkpoint or initialize
-    let (mut iteration, mut total_processed, mut cursor, mut metadata) = match checkpoint {
+    let (mut iteration, mut total_processed, mut cursor, metadata) = match checkpoint {
         Some(cp) => {
             info!(
                 "Resuming from checkpoint: iteration={}, total={}",
@@ -39,9 +38,9 @@ pub async fn batched_processor_workflow(
     };
     
     let mut batch_results = Vec::new();
-    let mut should_continue = true;
+    let mut _should_continue = true;
     
-    while should_continue && iteration < MAX_ITERATIONS {
+    while _should_continue && iteration < MAX_ITERATIONS {
         iteration += 1;
         info!("Starting iteration {}", iteration);
         
@@ -65,7 +64,7 @@ pub async fn batched_processor_workflow(
         // If no data, we're done
         if data_result.items.is_empty() {
             info!("No more data to process");
-            should_continue = false;
+            _should_continue = false;
             break;
         }
         
@@ -99,7 +98,7 @@ pub async fn batched_processor_workflow(
         // Check if we should continue as new or there's no more data
         if !data_result.has_more {
             info!("All data processed");
-            should_continue = false;
+            _should_continue = false;
         }
     }
     

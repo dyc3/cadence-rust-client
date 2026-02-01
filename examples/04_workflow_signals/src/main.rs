@@ -21,7 +21,6 @@
 //! cargo test -p workflow_signals
 //! ```
 
-use workflow_signals::*;
 use examples_common::tracing_setup::init_tracing;
 
 #[tokio::main]

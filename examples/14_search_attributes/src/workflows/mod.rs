@@ -28,7 +28,7 @@ pub async fn order_processing_with_search_attrs_workflow(
     order: OrderInfo,
 ) -> Result<OrderProcessingResult, WorkflowError> {
     let workflow_info = ctx.workflow_info();
-    let workflow_id = workflow_info.workflow_execution.workflow_id.clone();
+    let _workflow_id = workflow_info.workflow_execution.workflow_id.clone();
     let start_time = chrono::Utc::now().timestamp();
     
     info!(
@@ -138,7 +138,7 @@ pub async fn priority_order_workflow(
     ctx: &mut WorkflowContext,
     order: OrderInfo,
 ) -> Result<OrderProcessingResult, WorkflowError> {
-    let workflow_id = ctx.workflow_info().workflow_execution.workflow_id.clone();
+    let _workflow_id = ctx.workflow_info().workflow_execution.workflow_id.clone();
     
     info!(
         "Starting priority order workflow {} with {:?} priority",
@@ -274,11 +274,11 @@ pub async fn searchable_order_workflow(
 ) -> Result<OrderProcessingResult, WorkflowError> {
     info!("Starting searchable order workflow {}", order.order_id);
     
-    let order_id = order.order_id.clone();
-    let customer_id = order.customer_id.clone();
-    let priority = format!("{:?}", order.priority);
-    let region = order.region.clone();
-    let mut current_status = OrderStatus::Received;
+    let _order_id = order.order_id.clone();
+    let _customer_id = order.customer_id.clone();
+    let _priority = format!("{:?}", order.priority);
+    let _region = order.region.clone();
+    let mut _current_status = OrderStatus::Received;
     
     // Process the order
     let validation = ctx
@@ -293,7 +293,7 @@ pub async fn searchable_order_workflow(
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse validation: {}", e)))?;
     
     if !inventory.all_available {
-        current_status = OrderStatus::Cancelled;
+        _current_status = OrderStatus::Cancelled;
         let cancel_result = ctx
             .execute_activity(
                 "cancel_order",
@@ -308,7 +308,7 @@ pub async fn searchable_order_workflow(
         return Ok(result);
     }
     
-    current_status = OrderStatus::Validated;
+    _current_status = OrderStatus::Validated;
     
     let result = ctx
         .execute_activity(
@@ -321,7 +321,7 @@ pub async fn searchable_order_workflow(
     let processed: OrderProcessingResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
     
-    current_status = processed.status.clone();
+    _current_status = processed.status.clone();
     
     info!("Searchable order workflow completed");
     
