@@ -56,6 +56,16 @@ pub enum TaskListType {
     Activity = 1,
 }
 
+/// Encoding type for data serialization
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum EncodingType {
+    ThriftRw = 0,
+    Proto3 = 1,
+    Json = 2,
+    Unknown = 3,
+}
+
 /// Represents a single event in workflow history
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HistoryEvent {
@@ -383,6 +393,14 @@ pub enum ParentClosePolicy {
     Terminate = 0,
     RequestCancel = 1,
     Abandon = 2,
+}
+
+/// Query consistency level for workflow queries
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum QueryConsistencyLevel {
+    Eventual = 0,
+    Strong = 1,
 }
 
 /// Decision types for decision tasks

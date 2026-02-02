@@ -7,7 +7,7 @@
 use crate::generated::{cadence, shared};
 use crate::{shared as internal, workflow_service as internal_service};
 use std::convert::{TryFrom, TryInto};
-use std::time::Duration;
+use thrift::OrderedFloat;
 
 /// Error type for conversion failures
 #[derive(Debug, thiserror::Error)]
@@ -29,8 +29,8 @@ pub enum ConversionError {
 impl From<internal::WorkflowExecution> for shared::WorkflowExecution {
     fn from(exec: internal::WorkflowExecution) -> Self {
         shared::WorkflowExecution {
-            workflowId: Some(exec.workflow_id),
-            runId: exec.run_id,
+            workflow_id: Some(exec.workflow_id),
+            run_id: Some(exec.run_id),
         }
     }
 }
@@ -42,9 +42,9 @@ impl TryFrom<shared::WorkflowExecution> for internal::WorkflowExecution {
     fn try_from(exec: shared::WorkflowExecution) -> Result<Self, Self::Error> {
         Ok(internal::WorkflowExecution {
             workflow_id: exec
-                .workflowId
+                .workflow_id
                 .ok_or(ConversionError::MissingField("workflowId"))?,
-            run_id: exec.runId,
+            run_id: exec.run_id.ok_or(ConversionError::MissingField("runId"))?,
         })
     }
 }
@@ -94,7 +94,7 @@ impl From<internal::TaskList> for shared::TaskList {
     fn from(tl: internal::TaskList) -> Self {
         shared::TaskList {
             name: Some(tl.name),
-            kind: tl.kind.map(|k| k.into()),
+            kind: Some(tl.kind.into()),
         }
     }
 }
@@ -106,7 +106,10 @@ impl TryFrom<shared::TaskList> for internal::TaskList {
     fn try_from(tl: shared::TaskList) -> Result<Self, Self::Error> {
         Ok(internal::TaskList {
             name: tl.name.ok_or(ConversionError::MissingField("name"))?,
-            kind: tl.kind.map(TryInto::try_into).transpose()?,
+            kind: tl
+                .kind
+                .ok_or(ConversionError::MissingField("kind"))?
+                .try_into()?,
         })
     }
 }
@@ -141,10 +144,10 @@ impl TryFrom<shared::TaskListKind> for internal::TaskListKind {
 impl From<internal::EncodingType> for shared::EncodingType {
     fn from(et: internal::EncodingType) -> Self {
         match et {
-            internal::EncodingType::ThriftRw => shared::EncodingType::ThriftRW,
+            internal::EncodingType::ThriftRw => shared::EncodingType::THRIFT_R_W,
             internal::EncodingType::Proto3 => shared::EncodingType::JSON,
             internal::EncodingType::Json => shared::EncodingType::JSON,
-            internal::EncodingType::Unknown => shared::EncodingType::ThriftRW,
+            internal::EncodingType::Unknown => shared::EncodingType::THRIFT_R_W,
         }
     }
 }
@@ -155,7 +158,7 @@ impl TryFrom<shared::EncodingType> for internal::EncodingType {
 
     fn try_from(et: shared::EncodingType) -> Result<Self, Self::Error> {
         match et {
-            shared::EncodingType::ThriftRW => Ok(internal::EncodingType::ThriftRw),
+            shared::EncodingType::THRIFT_R_W => Ok(internal::EncodingType::ThriftRw),
             shared::EncodingType::JSON => Ok(internal::EncodingType::Json),
             _ => Err(ConversionError::InvalidEnum(format!(
                 "Unknown EncodingType: {:?}",
@@ -170,16 +173,16 @@ impl From<internal::WorkflowIdReusePolicy> for shared::WorkflowIdReusePolicy {
     fn from(policy: internal::WorkflowIdReusePolicy) -> Self {
         match policy {
             internal::WorkflowIdReusePolicy::AllowDuplicate => {
-                shared::WorkflowIdReusePolicy::AllowDuplicate
+                shared::WorkflowIdReusePolicy::ALLOW_DUPLICATE
             }
             internal::WorkflowIdReusePolicy::AllowDuplicateFailedOnly => {
-                shared::WorkflowIdReusePolicy::AllowDuplicateFailedOnly
+                shared::WorkflowIdReusePolicy::ALLOW_DUPLICATE_FAILED_ONLY
             }
             internal::WorkflowIdReusePolicy::RejectDuplicate => {
-                shared::WorkflowIdReusePolicy::RejectDuplicate
+                shared::WorkflowIdReusePolicy::REJECT_DUPLICATE
             }
             internal::WorkflowIdReusePolicy::TerminateIfRunning => {
-                shared::WorkflowIdReusePolicy::TerminateIfRunning
+                shared::WorkflowIdReusePolicy::TERMINATE_IF_RUNNING
             }
         }
     }
@@ -191,16 +194,16 @@ impl TryFrom<shared::WorkflowIdReusePolicy> for internal::WorkflowIdReusePolicy 
 
     fn try_from(policy: shared::WorkflowIdReusePolicy) -> Result<Self, Self::Error> {
         match policy {
-            shared::WorkflowIdReusePolicy::AllowDuplicate => {
+            shared::WorkflowIdReusePolicy::ALLOW_DUPLICATE => {
                 Ok(internal::WorkflowIdReusePolicy::AllowDuplicate)
             }
-            shared::WorkflowIdReusePolicy::AllowDuplicateFailedOnly => {
+            shared::WorkflowIdReusePolicy::ALLOW_DUPLICATE_FAILED_ONLY => {
                 Ok(internal::WorkflowIdReusePolicy::AllowDuplicateFailedOnly)
             }
-            shared::WorkflowIdReusePolicy::RejectDuplicate => {
+            shared::WorkflowIdReusePolicy::REJECT_DUPLICATE => {
                 Ok(internal::WorkflowIdReusePolicy::RejectDuplicate)
             }
-            shared::WorkflowIdReusePolicy::TerminateIfRunning => {
+            shared::WorkflowIdReusePolicy::TERMINATE_IF_RUNNING => {
                 Ok(internal::WorkflowIdReusePolicy::TerminateIfRunning)
             }
             _ => Err(ConversionError::InvalidEnum(format!(
@@ -303,12 +306,12 @@ impl TryFrom<shared::TimeoutType> for internal::TimeoutType {
 impl From<internal::RetryPolicy> for shared::RetryPolicy {
     fn from(policy: internal::RetryPolicy) -> Self {
         shared::RetryPolicy {
-            initialIntervalInSeconds: policy.initial_interval.map(|d| d.as_secs() as i32),
-            backoffCoefficient: policy.backoff_coefficient,
-            maximumIntervalInSeconds: policy.maximum_interval.map(|d| d.as_secs() as i32),
-            maximumAttempts: policy.maximum_attempts,
-            expirationIntervalInSeconds: policy.expiration_interval.map(|d| d.as_secs() as i32),
-            nonRetryableErrorTypes: policy.non_retryable_error_types,
+            initial_interval_in_seconds: Some(policy.initial_interval_in_seconds),
+            backoff_coefficient: Some(OrderedFloat(policy.backoff_coefficient)),
+            maximum_interval_in_seconds: Some(policy.maximum_interval_in_seconds),
+            maximum_attempts: Some(policy.maximum_attempts),
+            expiration_interval_in_seconds: Some(policy.expiration_interval_in_seconds),
+            non_retriable_error_reasons: Some(policy.non_retryable_error_types),
         }
     }
 }
@@ -319,18 +322,15 @@ impl TryFrom<shared::RetryPolicy> for internal::RetryPolicy {
 
     fn try_from(policy: shared::RetryPolicy) -> Result<Self, Self::Error> {
         Ok(internal::RetryPolicy {
-            initial_interval: policy
-                .initialIntervalInSeconds
-                .map(|s| Duration::from_secs(s as u64)),
-            backoff_coefficient: policy.backoffCoefficient.unwrap_or(2.0),
-            maximum_interval: policy
-                .maximumIntervalInSeconds
-                .map(|s| Duration::from_secs(s as u64)),
-            maximum_attempts: policy.maximumAttempts,
-            expiration_interval: policy
-                .expirationIntervalInSeconds
-                .map(|s| Duration::from_secs(s as u64)),
-            non_retryable_error_types: policy.nonRetryableErrorTypes.unwrap_or_default(),
+            initial_interval_in_seconds: policy.initial_interval_in_seconds.unwrap_or(0),
+            backoff_coefficient: policy
+                .backoff_coefficient
+                .map(|f| f.into_inner())
+                .unwrap_or(2.0),
+            maximum_interval_in_seconds: policy.maximum_interval_in_seconds.unwrap_or(0),
+            maximum_attempts: policy.maximum_attempts.unwrap_or(0),
+            expiration_interval_in_seconds: policy.expiration_interval_in_seconds.unwrap_or(0),
+            non_retryable_error_types: policy.non_retriable_error_reasons.unwrap_or_default(),
         })
     }
 }
@@ -374,16 +374,16 @@ mod tests {
     fn test_workflow_execution_conversion() {
         let internal = internal::WorkflowExecution {
             workflow_id: "test-workflow".to_string(),
-            run_id: Some("test-run".to_string()),
+            run_id: "test-run".to_string(),
         };
 
         let thrift: shared::WorkflowExecution = internal.into();
-        assert_eq!(thrift.workflowId, Some("test-workflow".to_string()));
-        assert_eq!(thrift.runId, Some("test-run".to_string()));
+        assert_eq!(thrift.workflow_id, Some("test-workflow".to_string()));
+        assert_eq!(thrift.run_id, Some("test-run".to_string()));
 
         let converted_back: internal::WorkflowExecution = thrift.try_into().unwrap();
         assert_eq!(converted_back.workflow_id, "test-workflow");
-        assert_eq!(converted_back.run_id, Some("test-run".to_string()));
+        assert_eq!(converted_back.run_id, "test-run".to_string());
     }
 
     #[test]
@@ -403,7 +403,7 @@ mod tests {
     fn test_task_list_conversion() {
         let internal = internal::TaskList {
             name: "test-task-list".to_string(),
-            kind: Some(internal::TaskListKind::Normal),
+            kind: internal::TaskListKind::Normal,
         };
 
         let thrift: shared::TaskList = internal.into();
@@ -412,7 +412,7 @@ mod tests {
 
         let converted_back: internal::TaskList = thrift.try_into().unwrap();
         assert_eq!(converted_back.name, "test-task-list");
-        assert_eq!(converted_back.kind, Some(internal::TaskListKind::Normal));
+        assert_eq!(converted_back.kind, internal::TaskListKind::Normal);
     }
 
     #[test]
@@ -421,7 +421,7 @@ mod tests {
         let thrift: shared::WorkflowIdReusePolicy = internal.into();
         assert_eq!(
             thrift,
-            shared::WorkflowIdReusePolicy::AllowDuplicateFailedOnly
+            shared::WorkflowIdReusePolicy::ALLOW_DUPLICATE_FAILED_ONLY
         );
 
         let converted_back: internal::WorkflowIdReusePolicy = thrift.try_into().unwrap();
@@ -434,8 +434,8 @@ mod tests {
     #[test]
     fn test_missing_field_error() {
         let thrift = shared::WorkflowExecution {
-            workflowId: None,
-            runId: None,
+            workflow_id: None,
+            run_id: None,
         };
 
         let result: Result<internal::WorkflowExecution, ConversionError> = thrift.try_into();
