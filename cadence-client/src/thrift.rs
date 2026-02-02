@@ -372,146 +372,529 @@ impl WorkflowService for ThriftWorkflowServiceClient {
 
     async fn query_workflow(
         &self,
-        _request: QueryWorkflowRequest,
+        request: QueryWorkflowRequest,
     ) -> Result<QueryWorkflowResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(QueryWorkflowResponse {
-            query_result: None,
-            query_rejected: None,
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::QueryWorkflowRequest {
+                domain: Some(domain),
+                execution: request.execution.map(|we| thrift_types::WorkflowExecution {
+                    workflow_id: Some(we.workflow_id),
+                    run_id: Some(we.run_id),
+                }),
+                query: request.query.map(|q| Box::new(thrift_types::WorkflowQuery {
+                    query_type: Some(q.query_type),
+                    query_args: q.query_args,
+                })),
+                query_reject_condition: None,
+                query_consistency_level: None,
+            };
+            
+            let response = thrift_client
+                .query_workflow(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(QueryWorkflowResponse {
+                query_result: response.query_result,
+                query_rejected: response.query_rejected.map(|qr| QueryRejected {
+                    close_status: qr.close_status.and_then(|cs| match cs {
+                        thrift_types::WorkflowExecutionCloseStatus::COMPLETED => Some(WorkflowExecutionCloseStatus::Completed),
+                        thrift_types::WorkflowExecutionCloseStatus::FAILED => Some(WorkflowExecutionCloseStatus::Failed),
+                        thrift_types::WorkflowExecutionCloseStatus::CANCELED => Some(WorkflowExecutionCloseStatus::Canceled),
+                        thrift_types::WorkflowExecutionCloseStatus::TERMINATED => Some(WorkflowExecutionCloseStatus::Terminated),
+                        thrift_types::WorkflowExecutionCloseStatus::CONTINUED_AS_NEW => Some(WorkflowExecutionCloseStatus::ContinuedAsNew),
+                        thrift_types::WorkflowExecutionCloseStatus::TIMED_OUT => Some(WorkflowExecutionCloseStatus::TimedOut),
+                        _ => None,
+                    }),
+                }),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn poll_for_decision_task(
         &self,
-        _request: PollForDecisionTaskRequest,
+        request: PollForDecisionTaskRequest,
     ) -> Result<PollForDecisionTaskResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        // This is a blocking call that waits for tasks
-        Ok(PollForDecisionTaskResponse {
-            task_token: vec![],
-            workflow_execution: None,
-            workflow_type: None,
-            previous_started_event_id: 0,
-            started_event_id: 0,
-            attempt: 0,
-            backlog_count_hint: 0,
-            history: None,
-            next_page_token: None,
-            query: None,
-            workflow_execution_task_list: None,
-            scheduled_timestamp: None,
-            started_timestamp: None,
-            queries: None,
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::PollForDecisionTaskRequest {
+                domain: Some(domain),
+                task_list: request.task_list.map(|tl| thrift_types::TaskList {
+                    name: Some(tl.name),
+                    kind: Some(match tl.kind {
+                        TaskListKind::Normal => thrift_types::TaskListKind::NORMAL,
+                        TaskListKind::Sticky => thrift_types::TaskListKind::STICKY,
+                    }),
+                }),
+                identity: Some(request.identity),
+                binary_checksum: Some(request.binary_checksum),
+            };
+            
+            let response = thrift_client
+                .poll_for_decision_task(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(PollForDecisionTaskResponse {
+                task_token: response.task_token.unwrap_or_default(),
+                workflow_execution: response.workflow_execution.and_then(|we| {
+                    Some(WorkflowExecution {
+                        workflow_id: we.workflow_id?,
+                        run_id: we.run_id?,
+                    })
+                }),
+                workflow_type: response.workflow_type.and_then(|wt| {
+                    Some(WorkflowType {
+                        name: wt.name?,
+                    })
+                }),
+                previous_started_event_id: response.previous_started_event_id.unwrap_or(0),
+                started_event_id: response.started_event_id.unwrap_or(0),
+                attempt: response.attempt.unwrap_or(0) as i32,
+                backlog_count_hint: response.backlog_count_hint.unwrap_or(0),
+                history: response.history.map(|h| History {
+                    events: h.events.unwrap_or_default().into_iter().filter_map(|_e| {
+                        // TODO: Convert HistoryEvent - this is complex, skip for now
+                        None
+                    }).collect(),
+                }),
+                next_page_token: response.next_page_token,
+                query: response.query.and_then(|q| {
+                    Some(WorkflowQuery {
+                        query_type: q.query_type?,
+                        query_args: q.query_args,
+                    })
+                }),
+                workflow_execution_task_list: response.workflow_execution_task_list.and_then(|tl| {
+                    Some(TaskList {
+                        name: tl.name?,
+                        kind: match tl.kind? {
+                            thrift_types::TaskListKind::NORMAL => TaskListKind::Normal,
+                            thrift_types::TaskListKind::STICKY => TaskListKind::Sticky,
+                            _ => TaskListKind::Normal,
+                        },
+                    })
+                }),
+                scheduled_timestamp: response.scheduled_timestamp,
+                started_timestamp: response.started_timestamp,
+                queries: response.queries.map(|qs| {
+                    qs.into_iter().filter_map(|(k, v)| {
+                        Some((k, WorkflowQuery {
+                            query_type: v.query_type?,
+                            query_args: v.query_args,
+                        }))
+                    }).collect()
+                }),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn respond_decision_task_completed(
         &self,
-        _request: RespondDecisionTaskCompletedRequest,
+        request: RespondDecisionTaskCompletedRequest,
     ) -> Result<RespondDecisionTaskCompletedResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(RespondDecisionTaskCompletedResponse {
-            decision_task: None,
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::RespondDecisionTaskCompletedRequest {
+                task_token: Some(request.task_token),
+                decisions: Some(request.decisions.into_iter().map(|_d| {
+                    // TODO: Convert Decision types - this is complex, use empty for now
+                    thrift_types::Decision::default()
+                }).collect()),
+                execution_context: request.execution_context,
+                identity: Some(request.identity),
+                sticky_attributes: request.sticky_attributes.map(|sa| thrift_types::StickyExecutionAttributes {
+                    worker_task_list: sa.worker_task_list.map(|tl| thrift_types::TaskList {
+                        name: Some(tl.name),
+                        kind: Some(match tl.kind {
+                            TaskListKind::Normal => thrift_types::TaskListKind::NORMAL,
+                            TaskListKind::Sticky => thrift_types::TaskListKind::STICKY,
+                        }),
+                    }),
+                    schedule_to_start_timeout_seconds: Some(sa.schedule_to_start_timeout_seconds),
+                }),
+                return_new_decision_task: Some(request.return_new_decision_task),
+                force_create_new_decision_task: Some(request.force_create_new_decision_task),
+                binary_checksum: Some(request.binary_checksum),
+                query_results: request.query_results.map(|qrs| {
+                    qrs.into_iter().map(|(k, v)| {
+                        (k, Box::new(thrift_types::WorkflowQueryResult {
+                            result_type: Some(match v.query_result_type {
+                                QueryResultType::Answered => thrift_types::QueryResultType::ANSWERED,
+                                QueryResultType::Failed => thrift_types::QueryResultType::FAILED,
+                            }),
+                            answer: v.answer,
+                            error_message: v.error_message,
+                        }))
+                    }).collect()
+                }),
+            };
+            
+            let response = thrift_client
+                .respond_decision_task_completed(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            // Convert response back - simplified for now
+            Ok(RespondDecisionTaskCompletedResponse {
+                decision_task: response.decision_task.map(|_dt| {
+                    // TODO: Full conversion - using empty response for now
+                    PollForDecisionTaskResponse {
+                        task_token: vec![],
+                        workflow_execution: None,
+                        workflow_type: None,
+                        previous_started_event_id: 0,
+                        started_event_id: 0,
+                        attempt: 0,
+                        backlog_count_hint: 0,
+                        history: None,
+                        next_page_token: None,
+                        query: None,
+                        workflow_execution_task_list: None,
+                        scheduled_timestamp: None,
+                        started_timestamp: None,
+                        queries: None,
+                    }
+                }),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn poll_for_activity_task(
         &self,
-        _request: PollForActivityTaskRequest,
+        request: PollForActivityTaskRequest,
     ) -> Result<PollForActivityTaskResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(PollForActivityTaskResponse {
-            task_token: vec![],
-            workflow_execution: None,
-            activity_id: String::new(),
-            activity_type: None,
-            input: None,
-            scheduled_timestamp: None,
-            started_timestamp: None,
-            schedule_to_close_timeout_seconds: None,
-            start_to_close_timeout_seconds: None,
-            heartbeat_timeout_seconds: None,
-            attempt: 0,
-            scheduled_timestamp_of_this_attempt: None,
-            heartbeat_details: None,
-            workflow_type: None,
-            workflow_domain: None,
-            header: None,
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::PollForActivityTaskRequest {
+                domain: Some(domain),
+                task_list: request.task_list.map(|tl| thrift_types::TaskList {
+                    name: Some(tl.name),
+                    kind: Some(match tl.kind {
+                        TaskListKind::Normal => thrift_types::TaskListKind::NORMAL,
+                        TaskListKind::Sticky => thrift_types::TaskListKind::STICKY,
+                    }),
+                }),
+                identity: Some(request.identity),
+                task_list_metadata: request.task_list_metadata.map(|tlm| thrift_types::TaskListMetadata {
+                    max_tasks_per_second: tlm.max_tasks_per_second.map(thrift::OrderedFloat),
+                }),
+            };
+            
+            let response = thrift_client
+                .poll_for_activity_task(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(PollForActivityTaskResponse {
+                task_token: response.task_token.unwrap_or_default(),
+                workflow_execution: response.workflow_execution.and_then(|we| {
+                    Some(WorkflowExecution {
+                        workflow_id: we.workflow_id?,
+                        run_id: we.run_id?,
+                    })
+                }),
+                activity_id: response.activity_id.unwrap_or_default(),
+                activity_type: response.activity_type.and_then(|at| {
+                    Some(ActivityType {
+                        name: at.name?,
+                    })
+                }),
+                input: response.input,
+                scheduled_timestamp: response.scheduled_timestamp,
+                started_timestamp: response.started_timestamp,
+                schedule_to_close_timeout_seconds: response.schedule_to_close_timeout_seconds,
+                start_to_close_timeout_seconds: response.start_to_close_timeout_seconds,
+                heartbeat_timeout_seconds: response.heartbeat_timeout_seconds,
+                attempt: response.attempt.unwrap_or(0),
+                scheduled_timestamp_of_this_attempt: response.scheduled_timestamp_of_this_attempt,
+                heartbeat_details: response.heartbeat_details,
+                workflow_type: response.workflow_type.and_then(|wt| {
+                    Some(WorkflowType {
+                        name: wt.name?,
+                    })
+                }),
+                workflow_domain: response.workflow_domain,
+                header: response.header.map(|h| Header {
+                    fields: h.fields.unwrap_or_default().into_iter().collect(),
+                }),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn record_activity_task_heartbeat(
         &self,
-        _request: RecordActivityTaskHeartbeatRequest,
+        request: RecordActivityTaskHeartbeatRequest,
     ) -> Result<RecordActivityTaskHeartbeatResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(RecordActivityTaskHeartbeatResponse {
-            cancel_requested: false,
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::RecordActivityTaskHeartbeatRequest {
+                task_token: Some(request.task_token),
+                details: request.details,
+                identity: Some(request.identity),
+            };
+            
+            let response = thrift_client
+                .record_activity_task_heartbeat(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(RecordActivityTaskHeartbeatResponse {
+                cancel_requested: response.cancel_requested.unwrap_or(false),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn respond_activity_task_completed(
         &self,
-        _request: RespondActivityTaskCompletedRequest,
+        request: RespondActivityTaskCompletedRequest,
     ) -> Result<RespondActivityTaskCompletedResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(RespondActivityTaskCompletedResponse {})
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::RespondActivityTaskCompletedRequest {
+                task_token: Some(request.task_token),
+                result: request.result,
+                identity: Some(request.identity),
+            };
+            
+            thrift_client
+                .respond_activity_task_completed(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(RespondActivityTaskCompletedResponse {})
+        })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn respond_activity_task_failed(
         &self,
-        _request: RespondActivityTaskFailedRequest,
+        request: RespondActivityTaskFailedRequest,
     ) -> Result<RespondActivityTaskFailedResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(RespondActivityTaskFailedResponse {})
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::RespondActivityTaskFailedRequest {
+                task_token: Some(request.task_token),
+                reason: request.reason,
+                details: request.details,
+                identity: Some(request.identity),
+            };
+            
+            thrift_client
+                .respond_activity_task_failed(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(RespondActivityTaskFailedResponse {})
+        })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn get_workflow_execution_history(
         &self,
-        _request: GetWorkflowExecutionHistoryRequest,
+        request: GetWorkflowExecutionHistoryRequest,
     ) -> Result<GetWorkflowExecutionHistoryResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(GetWorkflowExecutionHistoryResponse {
-            history: Some(History { events: vec![] }),
-            next_page_token: None,
-            archived: false,
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::GetWorkflowExecutionHistoryRequest {
+                domain: Some(domain),
+                execution: request.execution.map(|we| thrift_types::WorkflowExecution {
+                    workflow_id: Some(we.workflow_id),
+                    run_id: Some(we.run_id),
+                }),
+                maximum_page_size: Some(request.page_size),
+                next_page_token: request.next_page_token,
+                wait_for_new_event: Some(request.wait_for_new_event),
+                history_event_filter_type: request.history_event_filter_type.map(|ft| match ft {
+                    HistoryEventFilterType::AllEvent => thrift_types::HistoryEventFilterType::ALL_EVENT,
+                    HistoryEventFilterType::CloseEvent => thrift_types::HistoryEventFilterType::CLOSE_EVENT,
+                }),
+                skip_archival: Some(request.skip_archival),
+                query_consistency_level: None,
+            };
+            
+            let response = thrift_client
+                .get_workflow_execution_history(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(GetWorkflowExecutionHistoryResponse {
+                history: response.history.map(|h| History {
+                    events: h.events.unwrap_or_default().into_iter().filter_map(|_e| {
+                        // TODO: Convert HistoryEvent - complex type, skip for now
+                        None
+                    }).collect(),
+                }),
+                next_page_token: response.next_page_token,
+                archived: response.archived.unwrap_or(false),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn describe_workflow_execution(
         &self,
-        _request: DescribeWorkflowExecutionRequest,
+        request: DescribeWorkflowExecutionRequest,
     ) -> Result<DescribeWorkflowExecutionResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(DescribeWorkflowExecutionResponse {
-            execution_configuration: None,
-            workflow_execution_info: None,
-            pending_children: vec![],
-            pending_decision: None,
-            pending_activities: vec![],
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::DescribeWorkflowExecutionRequest {
+                domain: Some(domain),
+                execution: request.execution.map(|we| thrift_types::WorkflowExecution {
+                    workflow_id: Some(we.workflow_id),
+                    run_id: Some(we.run_id),
+                }),
+                query_consistency_level: None,
+            };
+            
+            let response = thrift_client
+                .describe_workflow_execution(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(DescribeWorkflowExecutionResponse {
+                execution_configuration: response.execution_configuration.and_then(|ec| {
+                    Some(WorkflowExecutionConfiguration {
+                        task_list: ec.task_list.and_then(|tl| {
+                            Some(TaskList {
+                                name: tl.name?,
+                                kind: match tl.kind? {
+                                    thrift_types::TaskListKind::NORMAL => TaskListKind::Normal,
+                                    thrift_types::TaskListKind::STICKY => TaskListKind::Sticky,
+                                    _ => TaskListKind::Normal,
+                                },
+                            })
+                        }),
+                        execution_start_to_close_timeout_seconds: ec.task_start_to_close_timeout_seconds?,
+                        task_start_to_close_timeout_seconds: ec.task_start_to_close_timeout_seconds?,
+                    })
+                }),
+                workflow_execution_info: None, // TODO: Complex conversion
+                pending_children: vec![],
+                pending_decision: None,
+                pending_activities: vec![],
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn list_open_workflow_executions(
         &self,
-        _request: ListOpenWorkflowExecutionsRequest,
+        request: ListOpenWorkflowExecutionsRequest,
     ) -> Result<ListOpenWorkflowExecutionsResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(ListOpenWorkflowExecutionsResponse {
-            executions: vec![],
-            next_page_token: None,
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::ListOpenWorkflowExecutionsRequest {
+                domain: Some(domain),
+                maximum_page_size: Some(request.maximum_page_size),
+                next_page_token: request.next_page_token,
+                start_time_filter: request.start_time_filter.map(|stf| thrift_types::StartTimeFilter {
+                    earliest_time: stf.earliest_time,
+                    latest_time: stf.latest_time,
+                }),
+                execution_filter: request.execution_filter.map(|ef| thrift_types::WorkflowExecutionFilter {
+                    workflow_id: Some(ef.workflow_id),
+                    run_id: None,
+                }),
+                type_filter: request.type_filter.map(|tf| thrift_types::WorkflowTypeFilter {
+                    name: Some(tf.name),
+                }),
+            };
+            
+            let response = thrift_client
+                .list_open_workflow_executions(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(ListOpenWorkflowExecutionsResponse {
+                executions: vec![], // TODO: Convert WorkflowExecutionInfo
+                next_page_token: response.next_page_token,
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn list_closed_workflow_executions(
         &self,
-        _request: ListClosedWorkflowExecutionsRequest,
+        request: ListClosedWorkflowExecutionsRequest,
     ) -> Result<ListClosedWorkflowExecutionsResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(ListClosedWorkflowExecutionsResponse {
-            executions: vec![],
-            next_page_token: None,
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::ListClosedWorkflowExecutionsRequest {
+                domain: Some(domain),
+                maximum_page_size: Some(request.maximum_page_size),
+                next_page_token: request.next_page_token,
+                start_time_filter: request.start_time_filter.map(|stf| thrift_types::StartTimeFilter {
+                    earliest_time: stf.earliest_time,
+                    latest_time: stf.latest_time,
+                }),
+                execution_filter: request.execution_filter.map(|ef| thrift_types::WorkflowExecutionFilter {
+                    workflow_id: Some(ef.workflow_id),
+                    run_id: None,
+                }),
+                type_filter: request.type_filter.map(|tf| thrift_types::WorkflowTypeFilter {
+                    name: Some(tf.name),
+                }),
+                status_filter: request.status_filter.map(|_sf| thrift_types::WorkflowExecutionCloseStatus::COMPLETED), // TODO: proper conversion
+            };
+            
+            let response = thrift_client
+                .list_closed_workflow_executions(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(ListClosedWorkflowExecutionsResponse {
+                executions: vec![], // TODO: Convert WorkflowExecutionInfo
+                next_page_token: response.next_page_token,
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn register_domain(
@@ -563,33 +946,155 @@ impl WorkflowService for ThriftWorkflowServiceClient {
 
     async fn describe_domain(
         &self,
-        _request: DescribeDomainRequest,
+        request: DescribeDomainRequest,
     ) -> Result<DescribeDomainResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(DescribeDomainResponse {
-            domain_info: None,
-            configuration: None,
-            replication_configuration: None,
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::DescribeDomainRequest {
+                name: request.name,
+                uuid: request.uuid,
+            };
+            
+            let response = thrift_client
+                .describe_domain(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(DescribeDomainResponse {
+                domain_info: response.domain_info.and_then(|di| {
+                    Some(DomainInfo {
+                        name: di.name?,
+                        status: di.status.and_then(|s| match s {
+                            thrift_types::DomainStatus::REGISTERED => Some(DomainStatus::Registered),
+                            thrift_types::DomainStatus::DEPRECATED => Some(DomainStatus::Deprecated),
+                            thrift_types::DomainStatus::DELETED => Some(DomainStatus::Deleted),
+                            _ => None,
+                        }),
+                        description: di.description?,
+                        owner_email: di.owner_email?,
+                        data: di.data.unwrap_or_default().into_iter().collect(),
+                        uuid: di.uuid?,
+                    })
+                }),
+                configuration: response.configuration.and_then(|c| {
+                    Some(DomainConfiguration {
+                        workflow_execution_retention_period_in_days: c.workflow_execution_retention_period_in_days?,
+                        emit_metric: c.emit_metric?,
+                        history_archival_status: c.history_archival_status.and_then(|s| match s {
+                            thrift_types::ArchivalStatus::DISABLED => Some(ArchivalStatus::Disabled),
+                            thrift_types::ArchivalStatus::ENABLED => Some(ArchivalStatus::Enabled),
+                            _ => None,
+                        }),
+                        history_archival_uri: c.history_archival_u_r_i?,
+                        visibility_archival_status: c.visibility_archival_status.and_then(|s| match s {
+                            thrift_types::ArchivalStatus::DISABLED => Some(ArchivalStatus::Disabled),
+                            thrift_types::ArchivalStatus::ENABLED => Some(ArchivalStatus::Enabled),
+                            _ => None,
+                        }),
+                        visibility_archival_uri: c.visibility_archival_u_r_i?,
+                    })
+                }),
+                replication_configuration: response.replication_configuration.and_then(|rc| {
+                    Some(DomainReplicationConfiguration {
+                        active_cluster_name: rc.active_cluster_name?,
+                        clusters: rc.clusters.unwrap_or_default().into_iter().filter_map(|c| {
+                            Some(ClusterReplicationConfiguration {
+                                cluster_name: c.cluster_name?,
+                            })
+                        }).collect(),
+                    })
+                }),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn update_domain(
         &self,
-        _request: UpdateDomainRequest,
+        request: UpdateDomainRequest,
     ) -> Result<UpdateDomainResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(UpdateDomainResponse {
-            domain_info: None,
-            configuration: None,
-            replication_configuration: None,
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::UpdateDomainRequest {
+                name: request.name,
+                updated_info: request.updated_info.map(|ui| thrift_types::UpdateDomainInfo {
+                    description: Some(ui.description),
+                    owner_email: Some(ui.owner_email),
+                    data: Some(ui.data.into_iter().collect()),
+                }),
+                configuration: request.configuration.map(|c| thrift_types::DomainConfiguration {
+                    workflow_execution_retention_period_in_days: Some(c.workflow_execution_retention_period_in_days),
+                    emit_metric: Some(c.emit_metric),
+                    isolationgroups: None,
+                    bad_binaries: None,
+                    history_archival_status: c.history_archival_status.map(|s| match s {
+                        ArchivalStatus::Disabled => thrift_types::ArchivalStatus::DISABLED,
+                        ArchivalStatus::Enabled => thrift_types::ArchivalStatus::ENABLED,
+                    }),
+                    history_archival_u_r_i: Some(c.history_archival_uri),
+                    visibility_archival_status: c.visibility_archival_status.map(|s| match s {
+                        ArchivalStatus::Disabled => thrift_types::ArchivalStatus::DISABLED,
+                        ArchivalStatus::Enabled => thrift_types::ArchivalStatus::ENABLED,
+                    }),
+                    visibility_archival_u_r_i: Some(c.visibility_archival_uri),
+                    async_workflow_configuration: None,
+                }),
+                replication_configuration: request.replication_configuration.map(|rc| thrift_types::DomainReplicationConfiguration {
+                    active_cluster_name: Some(rc.active_cluster_name),
+                    clusters: Some(rc.clusters.into_iter().map(|c| thrift_types::ClusterReplicationConfiguration {
+                        cluster_name: Some(c.cluster_name),
+                    }).collect()),
+                    active_clusters: None,
+                }),
+                security_token: request.security_token,
+                delete_bad_binary: request.delete_bad_binary,
+                failover_timeout_in_seconds: None,
+            };
+            
+            let _response = thrift_client
+                .update_domain(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            // Similar conversion as describe_domain response
+            Ok(UpdateDomainResponse {
+                domain_info: None, // TODO: Convert response
+                configuration: None,
+                replication_configuration: None,
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn failover_domain(
         &self,
-        _request: FailoverDomainRequest,
+        request: FailoverDomainRequest,
     ) -> Result<FailoverDomainResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(FailoverDomainResponse {})
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            let mut thrift_client = Self::create_thrift_client_blocking(&config)?;
+            
+            let thrift_request = thrift_types::FailoverDomainRequest {
+                domain_name: Some(request.name),
+                domain_active_cluster_name: request.clusters.first().cloned(),
+                active_clusters: None,
+                reason: None,
+            };
+            
+            thrift_client
+                .failover_domain(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(FailoverDomainResponse {})
+        })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 }
