@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   cassandra:
-    image: cassandra:3.11
+    image: cassandra:4.1
     ports:
       - "9042:9042"
     environment:
@@ -10,9 +10,9 @@ services:
       - MAX_HEAP_SIZE=2048M
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 15s
+      timeout: 10s
+      retries: 20
     networks:
       - cadence-network
 

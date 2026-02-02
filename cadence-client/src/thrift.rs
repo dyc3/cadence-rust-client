@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use std::time::Duration;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{
-    TTcpChannel, TFramedReadTransport, TFramedWriteTransport, TIoChannel,
+    TTcpChannel, TFramedReadTransport, TFramedWriteTransport, TBufferedReadTransport, TBufferedWriteTransport, TIoChannel,
 };
 
 /// Thrift-based workflow service client
@@ -116,7 +116,7 @@ impl ThriftWorkflowServiceClient {
     }
     
     /// Helper to create a thrift client in a blocking context
-    fn create_thrift_client_blocking(config: &ClientConfig) -> CadenceResult<cadence_proto::generated::cadence::WorkflowServiceSyncClient<TBinaryInputProtocol<TFramedReadTransport<thrift::transport::ReadHalf<TTcpChannel>>>, TBinaryOutputProtocol<TFramedWriteTransport<thrift::transport::WriteHalf<TTcpChannel>>>>> {
+    fn create_thrift_client_blocking(config: &ClientConfig) -> CadenceResult<cadence_proto::generated::cadence::WorkflowServiceSyncClient<TBinaryInputProtocol<TBufferedReadTransport<thrift::transport::ReadHalf<TTcpChannel>>>, TBinaryOutputProtocol<TBufferedWriteTransport<thrift::transport::WriteHalf<TTcpChannel>>>>> {
         let addr = format!("{}:{}", config.host, config.port);
         let mut channel = TTcpChannel::new();
         channel
@@ -127,8 +127,8 @@ impl ThriftWorkflowServiceClient {
             .split()
             .map_err(|e| CadenceError::Transport(format!("Failed to split channel: {}", e)))?;
         
-        let i_tran = TFramedReadTransport::new(i_chan);
-        let o_tran = TFramedWriteTransport::new(o_chan);
+        let i_tran = TBufferedReadTransport::new(i_chan);
+        let o_tran = TBufferedWriteTransport::new(o_chan);
         let i_prot = TBinaryInputProtocol::new(i_tran, true);
         let o_prot = TBinaryOutputProtocol::new(o_tran, true);
         Ok(cadence_proto::generated::cadence::WorkflowServiceSyncClient::new(i_prot, o_prot))
