@@ -12,6 +12,9 @@ pub mod generated;
 pub mod shared;
 pub mod workflow_service;
 
+// Type conversions between hand-written API types and generated protobuf types
+pub mod conversions;
+
 pub use shared::*;
 pub use workflow_service::*;
 

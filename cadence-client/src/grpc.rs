@@ -3,16 +3,21 @@
 //! This module provides the gRPC-based client for communicating with the
 //! Cadence server using protocol buffers.
 
+use async_trait::async_trait;
 use cadence_core::CadenceError;
 use cadence_proto::generated::workflow_api_client::WorkflowApiClient;
+use cadence_proto::generated::worker_api_client::WorkerApiClient;
+use cadence_proto::generated::visibility_api_client::VisibilityApiClient;
+use cadence_proto::generated::domain_api_client::DomainApiClient;
 use cadence_proto::workflow_service::*;
-use async_trait::async_trait;
 use tonic::transport::Channel;
 
 /// gRPC-based workflow service client
 pub struct GrpcWorkflowServiceClient {
-    #[allow(dead_code)] // TODO: This will be used when methods are implemented
     workflow_client: WorkflowApiClient<Channel>,
+    worker_client: WorkerApiClient<Channel>,
+    visibility_client: VisibilityApiClient<Channel>,
+    domain_client: DomainApiClient<Channel>,
     domain: String,
 }
 
@@ -20,12 +25,24 @@ impl GrpcWorkflowServiceClient {
     /// Create a new gRPC client by connecting to the specified endpoint
     pub async fn connect(endpoint: impl Into<String>, domain: impl Into<String>) -> Result<Self, CadenceError> {
         let endpoint = endpoint.into();
-        let workflow_client = WorkflowApiClient::connect(endpoint)
+        let workflow_client = WorkflowApiClient::connect(endpoint.clone())
+            .await
+            .map_err(|e| CadenceError::Transport(e.to_string()))?;
+        let worker_client = WorkerApiClient::connect(endpoint.clone())
+            .await
+            .map_err(|e| CadenceError::Transport(e.to_string()))?;
+        let visibility_client = VisibilityApiClient::connect(endpoint.clone())
+            .await
+            .map_err(|e| CadenceError::Transport(e.to_string()))?;
+        let domain_client = DomainApiClient::connect(endpoint)
             .await
             .map_err(|e| CadenceError::Transport(e.to_string()))?;
         
         Ok(Self {
             workflow_client,
+            worker_client,
+            visibility_client,
+            domain_client,
             domain: domain.into(),
         })
     }
@@ -42,143 +59,306 @@ impl WorkflowService for GrpcWorkflowServiceClient {
 
     async fn start_workflow_execution(
         &self,
-        _request: StartWorkflowExecutionRequest,
+        request: StartWorkflowExecutionRequest,
     ) -> Result<StartWorkflowExecutionResponse, Self::Error> {
-        // TODO: Convert request types and call the gRPC client
-        // This is a placeholder - full implementation needed
-        Err(CadenceError::Other("start_workflow_execution not yet implemented".to_string()))
+        // Convert our API request type to protobuf type
+        let pb_request: cadence_proto::generated::StartWorkflowExecutionRequest = request.into();
+        
+        // Make the gRPC call
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .start_workflow_execution(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        
+        // Convert protobuf response back to our API type
+        Ok(response.into_inner().into())
     }
 
     async fn signal_workflow_execution(
         &self,
-        _request: SignalWorkflowExecutionRequest,
+        request: SignalWorkflowExecutionRequest,
     ) -> Result<SignalWorkflowExecutionResponse, Self::Error> {
-        Err(CadenceError::Other("signal_workflow_execution not yet implemented".to_string()))
+        // Convert our API request type to protobuf type
+        let pb_request: cadence_proto::generated::SignalWorkflowExecutionRequest = request.into();
+        
+        // Make the gRPC call
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .signal_workflow_execution(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        
+        // Convert protobuf response back to our API type
+        Ok(response.into_inner().into())
     }
 
     async fn signal_with_start_workflow_execution(
         &self,
-        _request: SignalWithStartWorkflowExecutionRequest,
+        request: SignalWithStartWorkflowExecutionRequest,
     ) -> Result<StartWorkflowExecutionResponse, Self::Error> {
-        Err(CadenceError::Other("signal_with_start_workflow_execution not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::SignalWithStartWorkflowExecutionRequest =
+            request.into();
+
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .signal_with_start_workflow_execution(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn request_cancel_workflow_execution(
         &self,
-        _request: RequestCancelWorkflowExecutionRequest,
+        request: RequestCancelWorkflowExecutionRequest,
     ) -> Result<RequestCancelWorkflowExecutionResponse, Self::Error> {
-        Err(CadenceError::Other("request_cancel_workflow_execution not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::RequestCancelWorkflowExecutionRequest =
+            request.into();
+
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .request_cancel_workflow_execution(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn terminate_workflow_execution(
         &self,
-        _request: TerminateWorkflowExecutionRequest,
+        request: TerminateWorkflowExecutionRequest,
     ) -> Result<TerminateWorkflowExecutionResponse, Self::Error> {
-        Err(CadenceError::Other("terminate_workflow_execution not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::TerminateWorkflowExecutionRequest =
+            request.into();
+
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .terminate_workflow_execution(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn query_workflow(
         &self,
-        _request: QueryWorkflowRequest,
+        request: QueryWorkflowRequest,
     ) -> Result<QueryWorkflowResponse, Self::Error> {
-        Err(CadenceError::Other("query_workflow not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::QueryWorkflowRequest = request.into();
+
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .query_workflow(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn poll_for_decision_task(
         &self,
-        _request: PollForDecisionTaskRequest,
+        request: PollForDecisionTaskRequest,
     ) -> Result<PollForDecisionTaskResponse, Self::Error> {
-        Err(CadenceError::Other("poll_for_decision_task not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::PollForDecisionTaskRequest = request.into();
+
+        let mut client = self.worker_client.clone();
+        let response = client
+            .poll_for_decision_task(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn respond_decision_task_completed(
         &self,
-        _request: RespondDecisionTaskCompletedRequest,
+        request: RespondDecisionTaskCompletedRequest,
     ) -> Result<RespondDecisionTaskCompletedResponse, Self::Error> {
-        Err(CadenceError::Other("respond_decision_task_completed not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::RespondDecisionTaskCompletedRequest =
+            request.into();
+
+        let mut client = self.worker_client.clone();
+        let response = client
+            .respond_decision_task_completed(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn poll_for_activity_task(
         &self,
-        _request: PollForActivityTaskRequest,
+        request: PollForActivityTaskRequest,
     ) -> Result<PollForActivityTaskResponse, Self::Error> {
-        Err(CadenceError::Other("poll_for_activity_task not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::PollForActivityTaskRequest = request.into();
+
+        let mut client = self.worker_client.clone();
+        let response = client
+            .poll_for_activity_task(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn record_activity_task_heartbeat(
         &self,
-        _request: RecordActivityTaskHeartbeatRequest,
+        request: RecordActivityTaskHeartbeatRequest,
     ) -> Result<RecordActivityTaskHeartbeatResponse, Self::Error> {
-        Err(CadenceError::Other("record_activity_task_heartbeat not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::RecordActivityTaskHeartbeatRequest =
+            request.into();
+
+        let mut client = self.worker_client.clone();
+        let response = client
+            .record_activity_task_heartbeat(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn respond_activity_task_completed(
         &self,
-        _request: RespondActivityTaskCompletedRequest,
+        request: RespondActivityTaskCompletedRequest,
     ) -> Result<RespondActivityTaskCompletedResponse, Self::Error> {
-        Err(CadenceError::Other("respond_activity_task_completed not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::RespondActivityTaskCompletedRequest =
+            request.into();
+
+        let mut client = self.worker_client.clone();
+        let response = client
+            .respond_activity_task_completed(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn respond_activity_task_failed(
         &self,
-        _request: RespondActivityTaskFailedRequest,
+        request: RespondActivityTaskFailedRequest,
     ) -> Result<RespondActivityTaskFailedResponse, Self::Error> {
-        Err(CadenceError::Other("respond_activity_task_failed not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::RespondActivityTaskFailedRequest =
+            request.into();
+
+        let mut client = self.worker_client.clone();
+        let response = client
+            .respond_activity_task_failed(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn get_workflow_execution_history(
         &self,
-        _request: GetWorkflowExecutionHistoryRequest,
+        request: GetWorkflowExecutionHistoryRequest,
     ) -> Result<GetWorkflowExecutionHistoryResponse, Self::Error> {
-        Err(CadenceError::Other("get_workflow_execution_history not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::GetWorkflowExecutionHistoryRequest =
+            request.into();
+
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .get_workflow_execution_history(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn describe_workflow_execution(
         &self,
-        _request: DescribeWorkflowExecutionRequest,
+        request: DescribeWorkflowExecutionRequest,
     ) -> Result<DescribeWorkflowExecutionResponse, Self::Error> {
-        Err(CadenceError::Other("describe_workflow_execution not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::DescribeWorkflowExecutionRequest =
+            request.into();
+
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .describe_workflow_execution(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+
+        Ok(response.into_inner().into())
     }
 
     async fn list_open_workflow_executions(
         &self,
-        _request: ListOpenWorkflowExecutionsRequest,
+        request: ListOpenWorkflowExecutionsRequest,
     ) -> Result<ListOpenWorkflowExecutionsResponse, Self::Error> {
-        Err(CadenceError::Other("list_open_workflow_executions not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::ListOpenWorkflowExecutionsRequest =
+            request.into();
+        let mut client = self.visibility_client.clone();
+        let response = client
+            .list_open_workflow_executions(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
     }
 
     async fn list_closed_workflow_executions(
         &self,
-        _request: ListClosedWorkflowExecutionsRequest,
+        request: ListClosedWorkflowExecutionsRequest,
     ) -> Result<ListClosedWorkflowExecutionsResponse, Self::Error> {
-        Err(CadenceError::Other("list_closed_workflow_executions not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::ListClosedWorkflowExecutionsRequest =
+            request.into();
+        let mut client = self.visibility_client.clone();
+        let response = client
+            .list_closed_workflow_executions(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
     }
 
     async fn register_domain(
         &self,
-        _request: RegisterDomainRequest,
+        request: RegisterDomainRequest,
     ) -> Result<(), Self::Error> {
-        Err(CadenceError::Other("register_domain not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::RegisterDomainRequest = request.into();
+        let mut client = self.domain_client.clone();
+        client
+            .register_domain(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(())
     }
 
     async fn describe_domain(
         &self,
-        _request: DescribeDomainRequest,
+        request: DescribeDomainRequest,
     ) -> Result<DescribeDomainResponse, Self::Error> {
-        Err(CadenceError::Other("describe_domain not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::DescribeDomainRequest = request.into();
+        let mut client = self.domain_client.clone();
+        let response = client
+            .describe_domain(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
     }
 
     async fn update_domain(
         &self,
-        _request: UpdateDomainRequest,
+        request: UpdateDomainRequest,
     ) -> Result<UpdateDomainResponse, Self::Error> {
-        Err(CadenceError::Other("update_domain not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::UpdateDomainRequest = request.into();
+        let mut client = self.domain_client.clone();
+        let response = client
+            .update_domain(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
     }
 
     async fn failover_domain(
         &self,
-        _request: FailoverDomainRequest,
+        request: FailoverDomainRequest,
     ) -> Result<FailoverDomainResponse, Self::Error> {
-        Err(CadenceError::Other("failover_domain not yet implemented".to_string()))
+        let pb_request: cadence_proto::generated::FailoverDomainRequest = request.into();
+        let mut client = self.domain_client.clone();
+        client
+            .failover_domain(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(FailoverDomainResponse {})
     }
 }
