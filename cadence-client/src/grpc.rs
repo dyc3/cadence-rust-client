@@ -11,13 +11,79 @@ use cadence_proto::generated::visibility_api_client::VisibilityApiClient;
 use cadence_proto::generated::domain_api_client::DomainApiClient;
 use cadence_proto::workflow_service::*;
 use tonic::transport::Channel;
+use tonic::{metadata::MetadataValue, Status};
+
+/// Library version sent to Cadence server in headers
+const LIBRARY_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Feature version indicates client feature capabilities
+const FEATURE_VERSION: &str = "1.0.0";
+
+/// Client implementation identifier
+const CLIENT_IMPL_NAME: &str = "cadence-rust";
+
+/// Interceptor function that adds Cadence-required headers to all gRPC requests
+///
+/// These headers are required by the Cadence server to identify the client
+/// and its capabilities. They match the headers sent by the Go client.
+fn add_cadence_headers(mut req: tonic::Request<()>) -> Result<tonic::Request<()>, Status> {
+    let metadata = req.metadata_mut();
+    
+    // Add Cadence client identification headers (matching Go client)
+    metadata.insert(
+        "cadence-client-library-version",
+        MetadataValue::from_static(LIBRARY_VERSION),
+    );
+    metadata.insert(
+        "cadence-client-feature-version",
+        MetadataValue::from_static(FEATURE_VERSION),
+    );
+    metadata.insert(
+        "cadence-client-name",
+        MetadataValue::from_static(CLIENT_IMPL_NAME),
+    );
+    metadata.insert(
+        "cadence-caller-type",
+        MetadataValue::from_static("sdk"),
+    );
+    
+    // Add YARPC-required context headers for gRPC transport
+    // These are the standard YARPC headers that the server expects
+    metadata.insert(
+        "rpc-service",
+        MetadataValue::from_static("cadence-frontend"),
+    );
+    metadata.insert(
+        "rpc-caller",
+        MetadataValue::from_static(CLIENT_IMPL_NAME),
+    );
+    metadata.insert(
+        "rpc-encoding",
+        MetadataValue::from_static("proto"),
+    );
+    
+    // YARPC expects TTL in the standard gRPC timeout header
+    // Format: value followed by time unit (H, M, S, m, u, n)
+    // Using 60S for 60 seconds
+    metadata.insert(
+        "grpc-timeout",
+        MetadataValue::from_static("60S"),
+    );
+    
+    Ok(req)
+}
+
+type InterceptedChannel = tonic::service::interceptor::InterceptedService<
+    Channel,
+    fn(tonic::Request<()>) -> Result<tonic::Request<()>, Status>,
+>;
 
 /// gRPC-based workflow service client
 pub struct GrpcWorkflowServiceClient {
-    workflow_client: WorkflowApiClient<Channel>,
-    worker_client: WorkerApiClient<Channel>,
-    visibility_client: VisibilityApiClient<Channel>,
-    domain_client: DomainApiClient<Channel>,
+    workflow_client: WorkflowApiClient<InterceptedChannel>,
+    worker_client: WorkerApiClient<InterceptedChannel>,
+    visibility_client: VisibilityApiClient<InterceptedChannel>,
+    domain_client: DomainApiClient<InterceptedChannel>,
     domain: String,
 }
 
@@ -25,18 +91,20 @@ impl GrpcWorkflowServiceClient {
     /// Create a new gRPC client by connecting to the specified endpoint
     pub async fn connect(endpoint: impl Into<String>, domain: impl Into<String>) -> Result<Self, CadenceError> {
         let endpoint = endpoint.into();
-        let workflow_client = WorkflowApiClient::connect(endpoint.clone())
+        
+        let channel = Channel::from_shared(endpoint.clone())
+            .map_err(|e| CadenceError::Transport(format!("Invalid endpoint: {}", e)))?
+            .connect()
             .await
             .map_err(|e| CadenceError::Transport(e.to_string()))?;
-        let worker_client = WorkerApiClient::connect(endpoint.clone())
-            .await
-            .map_err(|e| CadenceError::Transport(e.to_string()))?;
-        let visibility_client = VisibilityApiClient::connect(endpoint.clone())
-            .await
-            .map_err(|e| CadenceError::Transport(e.to_string()))?;
-        let domain_client = DomainApiClient::connect(endpoint)
-            .await
-            .map_err(|e| CadenceError::Transport(e.to_string()))?;
+        
+        // Cast function to fn pointer for use as interceptor
+        let interceptor = add_cadence_headers as fn(tonic::Request<()>) -> Result<tonic::Request<()>, Status>;
+        
+        let workflow_client = WorkflowApiClient::with_interceptor(channel.clone(), interceptor);
+        let worker_client = WorkerApiClient::with_interceptor(channel.clone(), interceptor);
+        let visibility_client = VisibilityApiClient::with_interceptor(channel.clone(), interceptor);
+        let domain_client = DomainApiClient::with_interceptor(channel, interceptor);
         
         Ok(Self {
             workflow_client,

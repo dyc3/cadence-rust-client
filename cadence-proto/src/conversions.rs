@@ -1177,6 +1177,19 @@ impl From<pb::ListClosedWorkflowExecutionsResponse> for api::ListClosedWorkflowE
 
 impl From<api::RegisterDomainRequest> for pb::RegisterDomainRequest {
     fn from(req: api::RegisterDomainRequest) -> Self {
+        // Determine if this is a global domain
+        let is_global = req.is_global_domain.unwrap_or(false);
+
+        // For local domains, ensure active_cluster_name is truly empty
+        // Cadence's persistence layer has conditional checks that fail when
+        // is_global_domain=false but active_cluster_name is set (even if empty string)
+        let active_cluster_name = if is_global || !req.clusters.is_empty() {
+            req.active_cluster_name
+        } else {
+            // For local domains without clusters, use empty string
+            String::new()
+        };
+
         pb::RegisterDomainRequest {
             security_token: req.security_token.unwrap_or_default(),
             name: req.name,
@@ -1192,9 +1205,9 @@ impl From<api::RegisterDomainRequest> for pb::RegisterDomainRequest {
                     cluster_name: c.cluster_name,
                 })
                 .collect(),
-            active_cluster_name: req.active_cluster_name,
+            active_cluster_name,
             data: req.data,
-            is_global_domain: req.is_global_domain.unwrap_or(false),
+            is_global_domain: is_global,
             history_archival_status: req.history_archival_status.map(|s| s as i32).unwrap_or(0),
             history_archival_uri: req.history_archival_uri.unwrap_or_default(),
             visibility_archival_status: req
