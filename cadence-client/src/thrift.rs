@@ -6,15 +6,22 @@
 use cadence_core::{CadenceError, CadenceResult};
 use cadence_proto::workflow_service::*;
 use cadence_proto::shared::*;
+use cadence_proto::generated::cadence::{TWorkflowServiceSyncClient};
+use cadence_proto::generated::shared as thrift_types;
 use async_trait::async_trait;
 use std::time::Duration;
+use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol, TInputProtocol, TOutputProtocol};
+use thrift::transport::{
+    TTcpChannel, TFramedReadTransport, TFramedWriteTransport, TIoChannel,
+};
 
 /// Thrift-based workflow service client
+/// 
+/// This client uses Thrift Binary Protocol over TCP to communicate with Cadence server.
+/// Currently, each operation creates a new connection. Future versions will implement
+/// connection pooling for better performance.
 pub struct ThriftWorkflowServiceClient {
-    // TODO: Add thrift client connection
-    #[allow(dead_code)]
     domain: String,
-    #[allow(dead_code)]
     config: ClientConfig,
 }
 
@@ -46,8 +53,65 @@ impl ThriftWorkflowServiceClient {
     }
 
     pub async fn connect(&self) -> CadenceResult<()> {
-        // TODO: Implement Thrift connection
+        // Test the connection by creating a TCP connection
+        let addr = format!("{}:{}", self.config.host, self.config.port);
+        let mut channel = TTcpChannel::new();
+        channel
+            .open(&addr)
+            .map_err(|e| CadenceError::Transport(format!("Failed to connect to {}: {}", addr, e)))?;
+        // Connection successful, close it - we'll create new ones for each request
         Ok(())
+    }
+    
+    /// Create a new Thrift client connection
+    /// 
+    /// This creates a fresh TCP connection with Thrift Binary Protocol.
+    /// In the future, this should use connection pooling for better performance.
+    fn create_client(&self) -> CadenceResult<impl TWorkflowServiceSyncClient> {
+        let addr = format!("{}:{}", self.config.host, self.config.port);
+        
+        // Create TCP connection
+        let mut channel = TTcpChannel::new();
+        channel
+            .open(&addr)
+            .map_err(|e| CadenceError::Transport(format!("Failed to connect to {}: {}", addr, e)))?;
+        
+        // Split channel into read and write halves
+        let (i_chan, o_chan) = channel
+            .split()
+            .map_err(|e| CadenceError::Transport(format!("Failed to split channel: {}", e)))?;
+        
+        // Wrap with framed transport (Cadence uses framed Thrift)
+        let i_tran = TFramedReadTransport::new(i_chan);
+        let o_tran = TFramedWriteTransport::new(o_chan);
+        
+        // Wrap with binary protocol (Cadence uses TBinaryProtocol)
+        let i_prot = TBinaryInputProtocol::new(i_tran, true);
+        let o_prot = TBinaryOutputProtocol::new(o_tran, true);
+        
+        // Create and return the generated Thrift client
+        Ok(cadence_proto::generated::cadence::WorkflowServiceSyncClient::new(i_prot, o_prot))
+    }
+    
+    /// Convert Thrift errors to CadenceError
+    fn convert_thrift_error(err: thrift::Error) -> CadenceError {
+        use thrift::Error as TE;
+        
+        match err {
+            TE::Transport(transport_err) => {
+                CadenceError::Transport(format!("Transport error: {}", transport_err))
+            }
+            TE::Protocol(protocol_err) => {
+                CadenceError::Transport(format!("Protocol error: {}", protocol_err))
+            }
+            TE::Application(app_err) => {
+                CadenceError::Other(format!("Application error: {:?}", app_err))
+            }
+            TE::User(user_err) => {
+                // Thrift user exceptions - these are defined in the IDL
+                CadenceError::Other(format!("Service error: {}", user_err))
+            }
+        }
     }
 }
 
@@ -57,12 +121,77 @@ impl WorkflowService for ThriftWorkflowServiceClient {
 
     async fn start_workflow_execution(
         &self,
-        _request: StartWorkflowExecutionRequest,
+        request: StartWorkflowExecutionRequest,
     ) -> Result<StartWorkflowExecutionResponse, Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(StartWorkflowExecutionResponse {
-            run_id: uuid::Uuid::new_v4().to_string(),
+        // Use tokio::task::spawn_blocking to run sync Thrift calls
+        let domain = self.domain.clone();
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            // Create a new Thrift client connection
+            let addr = format!("{}:{}", config.host, config.port);
+            let mut channel = TTcpChannel::new();
+            channel
+                .open(&addr)
+                .map_err(|e| CadenceError::Transport(format!("Failed to connect to {}: {}", addr, e)))?;
+            
+            let (i_chan, o_chan) = channel
+                .split()
+                .map_err(|e| CadenceError::Transport(format!("Failed to split channel: {}", e)))?;
+            
+            let i_tran = TFramedReadTransport::new(i_chan);
+            let o_tran = TFramedWriteTransport::new(o_chan);
+            let i_prot = TBinaryInputProtocol::new(i_tran, true);
+            let o_prot = TBinaryOutputProtocol::new(o_tran, true);
+            let mut thrift_client = cadence_proto::generated::cadence::WorkflowServiceSyncClient::new(i_prot, o_prot);
+            
+            // Convert internal request to thrift request
+            let thrift_request = thrift_types::StartWorkflowExecutionRequest {
+                domain: Some(domain.clone()),
+                workflow_id: Some(request.workflow_id),
+                workflow_type: request.workflow_type.map(|wt| thrift_types::WorkflowType {
+                    name: Some(wt.name),
+                }),
+                task_list: request.task_list.map(|tl| thrift_types::TaskList {
+                    name: Some(tl.name),
+                    kind: Some(match tl.kind {
+                        TaskListKind::Normal => thrift_types::TaskListKind::NORMAL,
+                        TaskListKind::Sticky => thrift_types::TaskListKind::STICKY,
+                    }),
+                }),
+                input: request.input,
+                execution_start_to_close_timeout_seconds: request.execution_start_to_close_timeout_seconds,
+                task_start_to_close_timeout_seconds: request.task_start_to_close_timeout_seconds,
+                identity: Some(request.identity),
+                request_id: Some(request.request_id),
+                workflow_id_reuse_policy: request.workflow_id_reuse_policy.map(|p| match p {
+                    WorkflowIdReusePolicy::AllowDuplicate => thrift_types::WorkflowIdReusePolicy::ALLOW_DUPLICATE,
+                    WorkflowIdReusePolicy::AllowDuplicateFailedOnly => thrift_types::WorkflowIdReusePolicy::ALLOW_DUPLICATE_FAILED_ONLY,
+                    WorkflowIdReusePolicy::RejectDuplicate => thrift_types::WorkflowIdReusePolicy::REJECT_DUPLICATE,
+                    WorkflowIdReusePolicy::TerminateIfRunning => thrift_types::WorkflowIdReusePolicy::TERMINATE_IF_RUNNING,
+                }),
+                retry_policy: None, // TODO: Convert RetryPolicy
+                cron_schedule: request.cron_schedule,
+                memo: None, // TODO: Convert Memo
+                search_attributes: None, // TODO: Convert SearchAttributes
+                header: None, // TODO: Convert Header
+                delay_start_seconds: request.delay_start_seconds,
+                jitter_start_seconds: request.jitter_start_seconds,
+                first_run_at_timestamp: None,
+                cron_overlap_policy: None,
+                active_cluster_selection_policy: None,
+            };
+            
+            let response = thrift_client
+                .start_workflow_execution(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(StartWorkflowExecutionResponse {
+                run_id: response.run_id.unwrap_or_default(),
+            })
         })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn signal_workflow_execution(
@@ -245,10 +374,64 @@ impl WorkflowService for ThriftWorkflowServiceClient {
 
     async fn register_domain(
         &self,
-        _request: RegisterDomainRequest,
+        request: RegisterDomainRequest,
     ) -> Result<(), Self::Error> {
-        // TODO: Implement Thrift call
-        Ok(())
+        let config = self.config.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            // Create a new Thrift client connection
+            let addr = format!("{}:{}", config.host, config.port);
+            let mut channel = TTcpChannel::new();
+            channel
+                .open(&addr)
+                .map_err(|e| CadenceError::Transport(format!("Failed to connect to {}: {}", addr, e)))?;
+            
+            let (i_chan, o_chan) = channel
+                .split()
+                .map_err(|e| CadenceError::Transport(format!("Failed to split channel: {}", e)))?;
+            
+            let i_tran = TFramedReadTransport::new(i_chan);
+            let o_tran = TFramedWriteTransport::new(o_chan);
+            let i_prot = TBinaryInputProtocol::new(i_tran, true);
+            let o_prot = TBinaryOutputProtocol::new(o_tran, true);
+            let mut thrift_client = cadence_proto::generated::cadence::WorkflowServiceSyncClient::new(i_prot, o_prot);
+            
+            // Convert internal request to thrift request
+            let thrift_request = thrift_types::RegisterDomainRequest {
+                name: Some(request.name),
+                description: request.description,
+                owner_email: Some(request.owner_email),
+                workflow_execution_retention_period_in_days: Some(request.workflow_execution_retention_period_in_days),
+                emit_metric: request.emit_metric,
+                clusters: Some(request.clusters.into_iter().map(|c| thrift_types::ClusterReplicationConfiguration {
+                    cluster_name: Some(c.cluster_name),
+                }).collect()),
+                active_cluster_name: Some(request.active_cluster_name),
+                active_clusters_by_region: None,
+                active_clusters: None,
+                data: Some(request.data.into_iter().collect()),
+                security_token: request.security_token,
+                is_global_domain: request.is_global_domain,
+                history_archival_status: request.history_archival_status.map(|s| match s {
+                    ArchivalStatus::Disabled => thrift_types::ArchivalStatus::DISABLED,
+                    ArchivalStatus::Enabled => thrift_types::ArchivalStatus::ENABLED,
+                }),
+                history_archival_u_r_i: request.history_archival_uri,
+                visibility_archival_status: request.visibility_archival_status.map(|s| match s {
+                    ArchivalStatus::Disabled => thrift_types::ArchivalStatus::DISABLED,
+                    ArchivalStatus::Enabled => thrift_types::ArchivalStatus::ENABLED,
+                }),
+                visibility_archival_u_r_i: request.visibility_archival_uri,
+            };
+            
+            thrift_client
+                .register_domain(thrift_request)
+                .map_err(|e| Self::convert_thrift_error(e))?;
+            
+            Ok(())
+        })
+        .await
+        .map_err(|e| CadenceError::Other(format!("Task join error: {}", e)))?
     }
 
     async fn describe_domain(

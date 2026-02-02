@@ -4,7 +4,7 @@
 //! by the Thrift compiler and the hand-written types used throughout the codebase.
 //! This allows gradual migration from hand-written types to generated types.
 
-use crate::generated::{cadence, shared};
+use crate::generated::shared;
 use crate::{shared as internal, workflow_service as internal_service};
 use std::convert::{TryFrom, TryInto};
 use thrift::OrderedFloat;
