@@ -3,9 +3,10 @@
 //! This crate contains the Thrift and Protobuf definitions for communicating
 //! with the Cadence server.
 
-// This will be populated with generated code once we integrate the IDL files
-// For now, we define the core protocol types manually
+// Thrift-generated code from IDL files
+pub mod generated;
 
+// Manual protocol type definitions (to be gradually replaced by generated types)
 pub mod shared;
 pub mod workflow_service;
 

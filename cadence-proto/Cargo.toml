@@ -15,9 +15,9 @@ serde = { workspace = true }
 async-trait = { workspace = true }
 
 [build-dependencies]
-thrift = { workspace = true }
 
 [features]
 default = ["thrift"]
 thrift = []
 grpc = ["tonic", "prost"]
+gen-thrift = [] # Enable to regenerate thrift code (requires thrift compiler)
