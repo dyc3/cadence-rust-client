@@ -17,7 +17,6 @@ pub fn setup_test_env_with_time(time: DateTime<Utc>) -> TestWorkflowEnvironment 
 
 /// Helper to create a test workflow environment pre-configured for order processing examples.
 pub fn setup_order_processing_env() -> TestWorkflowEnvironment {
-    let env = TestWorkflowEnvironment::new();
     // Pre-configure with common order processing mocks
-    env
+    TestWorkflowEnvironment::new()
 }

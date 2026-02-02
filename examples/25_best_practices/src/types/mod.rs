@@ -163,6 +163,7 @@ impl WorkflowVersion {
 }
 
 /// Builder pattern for WorkflowMetadata
+#[derive(Default)]
 pub struct WorkflowMetadataBuilder {
     workflow_id: Option<WorkflowId>,
     workflow_type: Option<String>,
@@ -171,11 +172,7 @@ pub struct WorkflowMetadataBuilder {
 
 impl WorkflowMetadataBuilder {
     pub fn new() -> Self {
-        Self {
-            workflow_id: None,
-            workflow_type: None,
-            version: None,
-        }
+        Self::default()
     }
 
     pub fn workflow_id(mut self, id: WorkflowId) -> Self {

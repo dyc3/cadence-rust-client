@@ -5,8 +5,8 @@
 
 pub mod client;
 pub mod domain;
-pub mod thrift;
+pub mod grpc;
 
 pub use client::*;
 pub use domain::*;
-pub use thrift::*;
+pub use grpc::*;

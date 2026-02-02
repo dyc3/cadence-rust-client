@@ -183,7 +183,7 @@ pub async fn structured_logging_activity(
     LogEntry::new()
         .field("correlation_id", &correlation_id)
         .field("operation", &operation_name)
-        .field("metadata_count", &metadata.len().to_string())
+        .field("metadata_count", metadata.len().to_string())
         .info("Starting structured operation");
     
     ctx.record_heartbeat(None);

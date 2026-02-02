@@ -104,7 +104,7 @@ pub async fn validate_payment_activity(
     }
     
     // Validate currency
-    let valid_currencies = vec!["USD", "EUR", "GBP", "JPY"];
+    let valid_currencies = ["USD", "EUR", "GBP", "JPY"];
     if !valid_currencies.contains(&request.currency.as_str()) {
         // Permanent error - invalid currency
         return Err(ActivityError::ExecutionFailed(

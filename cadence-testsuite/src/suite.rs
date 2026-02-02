@@ -94,6 +94,7 @@ impl TestWorkflowEnvironment {
         I: for<'de> Deserialize<'de> + Send + 'static,
         O: Serialize + Send + 'static,
     {
+        #[allow(clippy::type_complexity)]
         let boxed = Box::new(
             move |ctx: TestWorkflowContext, input_bytes: Vec<u8>| -> Pin<Box<dyn Future<Output = Result<(TestWorkflowContext, Vec<u8>), WorkflowError>> + Send>> {
                 let input: I = match serde_json::from_slice(&input_bytes) {
@@ -292,7 +293,7 @@ impl TestWorkflowEnvironment {
     pub fn signal_workflow(&mut self, signal_name: &str, data: Vec<u8>) {
         self.pending_signals
             .entry(signal_name.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(data);
     }
 
@@ -340,6 +341,7 @@ pub struct TestWorkflowContext {
     task_list: String,
     activities: HashMap<String, ActivityFn>,
     signals: HashMap<String, Vec<Vec<u8>>>,
+    #[allow(clippy::type_complexity)]
     queries: HashMap<String, Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>>,
     test_time: Arc<Mutex<TestTime>>,
     is_cancelled: bool,
@@ -671,7 +673,7 @@ impl TestTime {
     }
 
     fn advance(&mut self, duration: Duration) {
-        self.current_time = self.current_time + chrono::Duration::from_std(duration).unwrap();
+        self.current_time += chrono::Duration::from_std(duration).unwrap();
     }
 }
 

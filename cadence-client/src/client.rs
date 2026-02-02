@@ -296,6 +296,7 @@ impl HistoryEventIterator {
         self.position < self.events.len()
     }
 
+    #[allow(clippy::should_implement_trait)] // Iterator implementation would be more complex for borrowing
     pub fn next(&mut self) -> Option<&HistoryEvent> {
         if self.position < self.events.len() {
             let event = &self.events[self.position];
@@ -555,6 +556,7 @@ pub trait Logger: Send + Sync {
 
 pub trait DataConverter: Send + Sync {
     fn to_data(&self, value: &dyn std::any::Any) -> CadenceResult<Vec<u8>>;
+    #[allow(clippy::wrong_self_convention)] // This is a conversion trait, not a builder
     fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> CadenceResult<()>;
 }
 

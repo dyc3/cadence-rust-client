@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Custom JSON data converter
+#[derive(Default)]
 pub struct JsonDataConverter;
 
 impl JsonDataConverter {

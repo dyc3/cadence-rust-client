@@ -224,6 +224,12 @@ impl SignalChannel {
 /// Cancellation channel
 pub struct CancellationChannel;
 
+impl Default for CancellationChannel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CancellationChannel {
     pub fn new() -> Self {
         Self

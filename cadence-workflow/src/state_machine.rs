@@ -236,12 +236,11 @@ impl DecisionStateMachine for ActivityDecisionStateMachine {
         if matches!(
             self.base.state,
             DecisionState::DecisionSent | DecisionState::CanceledBeforeInitiated
-        ) {
-            if self.base.state == DecisionState::DecisionSent {
-                self.base.transition_to(DecisionState::Initiated);
-            }
-            // If canceled before initiated, the cancellation is pending
+        ) && self.base.state == DecisionState::DecisionSent
+        {
+            self.base.transition_to(DecisionState::Initiated);
         }
+        // If canceled before initiated, the cancellation is pending
     }
 
     fn handle_decision_sent(&mut self) {
@@ -309,12 +308,9 @@ impl DecisionStateMachine for TimerDecisionStateMachine {
 
     fn cancel(&mut self) {
         self.canceled = true;
-        match self.base.state {
-            DecisionState::Created => {
-                self.base
-                    .transition_to(DecisionState::CanceledBeforeInitiated);
-            }
-            _ => {}
+        if self.base.state == DecisionState::Created {
+            self.base
+                .transition_to(DecisionState::CanceledBeforeInitiated);
         }
     }
 

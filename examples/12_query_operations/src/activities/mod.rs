@@ -65,7 +65,7 @@ pub async fn process_data_activity(
     
     // Process records in batches
     let batch_size = 10;
-    let total_batches = (task.record_count + batch_size - 1) / batch_size;
+    let total_batches = task.record_count.div_ceil(batch_size);
     
     for batch in 0..total_batches {
         // Record heartbeat with progress info

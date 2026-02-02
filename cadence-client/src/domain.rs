@@ -162,6 +162,12 @@ pub struct DomainClientImpl {
     // TODO: Add service client and other fields
 }
 
+impl Default for DomainClientImpl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DomainClientImpl {
     pub fn new() -> Self {
         Self {}

@@ -12,6 +12,7 @@ cadence-proto = { path = "../cadence-proto" }
 cadence-core = { path = "../cadence-core" }
 async-trait = { workspace = true }
 tokio = { workspace = true }
+tonic = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -21,7 +22,6 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 jsonwebtoken = { workspace = true }
 oauth2 = { workspace = true }
-thrift = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]

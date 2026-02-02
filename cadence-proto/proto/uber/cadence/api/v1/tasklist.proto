@@ -1,0 +1,114 @@
+// Copyright (c) 2020 Uber Technologies, Inc.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+syntax = "proto3";
+
+package uber.cadence.api.v1;
+
+option go_package = "github.com/uber/cadence-idl/go/proto/api/v1;apiv1";
+option java_multiple_files = true;
+option java_outer_classname = "TaskListProto";
+option java_package = "com.uber.cadence.api.v1";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+message TaskList {
+  string name = 1;
+  TaskListKind kind = 2;
+}
+
+enum TaskListKind {
+  TASK_LIST_KIND_INVALID = 0;
+  TASK_LIST_KIND_NORMAL = 1;
+  TASK_LIST_KIND_STICKY = 2;
+  TASK_LIST_KIND_EPHEMERAL = 3;
+}
+
+enum TaskListType {
+  TASK_LIST_TYPE_INVALID = 0;
+  TASK_LIST_TYPE_DECISION = 1;
+  TASK_LIST_TYPE_ACTIVITY = 2;
+}
+
+message TaskListMetadata {
+  google.protobuf.DoubleValue max_tasks_per_second = 1;
+}
+
+message TaskListPartitionMetadata {
+  string key = 1;
+  string owner_host_name = 2;
+}
+
+message IsolationGroupMetrics {
+  // The rate at which tasks with the given isolation group are being added to this partition
+  double new_tasks_per_second = 1;
+  // The number of "active" pollers with the given isolation group that the partition is aware of.
+  // Pollers typically will reach many partitions
+  int64 poller_count = 2;
+}
+
+message TaskListStatus {
+  int64 backlog_count_hint = 1;
+  int64 read_level = 2;
+  int64 ack_level = 3;
+  // The rate at which tasks may be dispatched according to poller configuration
+  double rate_per_second = 4;
+  TaskIDBlock task_id_block = 5;
+  // Mapping of isolation groups to metrics about that group within this partition
+  map<string, IsolationGroupMetrics> isolation_group_metrics = 6;
+  // The rate at which tasks are being added to this partition
+  double new_tasks_per_second = 7;
+  // Whether the TaskList has any remaining Tasks
+  bool empty = 8;
+}
+
+message TaskIDBlock {
+  int64 start_id = 1;
+  int64 end_id = 2;
+}
+
+message PollerInfo {
+  google.protobuf.Timestamp last_access_time = 1;
+  string identity = 2;
+  double rate_per_second = 3;
+}
+
+message StickyExecutionAttributes {
+  TaskList worker_task_list = 1;
+  google.protobuf.Duration schedule_to_start_timeout = 2;
+}
+
+message TaskListPartition {
+  // The isolation groups that this partition is assigned.
+  // Null/empty indicates that the partition should accept all isolation groups.
+  repeated string isolation_groups = 1;
+}
+
+message TaskListPartitionConfig {
+  int64 version = 1;
+  int32 num_read_partitions = 2 [deprecated = true];
+  int32 num_write_partitions = 3 [deprecated = true];
+  // Mapping of TaskList PartitionIDs to metadata for reading tasks
+  map<int32, TaskListPartition> read_partitions = 4;
+  // Mapping of TaskList PartitionIDs to metadata for writing tasks
+  map<int32, TaskListPartition> write_partitions = 5;
+}

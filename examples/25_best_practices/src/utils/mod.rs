@@ -144,15 +144,14 @@ impl CircuitBreaker {
     fn on_failure(&mut self) {
         self.failure_count += 1;
         
-        if self.failure_count >= self.failure_threshold {
-            if matches!(self.state, CircuitState::Closed | CircuitState::HalfOpen) {
+        if self.failure_count >= self.failure_threshold
+            && matches!(self.state, CircuitState::Closed | CircuitState::HalfOpen) {
                 warn!("Circuit breaker opened after {} failures", self.failure_count);
                 self.state = CircuitState::Open {
                     opened_at: std::time::Instant::now(),
                     reset_timeout: self.reset_timeout,
                 };
             }
-        }
     }
     
     pub fn state(&self) -> &CircuitState {
@@ -161,13 +160,14 @@ impl CircuitBreaker {
 }
 
 /// Structured log entry builder
+#[derive(Default)]
 pub struct LogEntry {
     fields: Vec<(String, String)>,
 }
 
 impl LogEntry {
     pub fn new() -> Self {
-        Self { fields: Vec::new() }
+        Self::default()
     }
     
     pub fn field(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {

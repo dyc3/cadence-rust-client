@@ -89,7 +89,7 @@ pub async fn cancellable_timer_workflow(
     tokio::select! {
         _ = ctx.sleep(Duration::from_secs(max_wait_seconds)) => {
             info!("Timer completed after {} seconds", max_wait_seconds);
-            Ok(format!("Timer completed (no cancellation received)"))
+            Ok("Timer completed (no cancellation received)".to_string())
         }
         _ = cancel_signal.recv() => {
             info!("Timer cancelled by signal");

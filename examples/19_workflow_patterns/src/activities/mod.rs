@@ -194,7 +194,7 @@ pub async fn reserve_inventory_activity(
         reserved_items.push(ReservedItem {
             product_id: item.product_id.clone(),
             quantity: item.quantity,
-            warehouse_id: format!("wh_{}", uuid::Uuid::new_v4().to_string()[..8].to_string()),
+            warehouse_id: format!("wh_{}", &uuid::Uuid::new_v4().to_string()[..8]),
         });
         
         ctx.record_heartbeat(None);
@@ -240,7 +240,7 @@ pub async fn create_shipment_activity(
     ctx.record_heartbeat(None);
 
     let shipment_id = format!("shp_{}", uuid::Uuid::new_v4());
-    let tracking_number = format!("TRK{}", uuid::Uuid::new_v4().to_string().replace("-", "").to_uppercase()[..12].to_string());
+    let tracking_number = format!("TRK{}", &uuid::Uuid::new_v4().to_string().replace("-", "").to_uppercase()[..12]);
 
     Ok(ShippingResult {
         shipment_id,

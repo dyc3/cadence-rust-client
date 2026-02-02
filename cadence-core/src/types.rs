@@ -38,11 +38,12 @@ impl Default for RetryPolicy {
 }
 
 /// Workflow ID reuse policy
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[repr(i32)]
 pub enum WorkflowIdReusePolicy {
     /// Allow starting a workflow execution when the last execution close state
     /// is in [terminated, cancelled, timeout, failed]
+    #[default]
     AllowDuplicateFailedOnly = 0,
     /// Allow starting a workflow execution using the same workflow ID when workflow is not running
     AllowDuplicate = 1,
@@ -53,17 +54,12 @@ pub enum WorkflowIdReusePolicy {
     TerminateIfRunning = 3,
 }
 
-impl Default for WorkflowIdReusePolicy {
-    fn default() -> Self {
-        WorkflowIdReusePolicy::AllowDuplicateFailedOnly
-    }
-}
-
 /// Parent close policy for child workflows
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[repr(i32)]
 pub enum ParentClosePolicy {
     /// Terminate the child workflow
+    #[default]
     Terminate = 0,
     /// Request cancellation on the child workflow
     RequestCancel = 1,
@@ -71,28 +67,17 @@ pub enum ParentClosePolicy {
     Abandon = 2,
 }
 
-impl Default for ParentClosePolicy {
-    fn default() -> Self {
-        ParentClosePolicy::Terminate
-    }
-}
-
 /// Query consistency level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[repr(i32)]
 pub enum QueryConsistencyLevel {
     /// Use default consistency level provided by cluster
+    #[default]
     Unspecified = 0,
     /// Pass request to receiving cluster, return eventually consistent results
     Eventual = 1,
     /// Redirect to active cluster, return strongly consistent results
     Strong = 2,
-}
-
-impl Default for QueryConsistencyLevel {
-    fn default() -> Self {
-        QueryConsistencyLevel::Unspecified
-    }
 }
 
 /// Activity options for scheduling activities

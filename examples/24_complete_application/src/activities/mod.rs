@@ -180,7 +180,7 @@ pub async fn refund_payment_activity(
     let result = PaymentResult {
         payment_id: payment_id.clone(),
         status: PaymentStatus::Refunded,
-        transaction_id: format!("ref_{}", Uuid::new_v4().to_string()),
+        transaction_id: format!("ref_{}", Uuid::new_v4()),
         processed_at: Utc::now(),
     };
     
