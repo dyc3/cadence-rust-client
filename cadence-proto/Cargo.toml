@@ -13,6 +13,7 @@ tonic = { workspace = true, optional = true }
 prost = { workspace = true, optional = true }
 serde = { workspace = true }
 async-trait = { workspace = true }
+thiserror = { workspace = true }
 
 [build-dependencies]
 

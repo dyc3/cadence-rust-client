@@ -294,6 +294,7 @@ dependencies = [
  "async-trait",
  "prost",
  "serde",
+ "thiserror 1.0.69",
  "thrift",
  "tonic",
 ]

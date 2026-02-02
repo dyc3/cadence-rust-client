@@ -22,6 +22,13 @@ echo "✓ Generated shared.rs"
 thrift -r --gen rs -out "$GEN_DIR" -I "$THRIFT_DIR" "$THRIFT_DIR/cadence.thrift"
 echo "✓ Generated cadence.rs"
 
+echo "Creating mod.rs file..."
+cat > "$GEN_DIR/mod.rs" << 'EOF'
+pub mod shared;
+pub mod cadence;
+EOF
+echo "✓ Generated mod.rs"
+
 echo ""
 echo "Thrift code generation complete!"
 echo "Generated files are in: $GEN_DIR"

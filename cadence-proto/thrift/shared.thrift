@@ -19,7 +19,6 @@
 // THE SOFTWARE.
 
 namespace java com.uber.cadence
-namespace rs cadence_thrift
 
 exception BadRequestError {
   1: required string message

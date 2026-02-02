@@ -26,7 +26,7 @@ use thrift::protocol::verify_expected_service_call;
 use thrift::protocol::verify_required_field_exists;
 use thrift::server::TProcessor;
 
-use crate::cadence_thrift::shared;
+use crate::shared;
 
 //
 // WorkflowService service client
