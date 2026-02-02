@@ -29,3 +29,9 @@ mockall = { workspace = true }
 tokio-test = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+cadence-worker = { path = "../cadence-worker" }
+cadence-workflow = { path = "../cadence-workflow" }
+cadence-activity = { path = "../cadence-activity" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

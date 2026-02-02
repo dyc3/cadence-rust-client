@@ -248,8 +248,11 @@ name = "cadence-client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cadence-activity",
  "cadence-core",
  "cadence-proto",
+ "cadence-worker",
+ "cadence-workflow",
  "chrono",
  "futures",
  "jsonwebtoken",
