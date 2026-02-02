@@ -47,7 +47,7 @@ fn main() {
 
 fn generate_thrift_code(
     crate_root: &PathBuf,
-    out_dir: &PathBuf,
+    _out_dir: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Check if thrift compiler is available
     let thrift_check = Command::new("thrift").arg("--version").output();

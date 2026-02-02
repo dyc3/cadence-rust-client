@@ -5,7 +5,7 @@
 //! This allows gradual migration from hand-written types to generated types.
 
 use crate::generated::shared;
-use crate::{shared as internal, workflow_service as internal_service};
+use crate::shared as internal;
 use std::convert::{TryFrom, TryInto};
 use thrift::OrderedFloat;
 
