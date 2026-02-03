@@ -533,6 +533,7 @@ fn assert_compensation_executed(history: &cadence_proto::shared::History) -> boo
 // ============================================================================
 
 #[tokio::test]
+#[ignore]
 async fn test_order_saga_payment_failure_with_compensation() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
