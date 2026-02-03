@@ -2,7 +2,7 @@ use crate::registry::ActivityError;
 use cadence_core::CadenceError;
 use cadence_proto::shared::{EventAttributes, EventType, HistoryEvent};
 use cadence_workflow::side_effect_serialization::{
-    decode_mutable_side_effect_details, decode_side_effect_details,
+    decode_mutable_side_effect_details, decode_side_effect_details, decode_version_details,
 };
 use cadence_workflow::state_machine::{DecisionId, DecisionsHelper, StateMachineDecisionType};
 use std::collections::HashMap;
@@ -25,6 +25,8 @@ pub struct ReplayEngine {
     // Deterministic time tracking
     pub workflow_start_time_nanos: Option<i64>,
     pub workflow_task_time_nanos: Option<i64>,
+    // Version markers cache for workflow versioning
+    pub change_versions: HashMap<String, i32>,
 }
 
 impl ReplayEngine {
@@ -447,6 +449,20 @@ impl ReplayEngine {
                                     self.mutable_side_effects.insert(id, result);
                                 }
                             }
+                            cadence_workflow::context::VERSION_MARKER_NAME => {
+                                // Decode version marker details
+                                if let Ok((change_id, version)) = decode_version_details(details) {
+                                    println!(
+                                        "[ReplayEngine] Processing version marker: changeID='{}', version={}",
+                                        change_id, version
+                                    );
+                                    self.change_versions.insert(change_id, version);
+                                } else {
+                                    println!(
+                                        "[ReplayEngine] Failed to decode version marker details"
+                                    );
+                                }
+                            }
                             _ => {
                                 // Unknown marker type, ignore
                                 println!("[ReplayEngine] Unknown marker type: {}", marker_name);
@@ -599,5 +615,10 @@ impl ReplayEngine {
     /// Get workflow task time (current time) in nanoseconds
     pub fn get_workflow_task_time_nanos(&self) -> Option<i64> {
         self.workflow_task_time_nanos
+    }
+
+    /// Get all change versions (used to populate WorkflowContext)
+    pub fn get_change_versions(&self) -> HashMap<String, i32> {
+        self.change_versions.clone()
     }
 }

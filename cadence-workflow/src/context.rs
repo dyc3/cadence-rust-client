@@ -24,6 +24,9 @@ pub const SIDE_EFFECT_MARKER_NAME: &str = "SideEffect";
 pub const MUTABLE_SIDE_EFFECT_MARKER_NAME: &str = "MutableSideEffect";
 pub const VERSION_MARKER_NAME: &str = "Version";
 
+/// Default version constant (-1) used when no version is specified
+pub const DEFAULT_VERSION: i32 = -1;
+
 /// Type alias for query handlers
 pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
 
@@ -61,6 +64,8 @@ pub struct WorkflowContext {
     is_replay: Arc<std::sync::atomic::AtomicBool>,
     // Deterministic time - current time in nanoseconds (unix epoch)
     current_time_nanos: Arc<std::sync::atomic::AtomicI64>,
+    // Version markers cache for workflow versioning
+    change_versions: Arc<Mutex<HashMap<String, i32>>>,
 }
 
 impl WorkflowContext {
@@ -79,6 +84,7 @@ impl WorkflowContext {
             mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
+            change_versions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -89,6 +95,7 @@ impl WorkflowContext {
         query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
         side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
         mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+        change_versions: Arc<Mutex<HashMap<String, i32>>>,
     ) -> Self {
         // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
@@ -104,6 +111,7 @@ impl WorkflowContext {
             mutable_side_effects,
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
+            change_versions,
         }
     }
 
@@ -127,6 +135,12 @@ impl WorkflowContext {
     pub fn set_mutable_side_effects(&self, effects: HashMap<String, Vec<u8>>) {
         let mut cache = self.mutable_side_effects.lock().unwrap();
         *cache = effects;
+    }
+
+    /// Set change versions cache (used during replay)
+    pub fn set_change_versions(&self, versions: HashMap<String, i32>) {
+        let mut cache = self.change_versions.lock().unwrap();
+        *cache = versions;
     }
 
     fn next_id(&self) -> String {
@@ -441,9 +455,113 @@ impl WorkflowContext {
     }
 
     /// Get version for backwards-compatible workflow changes
-    pub fn get_version(&self, _change_id: &str, min_supported: i32, _max_supported: i32) -> i32 {
-        // TODO: Implement versioning
-        min_supported
+    ///
+    /// This function implements workflow versioning to allow safe, backwards-compatible
+    /// changes to workflow definitions. It returns a version number that determines
+    /// which code path to execute.
+    ///
+    /// # Arguments
+    /// * `change_id` - Unique identifier for this versioning change (e.g., "add-new-step-v2")
+    /// * `min_supported` - Minimum version supported by current code
+    /// * `max_supported` - Maximum version supported by current code
+    ///
+    /// # Behavior
+    /// - On first execution: Returns `max_supported` (or DEFAULT_VERSION if in replay)
+    /// - On replay: Returns cached version from history
+    /// - Version is validated against [min_supported, max_supported] range
+    /// - DEFAULT_VERSION (-1) is never recorded as a marker
+    /// - Version is stable for the entire workflow execution per changeID
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - Version is less than min_supported (code removed support)
+    /// - Version is greater than max_supported (workflow history too new)
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let version = ctx.get_version("add-approval-step", DEFAULT_VERSION, 2);
+    /// if version >= 1 {
+    ///     // New code path with approval step
+    ///     ctx.execute_activity("approval", ...).await?;
+    /// }
+    /// // Original code continues...
+    /// ```
+    pub fn get_version(&self, change_id: &str, min_supported: i32, max_supported: i32) -> i32 {
+        // Step 1: Check if version already cached for this changeID
+        {
+            let versions = self.change_versions.lock().unwrap();
+            if let Some(&version) = versions.get(change_id) {
+                // Validate cached version is still in supported range
+                Self::validate_version(change_id, version, min_supported, max_supported);
+                return version;
+            }
+        }
+
+        // Step 2: Determine version based on context
+        let is_replay = self.is_replay.load(Ordering::SeqCst);
+
+        let version = if is_replay {
+            // During replay mode: use DEFAULT_VERSION
+            // The actual version will be loaded from history markers
+            DEFAULT_VERSION
+        } else {
+            // During execution: use max_supported
+            // This allows new code to execute the latest version
+            max_supported
+        };
+
+        // Step 3: Validate version is in acceptable range
+        Self::validate_version(change_id, version, min_supported, max_supported);
+
+        // Step 4: Record version marker if not in replay and not DEFAULT_VERSION
+        // Note: We don't await here to match Go client's synchronous behavior
+        if !is_replay && version != DEFAULT_VERSION {
+            use crate::side_effect_serialization::encode_version_details;
+
+            let details = encode_version_details(change_id, version);
+            let command = RecordMarkerCommand {
+                marker_name: VERSION_MARKER_NAME.to_string(),
+                details,
+                header: None,
+            };
+
+            // Submit command without awaiting (Go client is synchronous)
+            let command_sink = self.command_sink.clone();
+            tokio::spawn(async move {
+                let _ = command_sink
+                    .submit(WorkflowCommand::RecordMarker(command))
+                    .await;
+            });
+        }
+
+        // Step 5: Cache version for this changeID
+        {
+            let mut versions = self.change_versions.lock().unwrap();
+            versions.insert(change_id.to_string(), version);
+        }
+
+        version
+    }
+
+    /// Validate version is within supported range
+    ///
+    /// # Panics
+    /// Panics if version is outside [min_supported, max_supported] range
+    fn validate_version(change_id: &str, version: i32, min_supported: i32, max_supported: i32) {
+        if version < min_supported {
+            panic!(
+                "Workflow code removed support of version {} for '{}' changeID. \
+                 The oldest supported version is {}",
+                version, change_id, min_supported
+            );
+        }
+        if version > max_supported {
+            panic!(
+                "Workflow code is too old to support version {} for '{}' changeID. \
+                 The maximum supported version is {}",
+                version, change_id, max_supported
+            );
+        }
     }
 
     /// Set a query handler
@@ -694,4 +812,146 @@ impl Timer for NoopTimer {
 struct NoopGauge;
 impl Gauge for NoopGauge {
     fn update(&self, _value: f64) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cadence_core::{WorkflowExecution, WorkflowType};
+
+    fn create_test_workflow_info() -> WorkflowInfo {
+        WorkflowInfo {
+            workflow_execution: WorkflowExecution {
+                workflow_id: "test-workflow-123".to_string(),
+                run_id: "test-run-456".to_string(),
+            },
+            workflow_type: WorkflowType {
+                name: "TestWorkflow".to_string(),
+            },
+            task_list: "test-task-list".to_string(),
+            start_time: chrono::Utc::now(),
+            execution_start_to_close_timeout: std::time::Duration::from_secs(3600),
+            task_start_to_close_timeout: std::time::Duration::from_secs(10),
+            attempt: 1,
+            continued_execution_run_id: None,
+            parent_workflow_execution: None,
+            cron_schedule: None,
+            memo: None,
+            search_attributes: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_version_first_execution_returns_max() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+        ctx.set_replay_mode(false);
+
+        let version = ctx.get_version("test-change", DEFAULT_VERSION, 3);
+        assert_eq!(version, 3, "First execution should return max_supported");
+    }
+
+    #[tokio::test]
+    async fn test_get_version_replay_returns_default() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+        ctx.set_replay_mode(true);
+
+        let version = ctx.get_version("test-change", DEFAULT_VERSION, 3);
+        assert_eq!(
+            version, DEFAULT_VERSION,
+            "Replay mode should return DEFAULT_VERSION"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_version_returns_cached() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+        ctx.set_replay_mode(false);
+
+        let v1 = ctx.get_version("test-change", DEFAULT_VERSION, 3);
+        let v2 = ctx.get_version("test-change", DEFAULT_VERSION, 5);
+
+        // Second call returns cached version, not new max
+        assert_eq!(v1, v2, "Should return cached version");
+        assert_eq!(v1, 3, "Cached version should be original max_supported");
+    }
+
+    #[tokio::test]
+    async fn test_get_version_different_change_ids_independent() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+        ctx.set_replay_mode(false);
+
+        let v1 = ctx.get_version("change-1", DEFAULT_VERSION, 2);
+        let v2 = ctx.get_version("change-2", DEFAULT_VERSION, 5);
+
+        assert_eq!(v1, 2, "First change ID should return its max");
+        assert_eq!(v2, 5, "Second change ID should return its max");
+    }
+
+    #[test]
+    #[should_panic(expected = "removed support of version")]
+    fn test_get_version_panics_if_version_too_low() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+
+        // Simulate replayed version = 0
+        let mut versions = HashMap::new();
+        versions.insert("test-change".to_string(), 0);
+        ctx.set_change_versions(versions);
+
+        // Min supported is now 1, should panic
+        ctx.get_version("test-change", 1, 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "too old to support version")]
+    fn test_get_version_panics_if_version_too_high() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+
+        // Simulate replayed version = 5
+        let mut versions = HashMap::new();
+        versions.insert("test-change".to_string(), 5);
+        ctx.set_change_versions(versions);
+
+        // Max supported is now 3, should panic
+        ctx.get_version("test-change", DEFAULT_VERSION, 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_version_validates_cached_version_on_each_call() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+
+        // First call with wide range
+        ctx.set_replay_mode(false);
+        let v1 = ctx.get_version("test-change", DEFAULT_VERSION, 5);
+        assert_eq!(v1, 5);
+
+        // Second call with same range - should work
+        let v2 = ctx.get_version("test-change", DEFAULT_VERSION, 5);
+        assert_eq!(v2, 5);
+
+        // Verify cached version is still within an even wider range
+        let v3 = ctx.get_version("test-change", DEFAULT_VERSION, 10);
+        assert_eq!(v3, 5, "Should return cached version even with wider range");
+    }
+
+    #[tokio::test]
+    async fn test_default_version_handling() {
+        let workflow_info = create_test_workflow_info();
+        let ctx = WorkflowContext::new(workflow_info);
+        ctx.set_replay_mode(true);
+
+        // DEFAULT_VERSION should be valid in range
+        let version = ctx.get_version("test-change", DEFAULT_VERSION, 3);
+        assert_eq!(version, DEFAULT_VERSION);
+
+        // Verify it got cached
+        let version2 = ctx.get_version("test-change", DEFAULT_VERSION, 3);
+        assert_eq!(version2, DEFAULT_VERSION);
+    }
 }

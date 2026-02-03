@@ -559,13 +559,21 @@ impl WorkflowExecutor {
         };
 
         // Extract signals and side effect caches from engine (requires lock)
-        let (signals_map, cancel_requested, side_effect_results, mutable_side_effects, is_replay) = {
+        let (
+            signals_map,
+            cancel_requested,
+            side_effect_results,
+            mutable_side_effects,
+            change_versions,
+            is_replay,
+        ) = {
             let engine = engine_arc.lock().unwrap();
             (
                 engine.signals.clone(),
                 engine.cancel_requested,
                 engine.side_effect_results.clone(),
                 engine.mutable_side_effects.clone(),
+                engine.change_versions.clone(),
                 engine.is_replay,
             )
         };
@@ -573,6 +581,7 @@ impl WorkflowExecutor {
         let query_handlers_arc = Arc::new(Mutex::new(HashMap::new()));
         let side_effect_results_arc = Arc::new(Mutex::new(side_effect_results));
         let mutable_side_effects_arc = Arc::new(Mutex::new(mutable_side_effects));
+        let change_versions_arc = Arc::new(Mutex::new(change_versions));
 
         let context = WorkflowContext::with_sink(
             workflow_info.clone(),
@@ -581,6 +590,7 @@ impl WorkflowExecutor {
             query_handlers_arc.clone(),
             side_effect_results_arc,
             mutable_side_effects_arc,
+            change_versions_arc,
         );
 
         // Set deterministic current time

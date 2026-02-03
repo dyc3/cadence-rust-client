@@ -19,6 +19,13 @@ pub struct MutableSideEffectDetails {
     pub result: Vec<u8>,
 }
 
+/// Data structure for version marker details
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VersionDetails {
+    pub change_id: String,
+    pub version: i32,
+}
+
 /// Encode side effect details for storage in history marker
 pub fn encode_side_effect_details(side_effect_id: u64, result: &[u8]) -> Vec<u8> {
     let details = SideEffectDetails {
@@ -51,6 +58,22 @@ pub fn decode_mutable_side_effect_details(
     let details: MutableSideEffectDetails = serde_json::from_slice(data)
         .map_err(|e| SideEffectError::DeserializationError(e.to_string()))?;
     Ok((details.id, details.result))
+}
+
+/// Encode version details for storage in history marker
+pub fn encode_version_details(change_id: &str, version: i32) -> Vec<u8> {
+    let details = VersionDetails {
+        change_id: change_id.to_string(),
+        version,
+    };
+    serde_json::to_vec(&details).expect("Failed to encode version details")
+}
+
+/// Decode version details from history marker
+pub fn decode_version_details(data: &[u8]) -> Result<(String, i32), SideEffectError> {
+    let details: VersionDetails = serde_json::from_slice(data)
+        .map_err(|e| SideEffectError::DeserializationError(e.to_string()))?;
+    Ok((details.change_id, details.version))
 }
 
 /// Errors that can occur during side effect operations
@@ -101,6 +124,23 @@ mod tests {
     fn test_decode_invalid_data() {
         let invalid_data = b"not valid json";
         let result = decode_side_effect_details(invalid_data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_encode_decode_version() {
+        let change_id = "my-feature-v2";
+        let version = 42i32;
+        let encoded = encode_version_details(change_id, version);
+        let (decoded_id, decoded_version) = decode_version_details(&encoded).unwrap();
+        assert_eq!(change_id, decoded_id);
+        assert_eq!(version, decoded_version);
+    }
+
+    #[test]
+    fn test_decode_version_invalid_data() {
+        let invalid_data = b"not valid json";
+        let result = decode_version_details(invalid_data);
         assert!(result.is_err());
     }
 }
