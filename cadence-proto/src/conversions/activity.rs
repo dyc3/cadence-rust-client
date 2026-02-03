@@ -111,3 +111,122 @@ impl From<pb::RespondActivityTaskFailedResponse> for api::RespondActivityTaskFai
         api::RespondActivityTaskFailedResponse {}
     }
 }
+
+// ============================================================================
+// Respond Activity Task Completed By ID
+// ============================================================================
+
+impl From<api::RespondActivityTaskCompletedByIdRequest>
+    for pb::RespondActivityTaskCompletedByIdRequest
+{
+    fn from(req: api::RespondActivityTaskCompletedByIdRequest) -> Self {
+        pb::RespondActivityTaskCompletedByIdRequest {
+            domain: req.domain,
+            workflow_execution: Some(pb::WorkflowExecution {
+                workflow_id: req.workflow_id,
+                run_id: req.run_id.unwrap_or_default(),
+            }),
+            activity_id: req.activity_id,
+            result: bytes_to_payload(req.result),
+            identity: req.identity,
+        }
+    }
+}
+
+impl From<pb::RespondActivityTaskCompletedByIdResponse>
+    for api::RespondActivityTaskCompletedByIdResponse
+{
+    fn from(_: pb::RespondActivityTaskCompletedByIdResponse) -> Self {
+        api::RespondActivityTaskCompletedByIdResponse {}
+    }
+}
+
+// ============================================================================
+// Respond Activity Task Failed By ID
+// ============================================================================
+
+impl From<api::RespondActivityTaskFailedByIdRequest> for pb::RespondActivityTaskFailedByIdRequest {
+    fn from(req: api::RespondActivityTaskFailedByIdRequest) -> Self {
+        pb::RespondActivityTaskFailedByIdRequest {
+            domain: req.domain,
+            workflow_execution: Some(pb::WorkflowExecution {
+                workflow_id: req.workflow_id,
+                run_id: req.run_id.unwrap_or_default(),
+            }),
+            activity_id: req.activity_id,
+            failure: Some(pb::Failure {
+                reason: req.reason.unwrap_or_default(),
+                details: req.details.unwrap_or_default(),
+            }),
+            identity: req.identity,
+        }
+    }
+}
+
+impl From<pb::RespondActivityTaskFailedByIdResponse>
+    for api::RespondActivityTaskFailedByIdResponse
+{
+    fn from(_: pb::RespondActivityTaskFailedByIdResponse) -> Self {
+        api::RespondActivityTaskFailedByIdResponse {}
+    }
+}
+
+// ============================================================================
+// Respond Activity Task Canceled By ID
+// ============================================================================
+
+impl From<api::RespondActivityTaskCanceledByIdRequest>
+    for pb::RespondActivityTaskCanceledByIdRequest
+{
+    fn from(req: api::RespondActivityTaskCanceledByIdRequest) -> Self {
+        pb::RespondActivityTaskCanceledByIdRequest {
+            domain: req.domain,
+            workflow_execution: Some(pb::WorkflowExecution {
+                workflow_id: req.workflow_id,
+                run_id: req.run_id.unwrap_or_default(),
+            }),
+            activity_id: req.activity_id,
+            details: bytes_to_payload(req.details),
+            identity: req.identity,
+        }
+    }
+}
+
+impl From<pb::RespondActivityTaskCanceledByIdResponse>
+    for api::RespondActivityTaskCanceledByIdResponse
+{
+    fn from(_: pb::RespondActivityTaskCanceledByIdResponse) -> Self {
+        api::RespondActivityTaskCanceledByIdResponse {}
+    }
+}
+
+// ============================================================================
+// Record Activity Task Heartbeat By ID
+// ============================================================================
+
+impl From<api::RecordActivityTaskHeartbeatByIdRequest>
+    for pb::RecordActivityTaskHeartbeatByIdRequest
+{
+    fn from(req: api::RecordActivityTaskHeartbeatByIdRequest) -> Self {
+        pb::RecordActivityTaskHeartbeatByIdRequest {
+            domain: req.domain,
+            workflow_execution: Some(pb::WorkflowExecution {
+                workflow_id: req.workflow_id,
+                run_id: req.run_id.unwrap_or_default(),
+            }),
+            activity_id: req.activity_id,
+            details: bytes_to_payload(req.details),
+            identity: req.identity,
+        }
+    }
+}
+
+impl From<pb::RecordActivityTaskHeartbeatByIdResponse>
+    for api::RecordActivityTaskHeartbeatByIdResponse
+{
+    fn from(resp: pb::RecordActivityTaskHeartbeatByIdResponse) -> Self {
+        api::RecordActivityTaskHeartbeatByIdResponse {
+            cancel_requested: resp.cancel_requested,
+        }
+    }
+}

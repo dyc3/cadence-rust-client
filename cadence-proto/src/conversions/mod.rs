@@ -10,6 +10,7 @@ mod domain;
 mod helpers;
 mod history;
 mod shared;
+mod visibility;
 mod workflow;
 
 // Re-export public items if needed

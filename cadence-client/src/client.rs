@@ -672,7 +672,7 @@ impl Client for WorkflowClient {
             partition_config: None,
         };
 
-        let response = self
+        let _response = self
             .service
             .start_workflow_execution(request)
             .await
@@ -1028,15 +1028,35 @@ impl Client for WorkflowClient {
         result: Option<&[u8]>,
         error: Option<CadenceError>,
     ) -> CadenceResult<()> {
-        // Not implemented in WorkflowService trait?
-        // Wait, typical Cadence clients have this. But maybe it's not in the base WorkflowService trait I read.
-        // Checking WorkflowService trait again... It does NOT have complete_activity_by_id in the file I read.
-        // It seems `RespondActivityTaskCompletedByIdRequest` is needed but I don't see it in `workflow_service.rs`
-        // I will assume for now I cannot implement this or need to add it to proto if it exists in Thrift.
-        // For now, I'll return error or unimplemented.
-        Err(CadenceError::ClientError(
-            "complete_activity_by_id not implemented in underlying service trait".to_string(),
-        ))
+        if let Some(err) = error {
+            let request = RespondActivityTaskFailedByIdRequest {
+                domain: domain.to_string(),
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.map(|s| s.to_string()),
+                activity_id: activity_id.to_string(),
+                reason: Some(err.to_string()),
+                details: None,
+                identity: self.options.identity.clone(),
+            };
+            self.service
+                .respond_activity_task_failed_by_id(request)
+                .await
+                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        } else {
+            let request = RespondActivityTaskCompletedByIdRequest {
+                domain: domain.to_string(),
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.map(|s| s.to_string()),
+                activity_id: activity_id.to_string(),
+                result: result.map(|r| r.to_vec()),
+                identity: self.options.identity.clone(),
+            };
+            self.service
+                .respond_activity_task_completed_by_id(request)
+                .await
+                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        }
+        Ok(())
     }
 
     async fn record_activity_heartbeat(
@@ -1065,11 +1085,20 @@ impl Client for WorkflowClient {
         activity_id: &str,
         details: Option<&[u8]>,
     ) -> CadenceResult<bool> {
-        // Similarly, not in trait.
-        Err(CadenceError::ClientError(
-            "record_activity_heartbeat_by_id not implemented in underlying service trait"
-                .to_string(),
-        ))
+        let request = RecordActivityTaskHeartbeatByIdRequest {
+            domain: domain.to_string(),
+            workflow_id: workflow_id.to_string(),
+            run_id: run_id.map(|s| s.to_string()),
+            activity_id: activity_id.to_string(),
+            details: details.map(|d| d.to_vec()),
+            identity: self.options.identity.clone(),
+        };
+        let response = self
+            .service
+            .record_activity_task_heartbeat_by_id(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        Ok(response.cancel_requested)
     }
 
     async fn list_closed_workflows(
@@ -1169,27 +1198,65 @@ impl Client for WorkflowClient {
         &self,
         request: ListWorkflowExecutionsRequest,
     ) -> CadenceResult<ListWorkflowExecutionsResponse> {
-        // ScanWorkflowExecutions is also missing in the trait I read.
-        Err(CadenceError::ClientError(
-            "scan_workflows not implemented".to_string(),
-        ))
+        let req = ScanWorkflowExecutionsRequest {
+            domain: self.domain.clone(),
+            page_size: request.maximum_page_size,
+            next_page_token: request.next_page_token,
+            query: None, // ListWorkflowExecutionsRequest doesn't have a query field
+        };
+
+        let response = self
+            .service
+            .scan_workflow_executions(req)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(ListWorkflowExecutionsResponse {
+            executions: response
+                .executions
+                .into_iter()
+                .map(convert_workflow_execution_info)
+                .collect(),
+            next_page_token: response.next_page_token,
+        })
     }
 
     async fn count_workflows(
         &self,
         request: CountWorkflowExecutionsRequest,
     ) -> CadenceResult<CountWorkflowExecutionsResponse> {
-        // CountWorkflowExecutions missing
-        Err(CadenceError::ClientError(
-            "count_workflows not implemented".to_string(),
-        ))
+        let req = cadence_proto::workflow_service::CountWorkflowExecutionsRequest {
+            domain: self.domain.clone(),
+            query: Some(request.query),
+        };
+
+        let response = self
+            .service
+            .count_workflow_executions(req)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(CountWorkflowExecutionsResponse {
+            count: response.count,
+        })
     }
 
     async fn get_search_attributes(&self) -> CadenceResult<SearchAttributesResponse> {
-        // GetSearchAttributes missing
-        Err(CadenceError::ClientError(
-            "get_search_attributes not implemented".to_string(),
-        ))
+        let request = GetSearchAttributesRequest {};
+        let response = self
+            .service
+            .get_search_attributes(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        // Convert IndexedValueType enum to string representation
+        let keys = response
+            .keys
+            .into_iter()
+            .map(|(k, v)| (k, format!("{:?}", v)))
+            .collect();
+
+        Ok(SearchAttributesResponse { keys })
     }
 
     async fn query_workflow(
@@ -1261,10 +1328,31 @@ impl Client for WorkflowClient {
         &self,
         request: ResetWorkflowExecutionRequest,
     ) -> CadenceResult<ResetWorkflowExecutionResponse> {
-        // ResetWorkflowExecution missing
-        Err(CadenceError::ClientError(
-            "reset_workflow not implemented".to_string(),
-        ))
+        let req = cadence_proto::workflow_service::ResetWorkflowExecutionRequest {
+            domain: if request.domain.is_empty() {
+                self.domain.clone()
+            } else {
+                request.domain
+            },
+            workflow_execution: Some(make_proto_execution(
+                request.workflow_execution.workflow_id,
+                request.workflow_execution.run_id,
+            )),
+            reason: request.reason.unwrap_or_default(),
+            decision_finish_event_id: request.decision_finish_event_id,
+            request_id: Some(request.request_id),
+            skip_signal_reapply: false,
+        };
+
+        let response = self
+            .service
+            .reset_workflow_execution(req)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(ResetWorkflowExecutionResponse {
+            run_id: response.run_id,
+        })
     }
 
     async fn describe_workflow_execution(
@@ -1319,10 +1407,41 @@ impl Client for WorkflowClient {
         task_list: &str,
         task_list_type: TaskListType,
     ) -> CadenceResult<DescribeTaskListResponse> {
-        // DescribeTaskList missing
-        Err(CadenceError::ClientError(
-            "describe_task_list not implemented".to_string(),
-        ))
+        let request = cadence_proto::workflow_service::DescribeTaskListRequest {
+            domain: self.domain.clone(),
+            task_list: Some(TaskList {
+                name: task_list.to_string(),
+                kind: TaskListKind::Normal,
+            }),
+            task_list_type,
+            include_task_list_status: true,
+        };
+
+        let response = self
+            .service
+            .describe_task_list(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        // Convert proto response to client response
+        Ok(DescribeTaskListResponse {
+            pollers: response
+                .pollers
+                .into_iter()
+                .map(|p| PollersInfo {
+                    identity: p.identity,
+                    last_access_time: p
+                        .last_access_time
+                        .and_then(|nanos| {
+                            chrono::DateTime::from_timestamp(
+                                ((nanos / 1_000_000_000)),
+                                (nanos % 1_000_000_000) as u32,
+                            )
+                        })
+                        .unwrap_or_default(),
+                })
+                .collect(),
+        })
     }
 
     async fn refresh_workflow_tasks(
@@ -1330,10 +1449,20 @@ impl Client for WorkflowClient {
         workflow_id: &str,
         run_id: Option<&str>,
     ) -> CadenceResult<()> {
-        // RefreshWorkflowTasks missing
-        Err(CadenceError::ClientError(
-            "refresh_workflow_tasks not implemented".to_string(),
-        ))
+        let request = RefreshWorkflowTasksRequest {
+            domain: self.domain.clone(),
+            execution: Some(make_proto_execution(
+                workflow_id.to_string(),
+                run_id.unwrap_or_default().to_string(),
+            )),
+        };
+
+        self.service
+            .refresh_workflow_tasks(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(())
     }
 }
 
@@ -1378,70 +1507,68 @@ impl DataConverter for JsonDataConverter {
     fn to_data(&self, value: &dyn std::any::Any) -> CadenceResult<Vec<u8>> {
         // Try to downcast to common serde-serializable types
         // For most use cases, users should pass serializable types
-        
+
         // Handle String
         if let Some(s) = value.downcast_ref::<String>() {
-            return serde_json::to_vec(s)
-                .map_err(|e| CadenceError::Serialization(e.to_string()));
+            return serde_json::to_vec(s).map_err(|e| CadenceError::Serialization(e.to_string()));
         }
-        
+
         // Handle &str (this won't work directly with Any, but document it)
         if let Some(s) = value.downcast_ref::<&str>() {
-            return serde_json::to_vec(s)
-                .map_err(|e| CadenceError::Serialization(e.to_string()));
+            return serde_json::to_vec(s).map_err(|e| CadenceError::Serialization(e.to_string()));
         }
-        
+
         // Handle serde_json::Value directly
         if let Some(v) = value.downcast_ref::<serde_json::Value>() {
-            return serde_json::to_vec(v)
-                .map_err(|e| CadenceError::Serialization(e.to_string()));
+            return serde_json::to_vec(v).map_err(|e| CadenceError::Serialization(e.to_string()));
         }
-        
+
         // Handle Vec<u8> - pass through as-is
         if let Some(bytes) = value.downcast_ref::<Vec<u8>>() {
             return Ok(bytes.clone());
         }
-        
+
         // For other types, we can't serialize without knowing the concrete type
         // The user should either:
         // 1. Serialize to serde_json::Value first
         // 2. Serialize to Vec<u8> first
         // 3. Use the generic encode function from cadence-core
         Err(CadenceError::Serialization(
-            "Cannot serialize type - use serde_json::Value or Vec<u8> for dynamic types".to_string()
+            "Cannot serialize type - use serde_json::Value or Vec<u8> for dynamic types"
+                .to_string(),
         ))
     }
 
     fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> CadenceResult<()> {
         // Try to downcast target to common deserializable types
-        
+
         // Handle String
         if let Some(s) = target.downcast_mut::<String>() {
             *s = serde_json::from_slice(data)
                 .map_err(|e| CadenceError::Serialization(e.to_string()))?;
             return Ok(());
         }
-        
+
         // Handle serde_json::Value
         if let Some(v) = target.downcast_mut::<serde_json::Value>() {
             *v = serde_json::from_slice(data)
                 .map_err(|e| CadenceError::Serialization(e.to_string()))?;
             return Ok(());
         }
-        
+
         // Handle Vec<u8> - copy data as-is
         if let Some(bytes) = target.downcast_mut::<Vec<u8>>() {
             *bytes = data.to_vec();
             return Ok(());
         }
-        
+
         // For other types, we can't deserialize without knowing the concrete type
         Err(CadenceError::Serialization(
-            "Cannot deserialize type - use serde_json::Value or Vec<u8> for dynamic types".to_string()
+            "Cannot deserialize type - use serde_json::Value or Vec<u8> for dynamic types"
+                .to_string(),
         ))
     }
 }
-
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FeatureFlags {
@@ -1635,14 +1762,14 @@ mod tests {
     fn test_json_data_converter_string() {
         let converter = JsonDataConverter;
         let original = "Hello, Cadence!".to_string();
-        
+
         // Serialize
         let data = converter.to_data(&original).unwrap();
-        
+
         // Deserialize
         let mut target = String::new();
         converter.from_data(&data, &mut target).unwrap();
-        
+
         assert_eq!(original, target);
     }
 
@@ -1656,14 +1783,14 @@ mod tests {
                 "flag": true
             }
         });
-        
+
         // Serialize
         let data = converter.to_data(&original).unwrap();
-        
+
         // Deserialize
         let mut target = serde_json::Value::Null;
         converter.from_data(&data, &mut target).unwrap();
-        
+
         assert_eq!(original, target);
     }
 
@@ -1671,26 +1798,29 @@ mod tests {
     fn test_json_data_converter_bytes() {
         let converter = JsonDataConverter;
         let original = vec![1u8, 2, 3, 4, 5];
-        
+
         // Serialize (pass through)
         let data = converter.to_data(&original).unwrap();
-        
+
         // Deserialize (pass through)
         let mut target = Vec::<u8>::new();
         converter.from_data(&data, &mut target).unwrap();
-        
+
         assert_eq!(original, target);
     }
 
     #[test]
     fn test_json_data_converter_unsupported_type() {
         let converter = JsonDataConverter;
-        
+
         // Try to serialize an unsupported type (i32)
         let value = 42i32;
         let result = converter.to_data(&value);
-        
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), CadenceError::Serialization(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            CadenceError::Serialization(_)
+        ));
     }
 }

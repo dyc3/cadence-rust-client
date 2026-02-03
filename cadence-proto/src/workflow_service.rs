@@ -597,6 +597,185 @@ pub struct FailoverDomainRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FailoverDomainResponse {}
 
+/// Respond activity task completed by ID request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondActivityTaskCompletedByIdRequest {
+    pub domain: String,
+    pub workflow_id: String,
+    pub run_id: Option<String>,
+    pub activity_id: String,
+    pub result: Option<Vec<u8>>,
+    pub identity: String,
+}
+
+/// Respond activity task completed by ID response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondActivityTaskCompletedByIdResponse {}
+
+/// Respond activity task failed by ID request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondActivityTaskFailedByIdRequest {
+    pub domain: String,
+    pub workflow_id: String,
+    pub run_id: Option<String>,
+    pub activity_id: String,
+    pub reason: Option<String>,
+    pub details: Option<Vec<u8>>,
+    pub identity: String,
+}
+
+/// Respond activity task failed by ID response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondActivityTaskFailedByIdResponse {}
+
+/// Respond activity task canceled by ID request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondActivityTaskCanceledByIdRequest {
+    pub domain: String,
+    pub workflow_id: String,
+    pub run_id: Option<String>,
+    pub activity_id: String,
+    pub details: Option<Vec<u8>>,
+    pub identity: String,
+}
+
+/// Respond activity task canceled by ID response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondActivityTaskCanceledByIdResponse {}
+
+/// Record activity task heartbeat by ID request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordActivityTaskHeartbeatByIdRequest {
+    pub domain: String,
+    pub workflow_id: String,
+    pub run_id: Option<String>,
+    pub activity_id: String,
+    pub details: Option<Vec<u8>>,
+    pub identity: String,
+}
+
+/// Record activity task heartbeat by ID response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordActivityTaskHeartbeatByIdResponse {
+    pub cancel_requested: bool,
+}
+
+/// Scan workflow executions request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScanWorkflowExecutionsRequest {
+    pub domain: String,
+    pub page_size: i32,
+    pub next_page_token: Option<Vec<u8>>,
+    pub query: Option<String>,
+}
+
+/// Scan workflow executions response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScanWorkflowExecutionsResponse {
+    pub executions: Vec<WorkflowExecutionInfo>,
+    pub next_page_token: Option<Vec<u8>>,
+}
+
+/// Count workflow executions request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CountWorkflowExecutionsRequest {
+    pub domain: String,
+    pub query: Option<String>,
+}
+
+/// Count workflow executions response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CountWorkflowExecutionsResponse {
+    pub count: i64,
+}
+
+/// Get search attributes request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GetSearchAttributesRequest {}
+
+/// Get search attributes response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GetSearchAttributesResponse {
+    pub keys: std::collections::HashMap<String, IndexedValueType>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum IndexedValueType {
+    String = 0,
+    Keyword = 1,
+    Int = 2,
+    Double = 3,
+    Bool = 4,
+    Datetime = 5,
+}
+
+/// Reset workflow execution request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResetWorkflowExecutionRequest {
+    pub domain: String,
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub reason: String,
+    pub decision_finish_event_id: i64,
+    pub request_id: Option<String>,
+    pub skip_signal_reapply: bool,
+}
+
+/// Reset workflow execution response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResetWorkflowExecutionResponse {
+    pub run_id: String,
+}
+
+/// Describe task list request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DescribeTaskListRequest {
+    pub domain: String,
+    pub task_list: Option<TaskList>,
+    pub task_list_type: TaskListType,
+    pub include_task_list_status: bool,
+}
+
+/// Describe task list response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DescribeTaskListResponse {
+    pub pollers: Vec<PollerInfo>,
+    pub task_list_status: Option<TaskListStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PollerInfo {
+    pub identity: String,
+    pub last_access_time: Option<i64>,
+    pub rate_per_second: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskListStatus {
+    pub backlog_count_hint: i64,
+    pub read_level: i64,
+    pub ack_level: i64,
+    pub rate_per_second: f64,
+    pub task_id_block: Option<TaskIdBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskIdBlock {
+    pub start_id: i64,
+    pub end_id: i64,
+}
+
+/// Refresh workflow tasks request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RefreshWorkflowTasksRequest {
+    pub domain: String,
+    pub execution: Option<WorkflowExecution>,
+}
+
+/// Refresh workflow tasks response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RefreshWorkflowTasksResponse {}
+
 /// Workflow service trait - defines all service methods
 #[async_trait::async_trait]
 pub trait WorkflowService: Send + Sync {
@@ -704,4 +883,57 @@ pub trait WorkflowService: Send + Sync {
         &self,
         request: FailoverDomainRequest,
     ) -> Result<FailoverDomainResponse, Self::Error>;
+
+    // Activity operations by ID
+    async fn respond_activity_task_completed_by_id(
+        &self,
+        request: RespondActivityTaskCompletedByIdRequest,
+    ) -> Result<RespondActivityTaskCompletedByIdResponse, Self::Error>;
+
+    async fn respond_activity_task_failed_by_id(
+        &self,
+        request: RespondActivityTaskFailedByIdRequest,
+    ) -> Result<RespondActivityTaskFailedByIdResponse, Self::Error>;
+
+    async fn respond_activity_task_canceled_by_id(
+        &self,
+        request: RespondActivityTaskCanceledByIdRequest,
+    ) -> Result<RespondActivityTaskCanceledByIdResponse, Self::Error>;
+
+    async fn record_activity_task_heartbeat_by_id(
+        &self,
+        request: RecordActivityTaskHeartbeatByIdRequest,
+    ) -> Result<RecordActivityTaskHeartbeatByIdResponse, Self::Error>;
+
+    // Workflow visibility operations
+    async fn scan_workflow_executions(
+        &self,
+        request: ScanWorkflowExecutionsRequest,
+    ) -> Result<ScanWorkflowExecutionsResponse, Self::Error>;
+
+    async fn count_workflow_executions(
+        &self,
+        request: CountWorkflowExecutionsRequest,
+    ) -> Result<CountWorkflowExecutionsResponse, Self::Error>;
+
+    async fn get_search_attributes(
+        &self,
+        request: GetSearchAttributesRequest,
+    ) -> Result<GetSearchAttributesResponse, Self::Error>;
+
+    // Workflow management operations
+    async fn reset_workflow_execution(
+        &self,
+        request: ResetWorkflowExecutionRequest,
+    ) -> Result<ResetWorkflowExecutionResponse, Self::Error>;
+
+    async fn describe_task_list(
+        &self,
+        request: DescribeTaskListRequest,
+    ) -> Result<DescribeTaskListResponse, Self::Error>;
+
+    async fn refresh_workflow_tasks(
+        &self,
+        request: RefreshWorkflowTasksRequest,
+    ) -> Result<RefreshWorkflowTasksResponse, Self::Error>;
 }

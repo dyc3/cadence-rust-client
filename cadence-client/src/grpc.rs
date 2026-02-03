@@ -432,4 +432,138 @@ impl WorkflowService for GrpcWorkflowServiceClient {
             .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
         Ok(FailoverDomainResponse {})
     }
+
+    async fn respond_activity_task_completed_by_id(
+        &self,
+        request: RespondActivityTaskCompletedByIdRequest,
+    ) -> Result<RespondActivityTaskCompletedByIdResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::RespondActivityTaskCompletedByIdRequest =
+            request.into();
+        let mut client = self.worker_client.clone();
+        let response = client
+            .respond_activity_task_completed_by_id(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn respond_activity_task_failed_by_id(
+        &self,
+        request: RespondActivityTaskFailedByIdRequest,
+    ) -> Result<RespondActivityTaskFailedByIdResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::RespondActivityTaskFailedByIdRequest =
+            request.into();
+        let mut client = self.worker_client.clone();
+        let response = client
+            .respond_activity_task_failed_by_id(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn respond_activity_task_canceled_by_id(
+        &self,
+        request: RespondActivityTaskCanceledByIdRequest,
+    ) -> Result<RespondActivityTaskCanceledByIdResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::RespondActivityTaskCanceledByIdRequest =
+            request.into();
+        let mut client = self.worker_client.clone();
+        let response = client
+            .respond_activity_task_canceled_by_id(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn record_activity_task_heartbeat_by_id(
+        &self,
+        request: RecordActivityTaskHeartbeatByIdRequest,
+    ) -> Result<RecordActivityTaskHeartbeatByIdResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::RecordActivityTaskHeartbeatByIdRequest =
+            request.into();
+        let mut client = self.worker_client.clone();
+        let response = client
+            .record_activity_task_heartbeat_by_id(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn scan_workflow_executions(
+        &self,
+        request: ScanWorkflowExecutionsRequest,
+    ) -> Result<ScanWorkflowExecutionsResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::ScanWorkflowExecutionsRequest = request.into();
+        let mut client = self.visibility_client.clone();
+        let response = client
+            .scan_workflow_executions(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn count_workflow_executions(
+        &self,
+        request: CountWorkflowExecutionsRequest,
+    ) -> Result<CountWorkflowExecutionsResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::CountWorkflowExecutionsRequest = request.into();
+        let mut client = self.visibility_client.clone();
+        let response = client
+            .count_workflow_executions(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn get_search_attributes(
+        &self,
+        request: GetSearchAttributesRequest,
+    ) -> Result<GetSearchAttributesResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::GetSearchAttributesRequest = request.into();
+        let mut client = self.visibility_client.clone();
+        let response = client
+            .get_search_attributes(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn reset_workflow_execution(
+        &self,
+        request: ResetWorkflowExecutionRequest,
+    ) -> Result<ResetWorkflowExecutionResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::ResetWorkflowExecutionRequest = request.into();
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .reset_workflow_execution(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn describe_task_list(
+        &self,
+        request: DescribeTaskListRequest,
+    ) -> Result<DescribeTaskListResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::DescribeTaskListRequest = request.into();
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .describe_task_list(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
+
+    async fn refresh_workflow_tasks(
+        &self,
+        request: RefreshWorkflowTasksRequest,
+    ) -> Result<RefreshWorkflowTasksResponse, Self::Error> {
+        let pb_request: cadence_proto::generated::RefreshWorkflowTasksRequest = request.into();
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .refresh_workflow_tasks(pb_request)
+            .await
+            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+        Ok(response.into_inner().into())
+    }
 }

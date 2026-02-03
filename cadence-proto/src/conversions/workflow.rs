@@ -308,6 +308,8 @@ fn pb_workflow_execution_config_to_api(
     }
 }
 
+// Helper function to convert protobuf WorkflowExecutionInfo to API type
+// Made public(super) so it can be used by visibility module
 pub(super) fn pb_workflow_execution_info_to_api(
     info: pb::WorkflowExecutionInfo,
 ) -> api::WorkflowExecutionInfo {
@@ -522,5 +524,104 @@ impl From<pb::ResetPointInfo> for api::ResetPointInfo {
             expiring_time_nano: info.expiring_time.and_then(timestamp_to_nanos).unwrap_or(0),
             resettable: info.resettable,
         }
+    }
+}
+
+// ============================================================================
+// Reset Workflow Execution
+// ============================================================================
+
+impl From<api::ResetWorkflowExecutionRequest> for pb::ResetWorkflowExecutionRequest {
+    fn from(req: api::ResetWorkflowExecutionRequest) -> Self {
+        pb::ResetWorkflowExecutionRequest {
+            domain: req.domain,
+            workflow_execution: req.workflow_execution.map(Into::into),
+            reason: req.reason,
+            decision_finish_event_id: req.decision_finish_event_id,
+            request_id: req.request_id.unwrap_or_default(),
+            skip_signal_reapply: req.skip_signal_reapply,
+        }
+    }
+}
+
+impl From<pb::ResetWorkflowExecutionResponse> for api::ResetWorkflowExecutionResponse {
+    fn from(resp: pb::ResetWorkflowExecutionResponse) -> Self {
+        api::ResetWorkflowExecutionResponse {
+            run_id: resp.run_id,
+        }
+    }
+}
+
+// ============================================================================
+// Describe Task List
+// ============================================================================
+
+impl From<api::DescribeTaskListRequest> for pb::DescribeTaskListRequest {
+    fn from(req: api::DescribeTaskListRequest) -> Self {
+        pb::DescribeTaskListRequest {
+            domain: req.domain,
+            task_list: req.task_list.map(Into::into),
+            task_list_type: req.task_list_type as i32,
+            include_task_list_status: req.include_task_list_status,
+        }
+    }
+}
+
+impl From<pb::DescribeTaskListResponse> for api::DescribeTaskListResponse {
+    fn from(resp: pb::DescribeTaskListResponse) -> Self {
+        api::DescribeTaskListResponse {
+            pollers: resp.pollers.into_iter().map(Into::into).collect(),
+            task_list_status: resp.task_list_status.map(Into::into),
+        }
+    }
+}
+
+impl From<pb::PollerInfo> for api::PollerInfo {
+    fn from(info: pb::PollerInfo) -> Self {
+        api::PollerInfo {
+            identity: info.identity,
+            last_access_time: info.last_access_time.and_then(timestamp_to_nanos),
+            rate_per_second: info.rate_per_second,
+        }
+    }
+}
+
+impl From<pb::TaskListStatus> for api::TaskListStatus {
+    fn from(status: pb::TaskListStatus) -> Self {
+        api::TaskListStatus {
+            backlog_count_hint: status.backlog_count_hint,
+            read_level: status.read_level,
+            ack_level: status.ack_level,
+            rate_per_second: status.rate_per_second,
+            task_id_block: status.task_id_block.map(Into::into),
+        }
+    }
+}
+
+impl From<pb::TaskIdBlock> for api::TaskIdBlock {
+    fn from(block: pb::TaskIdBlock) -> Self {
+        api::TaskIdBlock {
+            start_id: block.start_id,
+            end_id: block.end_id,
+        }
+    }
+}
+
+// ============================================================================
+// Refresh Workflow Tasks
+// ============================================================================
+
+impl From<api::RefreshWorkflowTasksRequest> for pb::RefreshWorkflowTasksRequest {
+    fn from(req: api::RefreshWorkflowTasksRequest) -> Self {
+        pb::RefreshWorkflowTasksRequest {
+            domain: req.domain,
+            workflow_execution: req.execution.map(Into::into),
+        }
+    }
+}
+
+impl From<pb::RefreshWorkflowTasksResponse> for api::RefreshWorkflowTasksResponse {
+    fn from(_: pb::RefreshWorkflowTasksResponse) -> Self {
+        api::RefreshWorkflowTasksResponse {}
     }
 }
