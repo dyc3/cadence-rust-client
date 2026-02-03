@@ -2,8 +2,8 @@ use cadence_activity::ActivityContext;
 use cadence_client::GrpcWorkflowServiceClient;
 use cadence_core::{ActivityOptions, CadenceError};
 use cadence_proto::shared::{
-    EventAttributes, EventType, History, HistoryEventFilterType, TaskList, TaskListKind,
-    WorkflowExecution, WorkflowType,
+    EventAttributes, EventType, HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution,
+    WorkflowType,
 };
 use cadence_proto::workflow_service::{
     GetWorkflowExecutionHistoryRequest, RegisterDomainRequest, StartWorkflowExecutionRequest,
