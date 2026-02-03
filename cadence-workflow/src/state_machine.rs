@@ -7,7 +7,7 @@ use cadence_proto::shared::{
     CancelTimerDecisionAttributes, CompleteWorkflowExecutionDecisionAttributes,
     ContinueAsNewWorkflowExecutionDecisionAttributes, Decision as ProtoDecision,
     DecisionAttributes, DecisionType as ProtoDecisionType, FailWorkflowExecutionDecisionAttributes,
-    RequestCancelExternalWorkflowExecutionDecisionAttributes,
+    RecordMarkerDecisionAttributes, RequestCancelExternalWorkflowExecutionDecisionAttributes,
     ScheduleActivityTaskDecisionAttributes, SignalExternalWorkflowExecutionDecisionAttributes,
     StartChildWorkflowExecutionDecisionAttributes, StartTimerDecisionAttributes,
 };
@@ -834,6 +834,104 @@ impl DecisionStateMachine for RequestCancelExternalWorkflowDecisionStateMachine 
     }
 }
 
+/// Marker decision state machine for side effects and versioning
+pub struct MarkerDecisionStateMachine {
+    base: DecisionStateMachineBase,
+    marker_name: String,
+    attributes: RecordMarkerDecisionAttributes,
+}
+
+impl MarkerDecisionStateMachine {
+    pub fn new(id: String, attributes: RecordMarkerDecisionAttributes) -> Self {
+        Self {
+            base: DecisionStateMachineBase::new(DecisionId::new(
+                StateMachineDecisionType::Marker,
+                id,
+            )),
+            marker_name: attributes.marker_name.clone(),
+            attributes,
+        }
+    }
+}
+
+impl DecisionStateMachine for MarkerDecisionStateMachine {
+    fn state(&self) -> DecisionState {
+        self.base.state
+    }
+
+    fn id(&self) -> &DecisionId {
+        &self.base.id
+    }
+
+    fn is_done(&self) -> bool {
+        // Markers are synchronous - they're done immediately after being sent
+        matches!(
+            self.base.state,
+            DecisionState::Completed | DecisionState::DecisionSent
+        )
+    }
+
+    fn get_decision(&self) -> Option<ProtoDecision> {
+        // Markers are recorded immediately in Created state
+        if self.base.state == DecisionState::Created {
+            Some(ProtoDecision {
+                decision_type: ProtoDecisionType::RecordMarker,
+                attributes: Some(DecisionAttributes::RecordMarkerDecisionAttributes(
+                    Box::new(self.attributes.clone()),
+                )),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&mut self) {
+        // Markers cannot be cancelled
+    }
+
+    fn handle_started_event(&mut self) {
+        // Markers don't have started events
+    }
+
+    fn handle_cancel_initiated_event(&mut self) {
+        // Markers cannot be cancelled
+    }
+
+    fn handle_canceled_event(&mut self) {
+        // Markers cannot be cancelled
+    }
+
+    fn handle_cancel_failed_event(&mut self) {
+        // Markers cannot be cancelled
+    }
+
+    fn handle_completion_event(&mut self) {
+        // Markers complete immediately
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+
+    fn handle_initiation_failed_event(&mut self) {
+        // Markers don't fail initiation
+    }
+
+    fn handle_initiated_event(&mut self) {
+        // Markers complete immediately after being initiated
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+
+    fn handle_decision_sent(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base.transition_to(DecisionState::DecisionSent);
+            // Markers complete immediately since they're synchronous
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+}
+
 /// Decision helper for managing multiple decisions
 pub struct DecisionsHelper {
     decisions: HashMap<DecisionId, Box<dyn DecisionStateMachine>>,
@@ -1168,6 +1266,34 @@ impl DecisionsHelper {
 
         self.ordered_decisions.push(id.clone());
         self.decisions.insert(id, Box::new(sm));
+    }
+
+    /// Record a side effect marker in workflow history
+    pub fn record_side_effect_marker(&mut self, side_effect_id: u64, result: Vec<u8>) {
+        let marker_id = format!(
+            "{}_{}",
+            crate::context::SIDE_EFFECT_MARKER_NAME,
+            side_effect_id
+        );
+        let attrs = RecordMarkerDecisionAttributes {
+            marker_name: crate::context::SIDE_EFFECT_MARKER_NAME.to_string(),
+            details: Some(result),
+            header: None,
+        };
+        let decision = Box::new(MarkerDecisionStateMachine::new(marker_id, attrs));
+        self.add_decision(decision);
+    }
+
+    /// Record a mutable side effect marker in workflow history
+    pub fn record_mutable_side_effect_marker(&mut self, id: &str, result: Vec<u8>) {
+        let marker_id = format!("{}_{}", crate::context::MUTABLE_SIDE_EFFECT_MARKER_NAME, id);
+        let attrs = RecordMarkerDecisionAttributes {
+            marker_name: crate::context::MUTABLE_SIDE_EFFECT_MARKER_NAME.to_string(),
+            details: Some(result),
+            header: None,
+        };
+        let decision = Box::new(MarkerDecisionStateMachine::new(marker_id, attrs));
+        self.add_decision(decision);
     }
 }
 

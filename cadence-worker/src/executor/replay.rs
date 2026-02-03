@@ -1,6 +1,9 @@
 use crate::registry::ActivityError;
 use cadence_core::CadenceError;
 use cadence_proto::shared::{EventAttributes, EventType, HistoryEvent};
+use cadence_workflow::side_effect_serialization::{
+    decode_mutable_side_effect_details, decode_side_effect_details,
+};
 use cadence_workflow::state_machine::{DecisionId, DecisionsHelper, StateMachineDecisionType};
 use std::collections::HashMap;
 
@@ -14,6 +17,11 @@ pub struct ReplayEngine {
     pub signals: HashMap<String, Vec<Vec<u8>>>,
     pub cancel_requested: bool,
     pub last_processed_event_id: i64,
+    // Side effect result caches for replay
+    pub side_effect_results: HashMap<u64, Vec<u8>>,
+    pub mutable_side_effects: HashMap<String, Vec<u8>>,
+    // Flag indicating we're in replay mode
+    pub is_replay: bool,
 }
 
 impl ReplayEngine {
@@ -388,6 +396,46 @@ impl ReplayEngine {
                     self.event_results.insert(initiated_id, Err(error));
                 }
             }
+            EventType::MarkerRecorded => {
+                if let Some(EventAttributes::MarkerRecordedEventAttributes(attrs)) =
+                    &event.attributes
+                {
+                    let marker_name = attrs.marker_name.as_str();
+
+                    if let Some(details) = &attrs.details {
+                        match marker_name {
+                            cadence_workflow::context::SIDE_EFFECT_MARKER_NAME => {
+                                // Decode side effect marker details
+                                if let Ok((side_effect_id, result)) =
+                                    decode_side_effect_details(details)
+                                {
+                                    println!(
+                                        "[ReplayEngine] Processing side effect marker: id={}",
+                                        side_effect_id
+                                    );
+                                    self.side_effect_results.insert(side_effect_id, result);
+                                }
+                            }
+                            cadence_workflow::context::MUTABLE_SIDE_EFFECT_MARKER_NAME => {
+                                // Decode mutable side effect marker details
+                                if let Ok((id, result)) =
+                                    decode_mutable_side_effect_details(details)
+                                {
+                                    println!(
+                                        "[ReplayEngine] Processing mutable side effect marker: id={}",
+                                        id
+                                    );
+                                    self.mutable_side_effects.insert(id, result);
+                                }
+                            }
+                            _ => {
+                                // Unknown marker type, ignore
+                                println!("[ReplayEngine] Unknown marker type: {}", marker_name);
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -502,5 +550,25 @@ impl ReplayEngine {
             }
         }
         false
+    }
+
+    /// Get a side effect result by ID
+    pub fn get_side_effect_result(&self, side_effect_id: u64) -> Option<&Vec<u8>> {
+        self.side_effect_results.get(&side_effect_id)
+    }
+
+    /// Get a mutable side effect result by ID
+    pub fn get_mutable_side_effect_result(&self, id: &str) -> Option<&Vec<u8>> {
+        self.mutable_side_effects.get(id)
+    }
+
+    /// Check if we're in replay mode
+    pub fn is_replay(&self) -> bool {
+        self.is_replay
+    }
+
+    /// Set replay mode
+    pub fn set_replay_mode(&mut self, is_replay: bool) {
+        self.is_replay = is_replay;
     }
 }

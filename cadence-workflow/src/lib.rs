@@ -6,9 +6,11 @@
 pub mod commands;
 pub mod context;
 pub mod future;
+pub mod side_effect_serialization;
 pub mod state_machine;
 
 pub use commands::*;
 pub use context::*;
 pub use future::*;
+pub use side_effect_serialization::*;
 pub use state_machine::*;

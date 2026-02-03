@@ -363,6 +363,45 @@ impl CommandSink for ReplayCommandSink {
                         .request_cancel_external_workflow_execution(cmd.cancellation_id, attrs);
                     drop(engine_lock);
                 }
+                WorkflowCommand::RecordMarker(cmd) => {
+                    eprintln!(
+                        "[CommandSink] Recording Marker (stderr): {}",
+                        cmd.marker_name
+                    );
+
+                    let attrs = cadence_proto::shared::RecordMarkerDecisionAttributes {
+                        marker_name: cmd.marker_name.clone(),
+                        details: Some(cmd.details),
+                        header: cmd.header,
+                    };
+
+                    // Generate a unique marker ID based on marker name and sequence
+                    // Generate a unique marker ID based on marker name and timestamp
+                    let marker_id = format!("{}_{}", cmd.marker_name, {
+                        // Use timestamp nanos as a simple unique identifier
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos()
+                            .to_string()
+                    });
+
+                    let decision = Box::new(
+                        cadence_workflow::state_machine::MarkerDecisionStateMachine::new(
+                            marker_id.clone(),
+                            attrs,
+                        ),
+                    );
+
+                    let mut engine_lock = engine.lock().unwrap();
+                    engine_lock.decisions_helper.add_decision(decision);
+                    drop(engine_lock);
+
+                    println!("[CommandSink] Recorded marker: {}", marker_id);
+
+                    // Return immediately since markers are synchronous
+                    return Ok(Vec::new());
+                }
                 _ => unimplemented!("Command not supported"),
             }
             std::future::pending().await
@@ -485,20 +524,33 @@ impl WorkflowExecutor {
             search_attributes: None,
         };
 
-        // Extract signals from engine (requires lock)
-        let (signals_map, cancel_requested) = {
+        // Extract signals and side effect caches from engine (requires lock)
+        let (signals_map, cancel_requested, side_effect_results, mutable_side_effects, is_replay) = {
             let engine = engine_arc.lock().unwrap();
-            (engine.signals.clone(), engine.cancel_requested)
+            (
+                engine.signals.clone(),
+                engine.cancel_requested,
+                engine.side_effect_results.clone(),
+                engine.mutable_side_effects.clone(),
+                engine.is_replay,
+            )
         };
         let signals_arc = Arc::new(Mutex::new(signals_map));
         let query_handlers_arc = Arc::new(Mutex::new(HashMap::new()));
+        let side_effect_results_arc = Arc::new(Mutex::new(side_effect_results));
+        let mutable_side_effects_arc = Arc::new(Mutex::new(mutable_side_effects));
 
         let context = WorkflowContext::with_sink(
             workflow_info.clone(),
             sink,
             signals_arc,
             query_handlers_arc.clone(),
+            side_effect_results_arc,
+            mutable_side_effects_arc,
         );
+
+        // Set replay mode and cancellation
+        context.set_replay_mode(is_replay);
         if cancel_requested {
             context.set_cancelled(true);
         }

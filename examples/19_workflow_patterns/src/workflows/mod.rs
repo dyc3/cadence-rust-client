@@ -359,7 +359,11 @@ pub async fn circuit_breaker_workflow(
 
     // Check circuit state from previous runs using mutable side effect
     let failure_count: u32 = ctx
-        .mutable_side_effect("circuit_failure_count", || 0u32)
+        .mutable_side_effect(
+            "circuit_failure_count",
+            || 0u32,
+            None::<fn(&u32, &u32) -> bool>,
+        )
         .await;
 
     let circuit_open = failure_count >= 5; // Circuit opens after 5 failures

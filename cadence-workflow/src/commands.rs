@@ -16,6 +16,7 @@ pub enum WorkflowCommand {
     ContinueAsNewWorkflow(ContinueAsNewWorkflowCommand),
     SignalExternalWorkflow(SignalExternalWorkflowCommand),
     RequestCancelExternalWorkflow(RequestCancelExternalWorkflowCommand),
+    RecordMarker(RecordMarkerCommand),
 }
 
 #[derive(Debug)]
@@ -94,4 +95,11 @@ pub struct RequestCancelExternalWorkflowCommand {
     pub workflow_id: String,
     pub run_id: Option<String>,
     pub child_workflow_only: bool,
+}
+
+#[derive(Debug)]
+pub struct RecordMarkerCommand {
+    pub marker_name: String,
+    pub details: Vec<u8>,
+    pub header: Option<cadence_proto::shared::Header>,
 }

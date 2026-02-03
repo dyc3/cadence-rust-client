@@ -4,10 +4,12 @@
 //! scheduling activities, child workflows, handling signals, and more.
 
 use crate::commands::{
-    ScheduleActivityCommand, StartChildWorkflowCommand, StartTimerCommand, WorkflowCommand,
+    RecordMarkerCommand, ScheduleActivityCommand, StartChildWorkflowCommand, StartTimerCommand,
+    WorkflowCommand,
 };
 use cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 use futures::future::poll_fn;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -16,6 +18,11 @@ use std::task::Poll;
 use std::time::Duration;
 
 use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Marker names for side effects
+pub const SIDE_EFFECT_MARKER_NAME: &str = "SideEffect";
+pub const MUTABLE_SIDE_EFFECT_MARKER_NAME: &str = "MutableSideEffect";
+pub const VERSION_MARKER_NAME: &str = "Version";
 
 /// Type alias for query handlers
 pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
@@ -47,6 +54,11 @@ pub struct WorkflowContext {
     signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
     query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
     cancelled: Arc<std::sync::atomic::AtomicBool>,
+    // Side effect result caches for replay
+    side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
+    mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    // Replay flag - true when workflow is being replayed from history
+    is_replay: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl WorkflowContext {
@@ -58,6 +70,9 @@ impl WorkflowContext {
             signals: Arc::new(Mutex::new(HashMap::new())),
             query_handlers: Arc::new(Mutex::new(HashMap::new())),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            side_effect_results: Arc::new(Mutex::new(HashMap::new())),
+            mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
+            is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -66,6 +81,8 @@ impl WorkflowContext {
         sink: Arc<dyn CommandSink>,
         signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
+        side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
+        mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     ) -> Self {
         Self {
             workflow_info,
@@ -74,12 +91,37 @@ impl WorkflowContext {
             signals,
             query_handlers,
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            side_effect_results,
+            mutable_side_effects,
+            is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
+    }
+
+    /// Set replay mode
+    pub fn set_replay_mode(&self, is_replay: bool) {
+        self.is_replay.store(is_replay, Ordering::SeqCst);
+    }
+
+    /// Set side effect results cache (used during replay)
+    pub fn set_side_effect_results(&self, results: HashMap<u64, Vec<u8>>) {
+        let mut cache = self.side_effect_results.lock().unwrap();
+        *cache = results;
+    }
+
+    /// Set mutable side effects cache (used during replay)
+    pub fn set_mutable_side_effects(&self, effects: HashMap<String, Vec<u8>>) {
+        let mut cache = self.mutable_side_effects.lock().unwrap();
+        *cache = effects;
     }
 
     fn next_id(&self) -> String {
         let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
         format!("{}", seq)
+    }
+
+    /// Get the next sequence ID as u64 (for side effects)
+    fn next_sequence_id(&self) -> u64 {
+        self.sequence.fetch_add(1, Ordering::SeqCst)
     }
 
     /// Get workflow information
@@ -192,22 +234,195 @@ impl WorkflowContext {
     }
 
     /// Execute a side effect (non-deterministic operation)
+    ///
+    /// Side effects are operations that are not deterministic and should only be
+    /// executed once. The result is cached in workflow history and replayed
+    /// during workflow replay to ensure determinism.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let uuid = ctx.side_effect(|| uuid::Uuid::new_v4().to_string()).await;
+    /// ```
     pub async fn side_effect<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
+        R: Serialize + serde::de::DeserializeOwned,
     {
-        // TODO: Implement side effect caching
-        f()
+        use crate::side_effect_serialization::encode_side_effect_details;
+
+        let side_effect_id = self.next_sequence_id();
+
+        // Check if we're in replay mode
+        let is_replay = self.is_replay.load(Ordering::SeqCst);
+
+        if is_replay {
+            // During replay: retrieve cached result
+            let cache = self.side_effect_results.lock().unwrap();
+            if let Some(encoded_result) = cache.get(&side_effect_id) {
+                // Deserialize result
+                let result: R = match serde_json::from_slice(encoded_result) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        panic!(
+                            "Failed to deserialize side effect result for id={}: {}",
+                            side_effect_id, e
+                        );
+                    }
+                };
+                return result;
+            } else {
+                panic!(
+                    "Side effect id={} not found during replay. This indicates non-deterministic workflow code.",
+                    side_effect_id
+                );
+            }
+        }
+
+        // During execution: run the side effect
+        let result = f();
+
+        // Serialize result
+        let encoded_result = match serde_json::to_vec(&result) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                panic!(
+                    "Failed to serialize side effect result for id={}: {}",
+                    side_effect_id, e
+                );
+            }
+        };
+
+        // Encode (side_effect_id, result) for marker
+        let details = encode_side_effect_details(side_effect_id, &encoded_result);
+
+        // Record marker in history
+        let command = RecordMarkerCommand {
+            marker_name: SIDE_EFFECT_MARKER_NAME.to_string(),
+            details,
+            header: None,
+        };
+
+        // Store in cache for potential future use
+        {
+            let mut cache = self.side_effect_results.lock().unwrap();
+            cache.insert(side_effect_id, encoded_result);
+        }
+
+        // Send command to record marker
+        let _ = self
+            .command_sink
+            .submit(WorkflowCommand::RecordMarker(command))
+            .await;
+
+        result
     }
 
-    /// Execute a mutable side effect (cached side effect)
-    pub async fn mutable_side_effect<F, R>(&self, _id: &str, f: F) -> R
+    /// Execute a mutable side effect (cached side effect with value comparison)
+    ///
+    /// Mutable side effects are similar to side effects but allow the value to change
+    /// over time. A new marker is only recorded when the value actually changes.
+    /// During replay, the cached value is returned.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let counter = ctx.mutable_side_effect("counter", || 0u32, None).await;
+    /// ```
+    pub async fn mutable_side_effect<F, R, Eq>(&self, id: &str, f: F, equals: Option<Eq>) -> R
     where
         F: FnOnce() -> R,
-        R: Clone,
+        R: Serialize + serde::de::DeserializeOwned + Clone,
+        Eq: Fn(&R, &R) -> bool,
     {
-        // TODO: Implement mutable side effect with caching
-        f()
+        use crate::side_effect_serialization::encode_mutable_side_effect_details;
+
+        let is_replay = self.is_replay.load(Ordering::SeqCst);
+
+        // Check cache for existing result
+        let cache = self.mutable_side_effects.lock().unwrap();
+        if let Some(encoded_result) = cache.get(id) {
+            let cached_value: R = serde_json::from_slice(encoded_result)
+                .expect("Failed to deserialize mutable side effect result");
+
+            if is_replay {
+                // During replay: just return cached value
+                return cached_value;
+            }
+
+            // During execution: check if value changed
+            let new_value = f();
+
+            let is_equal = if let Some(eq_fn) = equals {
+                eq_fn(&cached_value, &new_value)
+            } else {
+                // Default comparison using serialization
+                let new_encoded = serde_json::to_vec(&new_value).unwrap();
+                encoded_result == &new_encoded
+            };
+
+            if is_equal {
+                // Value unchanged, don't record new marker
+                return cached_value;
+            }
+
+            // Value changed, record new marker and update cache
+            drop(cache); // Release lock
+            let new_encoded = serde_json::to_vec(&new_value).unwrap();
+
+            let details = encode_mutable_side_effect_details(id, &new_encoded);
+            let command = RecordMarkerCommand {
+                marker_name: MUTABLE_SIDE_EFFECT_MARKER_NAME.to_string(),
+                details,
+                header: None,
+            };
+
+            // Update cache
+            {
+                let mut cache = self.mutable_side_effects.lock().unwrap();
+                cache.insert(id.to_string(), new_encoded);
+            }
+
+            // Send command to record marker
+            let _ = self
+                .command_sink
+                .submit(WorkflowCommand::RecordMarker(command))
+                .await;
+
+            return new_value;
+        }
+
+        drop(cache);
+
+        if is_replay {
+            panic!(
+                "Mutable side effect id='{}' not found during replay. This indicates non-deterministic workflow code.",
+                id
+            );
+        }
+
+        // First execution: record initial value
+        let result = f();
+        let encoded_result = serde_json::to_vec(&result).unwrap();
+        let details = encode_mutable_side_effect_details(id, &encoded_result);
+
+        let command = RecordMarkerCommand {
+            marker_name: MUTABLE_SIDE_EFFECT_MARKER_NAME.to_string(),
+            details,
+            header: None,
+        };
+
+        // Update cache
+        {
+            let mut cache = self.mutable_side_effects.lock().unwrap();
+            cache.insert(id.to_string(), encoded_result);
+        }
+
+        // Send command to record marker
+        let _ = self
+            .command_sink
+            .submit(WorkflowCommand::RecordMarker(command))
+            .await;
+
+        result
     }
 
     /// Get version for backwards-compatible workflow changes
