@@ -59,10 +59,15 @@ pub struct WorkflowContext {
     mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     // Replay flag - true when workflow is being replayed from history
     is_replay: Arc<std::sync::atomic::AtomicBool>,
+    // Deterministic time - current time in nanoseconds (unix epoch)
+    current_time_nanos: Arc<std::sync::atomic::AtomicI64>,
 }
 
 impl WorkflowContext {
     pub fn new(workflow_info: WorkflowInfo) -> Self {
+        // Initialize with start time from workflow info
+        let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
+
         Self {
             workflow_info,
             command_sink: Arc::new(NoopCommandSink),
@@ -73,6 +78,7 @@ impl WorkflowContext {
             side_effect_results: Arc::new(Mutex::new(HashMap::new())),
             mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
         }
     }
 
@@ -84,6 +90,9 @@ impl WorkflowContext {
         side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
         mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     ) -> Self {
+        // Initialize with start time from workflow info
+        let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
+
         Self {
             workflow_info,
             command_sink: sink,
@@ -94,12 +103,18 @@ impl WorkflowContext {
             side_effect_results,
             mutable_side_effects,
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
         }
     }
 
     /// Set replay mode
     pub fn set_replay_mode(&self, is_replay: bool) {
         self.is_replay.store(is_replay, Ordering::SeqCst);
+    }
+
+    /// Set current workflow time (from deterministic source)
+    pub fn set_current_time_nanos(&self, time_nanos: i64) {
+        self.current_time_nanos.store(time_nanos, Ordering::SeqCst);
     }
 
     /// Set side effect results cache (used during replay)
@@ -454,8 +469,9 @@ impl WorkflowContext {
 
     /// Get current workflow time (deterministic)
     pub fn now(&self) -> chrono::DateTime<chrono::Utc> {
-        // TODO: Implement deterministic time
-        chrono::Utc::now()
+        let nanos = self.current_time_nanos.load(Ordering::SeqCst);
+        chrono::DateTime::from_timestamp(nanos / 1_000_000_000, (nanos % 1_000_000_000) as u32)
+            .unwrap_or_else(chrono::Utc::now)
     }
 
     /// Get current workflow time (alias for `now`)

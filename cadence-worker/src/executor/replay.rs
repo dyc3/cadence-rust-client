@@ -22,6 +22,9 @@ pub struct ReplayEngine {
     pub mutable_side_effects: HashMap<String, Vec<u8>>,
     // Flag indicating we're in replay mode
     pub is_replay: bool,
+    // Deterministic time tracking
+    pub workflow_start_time_nanos: Option<i64>,
+    pub workflow_task_time_nanos: Option<i64>,
 }
 
 impl ReplayEngine {
@@ -46,6 +49,22 @@ impl ReplayEngine {
             event.event_id, event.event_type
         );
         match event.event_type {
+            EventType::WorkflowExecutionStarted => {
+                // Capture workflow start time
+                self.workflow_start_time_nanos = Some(event.timestamp);
+                println!(
+                    "[ReplayEngine] Captured workflow start time: {}",
+                    event.timestamp
+                );
+            }
+            EventType::DecisionTaskStarted => {
+                // Capture decision task time (workflow "current time")
+                self.workflow_task_time_nanos = Some(event.timestamp);
+                println!(
+                    "[ReplayEngine] Captured decision task time: {}",
+                    event.timestamp
+                );
+            }
             EventType::ActivityTaskScheduled => {
                 if let Some(EventAttributes::ActivityTaskScheduledEventAttributes(attrs)) =
                     &event.attributes
@@ -570,5 +589,15 @@ impl ReplayEngine {
     /// Set replay mode
     pub fn set_replay_mode(&mut self, is_replay: bool) {
         self.is_replay = is_replay;
+    }
+
+    /// Get workflow start time in nanoseconds
+    pub fn get_workflow_start_time_nanos(&self) -> Option<i64> {
+        self.workflow_start_time_nanos
+    }
+
+    /// Get workflow task time (current time) in nanoseconds
+    pub fn get_workflow_task_time_nanos(&self) -> Option<i64> {
+        self.workflow_task_time_nanos
     }
 }

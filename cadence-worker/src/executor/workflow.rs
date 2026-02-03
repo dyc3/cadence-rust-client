@@ -504,6 +504,40 @@ impl WorkflowExecutor {
             default_task_list: self.task_list.clone(),
         });
 
+        // Extract timestamps from ReplayEngine for deterministic time
+        let (workflow_start_time_nanos, workflow_task_time_nanos) = {
+            let engine = engine_arc.lock().unwrap();
+            (
+                engine.get_workflow_start_time_nanos(),
+                engine.get_workflow_task_time_nanos(),
+            )
+        };
+
+        // Determine deterministic "now" with priority:
+        // 1. workflow_task_time_nanos (most recent DecisionTaskStarted)
+        // 2. workflow_start_time_nanos (WorkflowExecutionStarted)
+        // 3. task.started_timestamp (fallback if history missing)
+        let current_time_nanos = workflow_task_time_nanos
+            .or(workflow_start_time_nanos)
+            .or(task.started_timestamp)
+            .unwrap_or(0);
+
+        // Convert start time to DateTime for WorkflowInfo
+        let start_time = if let Some(start_nanos) = workflow_start_time_nanos {
+            chrono::DateTime::from_timestamp(
+                start_nanos / 1_000_000_000,
+                (start_nanos % 1_000_000_000) as u32,
+            )
+            .unwrap_or_else(chrono::Utc::now)
+        } else {
+            // Fallback to current time if no start time found
+            chrono::DateTime::from_timestamp(
+                current_time_nanos / 1_000_000_000,
+                (current_time_nanos % 1_000_000_000) as u32,
+            )
+            .unwrap_or_else(chrono::Utc::now)
+        };
+
         let workflow_info = WorkflowInfo {
             workflow_execution: cadence_core::WorkflowExecution {
                 workflow_id: workflow_id.clone(),
@@ -513,7 +547,7 @@ impl WorkflowExecutor {
                 name: workflow_type.clone(),
             },
             task_list: self.task_list.clone(),
-            start_time: chrono::Utc::now(),
+            start_time,
             execution_start_to_close_timeout: std::time::Duration::from_secs(3600),
             task_start_to_close_timeout: std::time::Duration::from_secs(10),
             attempt: 1,
@@ -548,6 +582,9 @@ impl WorkflowExecutor {
             side_effect_results_arc,
             mutable_side_effects_arc,
         );
+
+        // Set deterministic current time
+        context.set_current_time_nanos(current_time_nanos);
 
         // Set replay mode and cancellation
         context.set_replay_mode(is_replay);
@@ -720,6 +757,282 @@ mod tests {
 
         fn clone_box(&self) -> Box<dyn Workflow> {
             Box::new(self.clone())
+        }
+    }
+
+    #[derive(Clone)]
+    struct TimeWorkflow;
+
+    impl Workflow for TimeWorkflow {
+        fn execute(
+            &self,
+            ctx: WorkflowContext,
+            _input: Option<Vec<u8>>,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, crate::registry::WorkflowError>> + Send>>
+        {
+            Box::pin(async move {
+                // Return current time as nanoseconds
+                let now = ctx.now();
+                let nanos = now.timestamp_nanos_opt().unwrap_or(0);
+                Ok(nanos.to_le_bytes().to_vec())
+            })
+        }
+
+        fn clone_box(&self) -> Box<dyn Workflow> {
+            Box::new(self.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_workflow_deterministic_time() {
+        let registry = Arc::new(WorkflowRegistry::new());
+        registry.register_workflow("TimeWorkflow", Box::new(TimeWorkflow));
+
+        let cache = Arc::new(WorkflowCache::new(10));
+        let options = WorkerOptions::default();
+        let executor = WorkflowExecutor::new(registry, cache, options, "test-list".to_string());
+
+        // Define timestamps in nanoseconds
+        let t0_nanos = 1_000_000_000_000i64; // Workflow start time
+        let t1_nanos = 2_000_000_000_000i64; // First decision task time
+        let t2_nanos = 3_000_000_000_000i64; // Second decision task time
+
+        // Create history with WorkflowExecutionStarted at T0 and DecisionTaskStarted at T1
+        let events = vec![
+            HistoryEvent {
+                event_id: 1,
+                event_type: EventType::WorkflowExecutionStarted,
+                attributes: Some(EventAttributes::WorkflowExecutionStartedEventAttributes(
+                    Box::new(WorkflowExecutionStartedEventAttributes {
+                        workflow_type: Some(WorkflowType {
+                            name: "TimeWorkflow".to_string(),
+                        }),
+                        parent_workflow_execution: None,
+                        task_list: Some(cadence_proto::shared::TaskList {
+                            name: "test-list".to_string(),
+                            kind: cadence_proto::shared::TaskListKind::Normal,
+                        }),
+                        input: vec![],
+                        execution_start_to_close_timeout_seconds: 10,
+                        task_start_to_close_timeout_seconds: 10,
+                        identity: "test-identity".to_string(),
+                        continued_execution_run_id: None,
+                        initiator: None,
+                        continued_failure_details: None,
+                        last_completion_result: None,
+                        original_execution_run_id: None,
+                        first_execution_run_id: None,
+                        retry_policy: None,
+                        attempt: 0,
+                        expiration_timestamp: None,
+                        cron_schedule: None,
+                        first_decision_task_backoff_seconds: 0,
+                    }),
+                )),
+                timestamp: t0_nanos,
+                version: 0,
+                task_id: 0,
+            },
+            HistoryEvent {
+                event_id: 2,
+                event_type: EventType::DecisionTaskScheduled,
+                attributes: Some(EventAttributes::DecisionTaskScheduledEventAttributes(
+                    Box::new(
+                        cadence_proto::shared::DecisionTaskScheduledEventAttributes {
+                            task_list: Some(cadence_proto::shared::TaskList {
+                                name: "test-list".to_string(),
+                                kind: cadence_proto::shared::TaskListKind::Normal,
+                            }),
+                            start_to_close_timeout_seconds: 10,
+                            attempt: 0,
+                        },
+                    ),
+                )),
+                timestamp: t0_nanos,
+                version: 0,
+                task_id: 0,
+            },
+            HistoryEvent {
+                event_id: 3,
+                event_type: EventType::DecisionTaskStarted,
+                attributes: Some(EventAttributes::DecisionTaskStartedEventAttributes(
+                    Box::new(cadence_proto::shared::DecisionTaskStartedEventAttributes {
+                        scheduled_event_id: 2,
+                        identity: "test-worker".to_string(),
+                        request_id: "req-1".to_string(),
+                    }),
+                )),
+                timestamp: t1_nanos,
+                version: 0,
+                task_id: 0,
+            },
+        ];
+
+        let task = PollForDecisionTaskResponse {
+            task_token: vec![1],
+            workflow_execution: Some(cadence_proto::shared::WorkflowExecution {
+                workflow_id: "time-wf".to_string(),
+                run_id: "time-run".to_string(),
+            }),
+            workflow_type: Some(WorkflowType {
+                name: "TimeWorkflow".to_string(),
+            }),
+            history: Some(History {
+                events: events.clone(),
+            }),
+            previous_started_event_id: 0,
+            started_event_id: 3,
+            attempt: 0,
+            backlog_count_hint: 0,
+            queries: None,
+            next_page_token: Some(vec![]),
+            query: None,
+            workflow_execution_task_list: None,
+            scheduled_timestamp: Some(t1_nanos),
+            started_timestamp: Some(t1_nanos),
+        };
+
+        let result = executor.execute_decision_task(task).await.unwrap();
+        let (decisions, _) = result;
+
+        // Should complete workflow with the timestamp
+        assert_eq!(decisions.len(), 1);
+        let decision = &decisions[0];
+        assert_eq!(
+            decision.decision_type,
+            cadence_proto::shared::DecisionType::CompleteWorkflowExecution
+        );
+
+        // Check that the returned time is T1 (decision task time)
+        if let Some(
+            cadence_proto::shared::DecisionAttributes::CompleteWorkflowExecutionDecisionAttributes(
+                attr,
+            ),
+        ) = &decision.attributes
+        {
+            let result_bytes = attr.result.as_ref().unwrap();
+            let returned_nanos = i64::from_le_bytes(result_bytes.as_slice().try_into().unwrap());
+            assert_eq!(
+                returned_nanos, t1_nanos,
+                "Expected workflow time to be T1 (decision task time)"
+            );
+        } else {
+            panic!(
+                "Expected CompleteWorkflowExecution attributes, found {:?}",
+                decision.attributes
+            );
+        }
+
+        // Test with a second decision task at T2
+        let events_with_t2 = vec![
+            events[0].clone(),
+            events[1].clone(),
+            events[2].clone(),
+            HistoryEvent {
+                event_id: 4,
+                event_type: EventType::DecisionTaskCompleted,
+                attributes: Some(EventAttributes::DecisionTaskCompletedEventAttributes(
+                    Box::new(
+                        cadence_proto::shared::DecisionTaskCompletedEventAttributes {
+                            scheduled_event_id: 2,
+                            started_event_id: 3,
+                            identity: "test-worker".to_string(),
+                            binary_checksum: "checksum".to_string(),
+                        },
+                    ),
+                )),
+                timestamp: t1_nanos,
+                version: 0,
+                task_id: 0,
+            },
+            HistoryEvent {
+                event_id: 5,
+                event_type: EventType::DecisionTaskScheduled,
+                attributes: Some(EventAttributes::DecisionTaskScheduledEventAttributes(
+                    Box::new(
+                        cadence_proto::shared::DecisionTaskScheduledEventAttributes {
+                            task_list: Some(cadence_proto::shared::TaskList {
+                                name: "test-list".to_string(),
+                                kind: cadence_proto::shared::TaskListKind::Normal,
+                            }),
+                            start_to_close_timeout_seconds: 10,
+                            attempt: 0,
+                        },
+                    ),
+                )),
+                timestamp: t1_nanos,
+                version: 0,
+                task_id: 0,
+            },
+            HistoryEvent {
+                event_id: 6,
+                event_type: EventType::DecisionTaskStarted,
+                attributes: Some(EventAttributes::DecisionTaskStartedEventAttributes(
+                    Box::new(cadence_proto::shared::DecisionTaskStartedEventAttributes {
+                        scheduled_event_id: 5,
+                        identity: "test-worker".to_string(),
+                        request_id: "req-2".to_string(),
+                    }),
+                )),
+                timestamp: t2_nanos,
+                version: 0,
+                task_id: 0,
+            },
+        ];
+
+        let task2 = PollForDecisionTaskResponse {
+            task_token: vec![2],
+            workflow_execution: Some(cadence_proto::shared::WorkflowExecution {
+                workflow_id: "time-wf-2".to_string(), // Different workflow ID
+                run_id: "time-run-2".to_string(),
+            }),
+            workflow_type: Some(WorkflowType {
+                name: "TimeWorkflow".to_string(),
+            }),
+            history: Some(History {
+                events: events_with_t2,
+            }),
+            previous_started_event_id: 3,
+            started_event_id: 6,
+            attempt: 0,
+            backlog_count_hint: 0,
+            queries: None,
+            next_page_token: Some(vec![]),
+            query: None,
+            workflow_execution_task_list: None,
+            scheduled_timestamp: Some(t2_nanos),
+            started_timestamp: Some(t2_nanos),
+        };
+
+        let result2 = executor.execute_decision_task(task2).await.unwrap();
+        let (decisions2, _) = result2;
+
+        // Should complete workflow with the timestamp T2
+        assert_eq!(decisions2.len(), 1);
+        let decision2 = &decisions2[0];
+        assert_eq!(
+            decision2.decision_type,
+            cadence_proto::shared::DecisionType::CompleteWorkflowExecution
+        );
+
+        // Check that the returned time is T2 (second decision task time)
+        if let Some(
+            cadence_proto::shared::DecisionAttributes::CompleteWorkflowExecutionDecisionAttributes(
+                attr,
+            ),
+        ) = &decision2.attributes
+        {
+            let result_bytes = attr.result.as_ref().unwrap();
+            let returned_nanos = i64::from_le_bytes(result_bytes.as_slice().try_into().unwrap());
+            assert_eq!(
+                returned_nanos, t2_nanos,
+                "Expected workflow time to be T2 (second decision task time)"
+            );
+        } else {
+            panic!(
+                "Expected CompleteWorkflowExecution attributes, found {:?}",
+                decision2.attributes
+            );
         }
     }
 
