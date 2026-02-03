@@ -464,6 +464,14 @@ pub enum QueryConsistencyLevel {
     Strong = 1,
 }
 
+/// Query reject condition
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum QueryRejectCondition {
+    NotOpen = 1,
+    NotCompletedCleanly = 2,
+}
+
 /// Decision types for decision tasks
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(i32)]
@@ -528,6 +536,7 @@ pub struct ScheduleActivityTaskDecisionAttributes {
     pub start_to_close_timeout_seconds: Option<i32>,
     pub heartbeat_timeout_seconds: Option<i32>,
     pub retry_policy: Option<RetryPolicy>,
+    pub header: Option<Header>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

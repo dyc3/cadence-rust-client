@@ -103,6 +103,7 @@ impl CommandSink for ReplayCommandSink {
                                     as i32,
                             }
                         }),
+                        header: None,
                     };
 
                     let decision =

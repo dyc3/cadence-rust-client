@@ -433,6 +433,7 @@ async fn wait_for_workflow_completion(
             wait_for_new_event: true, // Long poll
             history_event_filter_type: Some(HistoryEventFilterType::AllEvent),
             skip_archival: true,
+            query_consistency_level: None,
         };
 
         match client.get_workflow_execution_history(history_request).await {
@@ -492,6 +493,7 @@ async fn get_workflow_history(
         wait_for_new_event: false,
         history_event_filter_type: Some(HistoryEventFilterType::AllEvent),
         skip_archival: true,
+        query_consistency_level: None,
     };
 
     let response = client

@@ -88,3 +88,21 @@ impl From<api_types::RetryPolicy> for pb::RetryPolicy {
         }
     }
 }
+
+impl From<pb::RetryPolicy> for api_types::RetryPolicy {
+    fn from(pb: pb::RetryPolicy) -> Self {
+        api_types::RetryPolicy {
+            initial_interval_in_seconds: super::helpers::duration_to_seconds(pb.initial_interval)
+                .unwrap_or(0),
+            backoff_coefficient: pb.backoff_coefficient,
+            maximum_interval_in_seconds: super::helpers::duration_to_seconds(pb.maximum_interval)
+                .unwrap_or(0),
+            maximum_attempts: pb.maximum_attempts,
+            non_retryable_error_types: pb.non_retryable_error_reasons,
+            expiration_interval_in_seconds: super::helpers::duration_to_seconds(
+                pb.expiration_interval,
+            )
+            .unwrap_or(0),
+        }
+    }
+}

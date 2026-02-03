@@ -307,6 +307,7 @@ async fn test_get_workflow_execution_history() {
         wait_for_new_event: false,
         history_event_filter_type: Some(HistoryEventFilterType::AllEvent),
         skip_archival: false,
+        query_consistency_level: None,
     };
 
     let history_response = client
@@ -453,6 +454,8 @@ async fn test_query_workflow() {
             query_type: "__stack_trace".to_string(),
             query_args: None,
         }),
+        query_consistency_level: None,
+        query_reject_condition: None,
     };
 
     // Note: This will likely fail because we don't have a worker running to handle the query

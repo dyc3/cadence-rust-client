@@ -116,6 +116,8 @@ pub struct QueryWorkflowRequest {
     pub domain: String,
     pub execution: Option<WorkflowExecution>,
     pub query: Option<WorkflowQuery>,
+    pub query_reject_condition: Option<QueryRejectCondition>,
+    pub query_consistency_level: Option<QueryConsistencyLevel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -315,6 +317,7 @@ pub struct GetWorkflowExecutionHistoryRequest {
     pub wait_for_new_event: bool,
     pub history_event_filter_type: Option<HistoryEventFilterType>,
     pub skip_archival: bool,
+    pub query_consistency_level: Option<QueryConsistencyLevel>,
 }
 
 /// Get workflow execution history response
@@ -330,6 +333,7 @@ pub struct GetWorkflowExecutionHistoryResponse {
 pub struct DescribeWorkflowExecutionRequest {
     pub domain: String,
     pub execution: Option<WorkflowExecution>,
+    pub query_consistency_level: Option<QueryConsistencyLevel>,
 }
 
 /// Describe workflow execution response

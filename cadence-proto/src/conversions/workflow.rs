@@ -33,9 +33,9 @@ impl From<api::StartWorkflowExecutionRequest> for pb::StartWorkflowExecutionRequ
             header: req.header.map(api_header_to_pb),
             delay_start: seconds_to_duration(req.delay_start_seconds),
             jitter_start: seconds_to_duration(req.jitter_start_seconds),
-            first_run_at: None,                    // Not used in our API yet
-            cron_overlap_policy: 0,                // Default
-            active_cluster_selection_policy: None, // Not used in our API yet
+            first_run_at: None, // Advanced cron scheduling feature - not exposed in API
+            cron_overlap_policy: 0, // Advanced cron scheduling feature - not exposed in API
+            active_cluster_selection_policy: None, // Multi-cluster feature - not exposed in API
         }
     }
 }
@@ -194,8 +194,8 @@ impl From<api::QueryWorkflowRequest> for pb::QueryWorkflowRequest {
             domain: req.domain,
             workflow_execution: req.execution.map(Into::into),
             query: req.query.map(Into::into),
-            query_reject_condition: 0, // Default - not exposed in our API yet
-            query_consistency_level: 0, // Default - not exposed in our API yet
+            query_reject_condition: req.query_reject_condition.map(|c| c as i32).unwrap_or(0),
+            query_consistency_level: req.query_consistency_level.map(|c| c as i32).unwrap_or(0),
         }
     }
 }
@@ -240,7 +240,7 @@ impl From<api::GetWorkflowExecutionHistoryRequest> for pb::GetWorkflowExecutionH
             wait_for_new_event: req.wait_for_new_event,
             history_event_filter_type: req.history_event_filter_type.map(|t| t as i32).unwrap_or(0),
             skip_archival: req.skip_archival,
-            query_consistency_level: 0, // Default - not in our API type
+            query_consistency_level: req.query_consistency_level.map(|c| c as i32).unwrap_or(0),
         }
     }
 }
@@ -264,7 +264,7 @@ impl From<api::DescribeWorkflowExecutionRequest> for pb::DescribeWorkflowExecuti
         pb::DescribeWorkflowExecutionRequest {
             domain: req.domain,
             workflow_execution: req.execution.map(Into::into),
-            query_consistency_level: 0, // Default - not in our API type
+            query_consistency_level: req.query_consistency_level.map(|c| c as i32).unwrap_or(0),
         }
     }
 }
@@ -337,7 +337,7 @@ pub(super) fn pb_workflow_execution_info_to_api(
         execution_time: info.execution_time.and_then(timestamp_to_nanos),
         memo: info.memo.map(pb_memo_to_api),
         search_attributes: info.search_attributes.map(pb_search_attributes_to_api),
-        auto_reset_points: None, // Simplified - full conversion would be complex
+        auto_reset_points: info.auto_reset_points.map(Into::into),
         task_list: info.task_list,
     }
 }
@@ -500,6 +500,27 @@ impl From<pb::ListClosedWorkflowExecutionsResponse> for api::ListClosedWorkflowE
             } else {
                 Some(resp.next_page_token)
             },
+        }
+    }
+}
+
+impl From<pb::ResetPoints> for api::ResetPoints {
+    fn from(rp: pb::ResetPoints) -> Self {
+        api::ResetPoints {
+            points: rp.points.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<pb::ResetPointInfo> for api::ResetPointInfo {
+    fn from(info: pb::ResetPointInfo) -> Self {
+        api::ResetPointInfo {
+            binary_checksum: info.binary_checksum,
+            run_id: info.run_id,
+            first_decision_completed_id: info.first_decision_completed_id,
+            created_time_nano: info.created_time.and_then(timestamp_to_nanos).unwrap_or(0),
+            expiring_time_nano: info.expiring_time.and_then(timestamp_to_nanos).unwrap_or(0),
+            resettable: info.resettable,
         }
     }
 }

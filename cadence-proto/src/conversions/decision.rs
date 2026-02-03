@@ -137,7 +137,7 @@ fn api_decision_to_pb(d: api_types::Decision) -> pb::Decision {
                     start_to_close_timeout: seconds_to_duration(a.start_to_close_timeout_seconds),
                     heartbeat_timeout: seconds_to_duration(a.heartbeat_timeout_seconds),
                     retry_policy: a.retry_policy.map(Into::into),
-                    header: None,                  // Not in our API type
+                    header: a.header.map(api_header_to_pb),
                     request_local_dispatch: false, // Default
                     domain: String::new(),         // Not used
                 },

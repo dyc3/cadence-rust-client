@@ -110,3 +110,14 @@ pub(super) fn pb_header_to_api(h: pb::Header) -> api_types::Header {
         fields: h.fields.into_iter().map(|(k, v)| (k, v.data)).collect(),
     }
 }
+
+/// Extract details from protobuf Failure type
+pub(super) fn failure_to_details(failure: Option<pb::Failure>) -> Option<Vec<u8>> {
+    failure.and_then(|f| {
+        if f.details.is_empty() {
+            None
+        } else {
+            Some(f.details)
+        }
+    })
+}

@@ -348,6 +348,7 @@ impl HistoryEventIterator {
                 wait_for_new_event: false,
                 history_event_filter_type: Some(self.filter_type),
                 skip_archival: true,
+                query_consistency_level: None,
             };
 
             let response = self
@@ -924,6 +925,7 @@ impl Client for WorkflowClient {
             wait_for_new_event: is_long_poll,
             history_event_filter_type: Some(filter_type),
             skip_archival: true,
+            query_consistency_level: None,
         };
 
         let response = self
@@ -961,6 +963,7 @@ impl Client for WorkflowClient {
             wait_for_new_event: request.wait_for_new_event,
             history_event_filter_type: Some(request.history_event_filter_type),
             skip_archival: request.skip_archival,
+            query_consistency_level: None,
         };
 
         let response = self
@@ -1204,6 +1207,8 @@ impl Client for WorkflowClient {
                 query_type: query_type.to_string(),
                 query_args: args.map(|a| a.to_vec()),
             }),
+            query_consistency_level: None,
+            query_reject_condition: None,
         };
 
         let response = self
@@ -1271,6 +1276,7 @@ impl Client for WorkflowClient {
                 workflow_id.to_string(),
                 run_id.unwrap_or_default().to_string(),
             )),
+            query_consistency_level: None,
         };
         let response = self
             .service
@@ -1405,6 +1411,7 @@ impl WorkflowRun for WorkflowRunImpl {
                 wait_for_new_event: true,
                 history_event_filter_type: Some(HistoryEventFilterType::CloseEvent),
                 skip_archival: true,
+                query_consistency_level: None,
             };
 
             let response = self
