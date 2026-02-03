@@ -15,10 +15,10 @@ pub mod meta_api_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct MetaApiClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -62,8 +62,9 @@ pub mod meta_api_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             MetaApiClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -102,11 +103,18 @@ pub mod meta_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::HealthRequest>,
         ) -> std::result::Result<tonic::Response<super::HealthResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/uber.cadence.api.v1.MetaAPI/Health");
+            let path = http::uri::PathAndQuery::from_static(
+                "/uber.cadence.api.v1.MetaAPI/Health",
+            );
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("uber.cadence.api.v1.MetaAPI", "Health"));
@@ -156,7 +164,10 @@ pub struct Header {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SearchAttributes {
     #[prost(map = "string, message", tag = "1")]
-    pub indexed_fields: ::std::collections::HashMap<::prost::alloc::string::String, Payload>,
+    pub indexed_fields: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        Payload,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DataBlob {
@@ -201,7 +212,9 @@ pub struct RetryPolicy {
     pub maximum_attempts: i32,
     /// Non-Retryable errors. Will stop retrying if error type matches this list.
     #[prost(string, repeated, tag = "5")]
-    pub non_retryable_error_reasons: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub non_retryable_error_reasons: ::prost::alloc::vec::Vec<
+        ::prost::alloc::string::String,
+    >,
     /// Expiration time for the whole retry process.
     #[prost(message, optional, tag = "6")]
     pub expiration_interval: ::core::option::Option<::prost_types::Duration>,
@@ -241,11 +254,10 @@ pub struct ActiveClusterSelectionPolicy {
     #[prost(message, optional, tag = "4")]
     pub cluster_attribute: ::core::option::Option<ClusterAttribute>,
     /// todo (david.porter) to remove
-    #[prost(
-        oneof = "active_cluster_selection_policy::StrategyConfig",
-        tags = "2, 3"
-    )]
-    pub strategy_config: ::core::option::Option<active_cluster_selection_policy::StrategyConfig>,
+    #[prost(oneof = "active_cluster_selection_policy::StrategyConfig", tags = "2, 3")]
+    pub strategy_config: ::core::option::Option<
+        active_cluster_selection_policy::StrategyConfig,
+    >,
 }
 /// Nested message and enum types in `ActiveClusterSelectionPolicy`.
 pub mod active_cluster_selection_policy {
@@ -395,7 +407,9 @@ impl ActiveClusterSelectionStrategy {
         match value {
             "ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID" => Some(Self::Invalid),
             "ACTIVE_CLUSTER_SELECTION_STRATEGY_REGION_STICKY" => Some(Self::RegionSticky),
-            "ACTIVE_CLUSTER_SELECTION_STRATEGY_EXTERNAL_ENTITY" => Some(Self::ExternalEntity),
+            "ACTIVE_CLUSTER_SELECTION_STRATEGY_EXTERNAL_ENTITY" => {
+                Some(Self::ExternalEntity)
+            }
             _ => None,
         }
     }
@@ -474,8 +488,10 @@ pub struct TaskListStatus {
     pub task_id_block: ::core::option::Option<TaskIdBlock>,
     /// Mapping of isolation groups to metrics about that group within this partition
     #[prost(map = "string, message", tag = "6")]
-    pub isolation_group_metrics:
-        ::std::collections::HashMap<::prost::alloc::string::String, IsolationGroupMetrics>,
+    pub isolation_group_metrics: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        IsolationGroupMetrics,
+    >,
     /// The rate at which tasks are being added to this partition
     #[prost(double, tag = "7")]
     pub new_tasks_per_second: f64,
@@ -624,12 +640,16 @@ pub struct WorkflowExecutionInfo {
     #[prost(message, optional, tag = "14")]
     pub update_time: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(map = "string, string", tag = "15")]
-    pub partition_config:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub partition_config: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
     #[prost(enumeration = "CronOverlapPolicy", tag = "16")]
     pub cron_overlap_policy: i32,
     #[prost(message, optional, tag = "18")]
-    pub active_cluster_selection_policy: ::core::option::Option<ActiveClusterSelectionPolicy>,
+    pub active_cluster_selection_policy: ::core::option::Option<
+        ActiveClusterSelectionPolicy,
+    >,
     #[prost(string, tag = "19")]
     pub cron_schedule: ::prost::alloc::string::String,
     #[prost(enumeration = "WorkflowExecutionStatus", tag = "20")]
@@ -642,7 +662,9 @@ pub struct WorkflowExecutionConfiguration {
     #[prost(message, optional, tag = "1")]
     pub task_list: ::core::option::Option<TaskList>,
     #[prost(message, optional, tag = "2")]
-    pub execution_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub execution_start_to_close_timeout: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "3")]
     pub task_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
 }
@@ -856,7 +878,9 @@ impl WorkflowIdReusePolicy {
             }
             "WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE" => Some(Self::AllowDuplicate),
             "WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE" => Some(Self::RejectDuplicate),
-            "WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING" => Some(Self::TerminateIfRunning),
+            "WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING" => {
+                Some(Self::TerminateIfRunning)
+            }
             _ => None,
         }
     }
@@ -960,7 +984,9 @@ impl WorkflowExecutionCloseStatus {
             "WORKFLOW_EXECUTION_CLOSE_STATUS_FAILED" => Some(Self::Failed),
             "WORKFLOW_EXECUTION_CLOSE_STATUS_CANCELED" => Some(Self::Canceled),
             "WORKFLOW_EXECUTION_CLOSE_STATUS_TERMINATED" => Some(Self::Terminated),
-            "WORKFLOW_EXECUTION_CLOSE_STATUS_CONTINUED_AS_NEW" => Some(Self::ContinuedAsNew),
+            "WORKFLOW_EXECUTION_CLOSE_STATUS_CONTINUED_AS_NEW" => {
+                Some(Self::ContinuedAsNew)
+            }
             "WORKFLOW_EXECUTION_CLOSE_STATUS_TIMED_OUT" => Some(Self::TimedOut),
             _ => None,
         }
@@ -1402,7 +1428,9 @@ pub mod decision {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Attributes {
         #[prost(message, tag = "1")]
-        ScheduleActivityTaskDecisionAttributes(super::ScheduleActivityTaskDecisionAttributes),
+        ScheduleActivityTaskDecisionAttributes(
+            super::ScheduleActivityTaskDecisionAttributes,
+        ),
         #[prost(message, tag = "2")]
         StartTimerDecisionAttributes(super::StartTimerDecisionAttributes),
         #[prost(message, tag = "3")]
@@ -1410,7 +1438,9 @@ pub mod decision {
             super::CompleteWorkflowExecutionDecisionAttributes,
         ),
         #[prost(message, tag = "4")]
-        FailWorkflowExecutionDecisionAttributes(super::FailWorkflowExecutionDecisionAttributes),
+        FailWorkflowExecutionDecisionAttributes(
+            super::FailWorkflowExecutionDecisionAttributes,
+        ),
         #[prost(message, tag = "5")]
         RequestCancelActivityTaskDecisionAttributes(
             super::RequestCancelActivityTaskDecisionAttributes,
@@ -1418,7 +1448,9 @@ pub mod decision {
         #[prost(message, tag = "6")]
         CancelTimerDecisionAttributes(super::CancelTimerDecisionAttributes),
         #[prost(message, tag = "7")]
-        CancelWorkflowExecutionDecisionAttributes(super::CancelWorkflowExecutionDecisionAttributes),
+        CancelWorkflowExecutionDecisionAttributes(
+            super::CancelWorkflowExecutionDecisionAttributes,
+        ),
         #[prost(message, tag = "8")]
         RequestCancelExternalWorkflowExecutionDecisionAttributes(
             super::RequestCancelExternalWorkflowExecutionDecisionAttributes,
@@ -1531,7 +1563,9 @@ pub struct ContinueAsNewWorkflowExecutionDecisionAttributes {
     #[prost(message, optional, tag = "3")]
     pub input: ::core::option::Option<Payload>,
     #[prost(message, optional, tag = "4")]
-    pub execution_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub execution_start_to_close_timeout: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "5")]
     pub task_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
     #[prost(message, optional, tag = "6")]
@@ -1557,7 +1591,9 @@ pub struct ContinueAsNewWorkflowExecutionDecisionAttributes {
     #[prost(enumeration = "CronOverlapPolicy", tag = "16")]
     pub cron_overlap_policy: i32,
     #[prost(message, optional, tag = "17")]
-    pub active_cluster_selection_policy: ::core::option::Option<ActiveClusterSelectionPolicy>,
+    pub active_cluster_selection_policy: ::core::option::Option<
+        ActiveClusterSelectionPolicy,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StartChildWorkflowExecutionDecisionAttributes {
@@ -1572,7 +1608,9 @@ pub struct StartChildWorkflowExecutionDecisionAttributes {
     #[prost(message, optional, tag = "5")]
     pub input: ::core::option::Option<Payload>,
     #[prost(message, optional, tag = "6")]
-    pub execution_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub execution_start_to_close_timeout: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "7")]
     pub task_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
     #[prost(enumeration = "ParentClosePolicy", tag = "8")]
@@ -1594,7 +1632,9 @@ pub struct StartChildWorkflowExecutionDecisionAttributes {
     #[prost(enumeration = "CronOverlapPolicy", tag = "16")]
     pub cron_overlap_policy: i32,
     #[prost(message, optional, tag = "17")]
-    pub active_cluster_selection_policy: ::core::option::Option<ActiveClusterSelectionPolicy>,
+    pub active_cluster_selection_policy: ::core::option::Option<
+        ActiveClusterSelectionPolicy,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignalExternalWorkflowExecutionDecisionAttributes {
@@ -1642,29 +1682,45 @@ pub mod history_event {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Attributes {
         #[prost(message, tag = "5")]
-        WorkflowExecutionStartedEventAttributes(super::WorkflowExecutionStartedEventAttributes),
+        WorkflowExecutionStartedEventAttributes(
+            super::WorkflowExecutionStartedEventAttributes,
+        ),
         #[prost(message, tag = "6")]
-        WorkflowExecutionCompletedEventAttributes(super::WorkflowExecutionCompletedEventAttributes),
+        WorkflowExecutionCompletedEventAttributes(
+            super::WorkflowExecutionCompletedEventAttributes,
+        ),
         #[prost(message, tag = "7")]
-        WorkflowExecutionFailedEventAttributes(super::WorkflowExecutionFailedEventAttributes),
+        WorkflowExecutionFailedEventAttributes(
+            super::WorkflowExecutionFailedEventAttributes,
+        ),
         #[prost(message, tag = "8")]
-        WorkflowExecutionTimedOutEventAttributes(super::WorkflowExecutionTimedOutEventAttributes),
+        WorkflowExecutionTimedOutEventAttributes(
+            super::WorkflowExecutionTimedOutEventAttributes,
+        ),
         #[prost(message, tag = "9")]
-        DecisionTaskScheduledEventAttributes(super::DecisionTaskScheduledEventAttributes),
+        DecisionTaskScheduledEventAttributes(
+            super::DecisionTaskScheduledEventAttributes,
+        ),
         #[prost(message, tag = "10")]
         DecisionTaskStartedEventAttributes(super::DecisionTaskStartedEventAttributes),
         #[prost(message, tag = "11")]
-        DecisionTaskCompletedEventAttributes(super::DecisionTaskCompletedEventAttributes),
+        DecisionTaskCompletedEventAttributes(
+            super::DecisionTaskCompletedEventAttributes,
+        ),
         #[prost(message, tag = "12")]
         DecisionTaskTimedOutEventAttributes(super::DecisionTaskTimedOutEventAttributes),
         #[prost(message, tag = "13")]
         DecisionTaskFailedEventAttributes(super::DecisionTaskFailedEventAttributes),
         #[prost(message, tag = "14")]
-        ActivityTaskScheduledEventAttributes(super::ActivityTaskScheduledEventAttributes),
+        ActivityTaskScheduledEventAttributes(
+            super::ActivityTaskScheduledEventAttributes,
+        ),
         #[prost(message, tag = "15")]
         ActivityTaskStartedEventAttributes(super::ActivityTaskStartedEventAttributes),
         #[prost(message, tag = "16")]
-        ActivityTaskCompletedEventAttributes(super::ActivityTaskCompletedEventAttributes),
+        ActivityTaskCompletedEventAttributes(
+            super::ActivityTaskCompletedEventAttributes,
+        ),
         #[prost(message, tag = "17")]
         ActivityTaskFailedEventAttributes(super::ActivityTaskFailedEventAttributes),
         #[prost(message, tag = "18")]
@@ -1690,7 +1746,9 @@ pub mod history_event {
         #[prost(message, tag = "26")]
         MarkerRecordedEventAttributes(super::MarkerRecordedEventAttributes),
         #[prost(message, tag = "27")]
-        WorkflowExecutionSignaledEventAttributes(super::WorkflowExecutionSignaledEventAttributes),
+        WorkflowExecutionSignaledEventAttributes(
+            super::WorkflowExecutionSignaledEventAttributes,
+        ),
         #[prost(message, tag = "28")]
         WorkflowExecutionTerminatedEventAttributes(
             super::WorkflowExecutionTerminatedEventAttributes,
@@ -1700,7 +1758,9 @@ pub mod history_event {
             super::WorkflowExecutionCancelRequestedEventAttributes,
         ),
         #[prost(message, tag = "30")]
-        WorkflowExecutionCanceledEventAttributes(super::WorkflowExecutionCanceledEventAttributes),
+        WorkflowExecutionCanceledEventAttributes(
+            super::WorkflowExecutionCanceledEventAttributes,
+        ),
         #[prost(message, tag = "31")]
         RequestCancelExternalWorkflowExecutionInitiatedEventAttributes(
             super::RequestCancelExternalWorkflowExecutionInitiatedEventAttributes,
@@ -1778,7 +1838,9 @@ pub struct WorkflowExecutionStartedEventAttributes {
     #[prost(message, optional, tag = "4")]
     pub input: ::core::option::Option<Payload>,
     #[prost(message, optional, tag = "5")]
-    pub execution_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub execution_start_to_close_timeout: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "6")]
     pub task_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
     #[prost(string, tag = "7")]
@@ -1818,14 +1880,18 @@ pub struct WorkflowExecutionStartedEventAttributes {
     #[prost(message, optional, tag = "23")]
     pub first_scheduled_time: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(map = "string, string", tag = "24")]
-    pub partition_config:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub partition_config: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
     #[prost(string, tag = "25")]
     pub request_id: ::prost::alloc::string::String,
     #[prost(enumeration = "CronOverlapPolicy", tag = "26")]
     pub cron_overlap_policy: i32,
     #[prost(message, optional, tag = "27")]
-    pub active_cluster_selection_policy: ::core::option::Option<ActiveClusterSelectionPolicy>,
+    pub active_cluster_selection_policy: ::core::option::Option<
+        ActiveClusterSelectionPolicy,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WorkflowExecutionCompletedEventAttributes {
@@ -2078,7 +2144,9 @@ pub struct WorkflowExecutionContinuedAsNewEventAttributes {
     #[prost(message, optional, tag = "4")]
     pub input: ::core::option::Option<Payload>,
     #[prost(message, optional, tag = "5")]
-    pub execution_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub execution_start_to_close_timeout: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "6")]
     pub task_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
     #[prost(int64, tag = "7")]
@@ -2100,7 +2168,9 @@ pub struct WorkflowExecutionContinuedAsNewEventAttributes {
     #[prost(enumeration = "CronOverlapPolicy", tag = "15")]
     pub cron_overlap_policy: i32,
     #[prost(message, optional, tag = "16")]
-    pub active_cluster_selection_policy: ::core::option::Option<ActiveClusterSelectionPolicy>,
+    pub active_cluster_selection_policy: ::core::option::Option<
+        ActiveClusterSelectionPolicy,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WorkflowExecutionCancelRequestedEventAttributes {
@@ -2251,7 +2321,9 @@ pub struct StartChildWorkflowExecutionInitiatedEventAttributes {
     #[prost(message, optional, tag = "5")]
     pub input: ::core::option::Option<Payload>,
     #[prost(message, optional, tag = "6")]
-    pub execution_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub execution_start_to_close_timeout: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "7")]
     pub task_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
     #[prost(enumeration = "ParentClosePolicy", tag = "8")]
@@ -2281,7 +2353,9 @@ pub struct StartChildWorkflowExecutionInitiatedEventAttributes {
     #[prost(enumeration = "CronOverlapPolicy", tag = "21")]
     pub cron_overlap_policy: i32,
     #[prost(message, optional, tag = "22")]
-    pub active_cluster_selection_policy: ::core::option::Option<ActiveClusterSelectionPolicy>,
+    pub active_cluster_selection_policy: ::core::option::Option<
+        ActiveClusterSelectionPolicy,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StartChildWorkflowExecutionFailedEventAttributes {
@@ -2491,7 +2565,9 @@ impl QueryRejectCondition {
         match value {
             "QUERY_REJECT_CONDITION_INVALID" => Some(Self::Invalid),
             "QUERY_REJECT_CONDITION_NOT_OPEN" => Some(Self::NotOpen),
-            "QUERY_REJECT_CONDITION_NOT_COMPLETED_CLEANLY" => Some(Self::NotCompletedCleanly),
+            "QUERY_REJECT_CONDITION_NOT_COMPLETED_CLEANLY" => {
+                Some(Self::NotCompletedCleanly)
+            }
             _ => None,
         }
     }
@@ -2567,7 +2643,10 @@ pub struct PollForDecisionTaskResponse {
     #[prost(message, optional, tag = "13")]
     pub started_time: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(map = "string, message", tag = "14")]
-    pub queries: ::std::collections::HashMap<::prost::alloc::string::String, WorkflowQuery>,
+    pub queries: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        WorkflowQuery,
+    >,
     #[prost(int64, tag = "15")]
     pub next_event_id: i64,
     #[prost(int64, tag = "16")]
@@ -2594,16 +2673,20 @@ pub struct RespondDecisionTaskCompletedRequest {
     #[prost(string, tag = "8")]
     pub binary_checksum: ::prost::alloc::string::String,
     #[prost(map = "string, message", tag = "9")]
-    pub query_results:
-        ::std::collections::HashMap<::prost::alloc::string::String, WorkflowQueryResult>,
+    pub query_results: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        WorkflowQueryResult,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RespondDecisionTaskCompletedResponse {
     #[prost(message, optional, tag = "1")]
     pub decision_task: ::core::option::Option<PollForDecisionTaskResponse>,
     #[prost(map = "string, message", tag = "2")]
-    pub activities_to_dispatch_locally:
-        ::std::collections::HashMap<::prost::alloc::string::String, ActivityLocalDispatchInfo>,
+    pub activities_to_dispatch_locally: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ActivityLocalDispatchInfo,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RespondDecisionTaskFailedRequest {
@@ -2812,10 +2895,10 @@ pub mod worker_api_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     /// WorkerAPI is exposed to provide support for long running applications.  Such applications are
     /// expected to have a worker which regularly polls for DecisionTask and ActivityTask from the WorkflowService.  For each
     /// DecisionTask, application is expected to process the history of events for that session and respond back with next
@@ -2864,8 +2947,9 @@ pub mod worker_api_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             WorkerApiClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -2908,20 +2992,30 @@ pub mod worker_api_client {
         pub async fn poll_for_decision_task(
             &mut self,
             request: impl tonic::IntoRequest<super::PollForDecisionTaskRequest>,
-        ) -> std::result::Result<tonic::Response<super::PollForDecisionTaskResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::PollForDecisionTaskResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/PollForDecisionTask",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "PollForDecisionTask",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "PollForDecisionTask",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondDecisionTaskCompleted is called by application worker to complete a DecisionTask handed as a result of
@@ -2937,18 +3031,26 @@ pub mod worker_api_client {
             tonic::Response<super::RespondDecisionTaskCompletedResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondDecisionTaskCompleted",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondDecisionTaskCompleted",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondDecisionTaskCompleted",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondDecisionTaskFailed is called by application worker to indicate failure.  This results in
@@ -2962,18 +3064,26 @@ pub mod worker_api_client {
             tonic::Response<super::RespondDecisionTaskFailedResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondDecisionTaskFailed",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondDecisionTaskFailed",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondDecisionTaskFailed",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// PollForActivityTask is called by application worker to process ActivityTask from a specific taskList.  ActivityTask
@@ -2986,20 +3096,30 @@ pub mod worker_api_client {
         pub async fn poll_for_activity_task(
             &mut self,
             request: impl tonic::IntoRequest<super::PollForActivityTaskRequest>,
-        ) -> std::result::Result<tonic::Response<super::PollForActivityTaskResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::PollForActivityTaskResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/PollForActivityTask",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "PollForActivityTask",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "PollForActivityTask",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondActivityTaskCompleted is called by application worker when it is done processing an ActivityTask.  It will
@@ -3014,18 +3134,26 @@ pub mod worker_api_client {
             tonic::Response<super::RespondActivityTaskCompletedResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondActivityTaskCompleted",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondActivityTaskCompleted",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondActivityTaskCompleted",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondActivityTaskCompletedByID is called by application worker when it is done processing an ActivityTask.
@@ -3035,23 +3163,33 @@ pub mod worker_api_client {
         /// if the these IDs are not valid anymore due to activity timeout.
         pub async fn respond_activity_task_completed_by_id(
             &mut self,
-            request: impl tonic::IntoRequest<super::RespondActivityTaskCompletedByIdRequest>,
+            request: impl tonic::IntoRequest<
+                super::RespondActivityTaskCompletedByIdRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<super::RespondActivityTaskCompletedByIdResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondActivityTaskCompletedByID",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondActivityTaskCompletedByID",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondActivityTaskCompletedByID",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondActivityTaskFailed is called by application worker when it is done processing an ActivityTask.  It will
@@ -3066,18 +3204,26 @@ pub mod worker_api_client {
             tonic::Response<super::RespondActivityTaskFailedResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondActivityTaskFailed",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondActivityTaskFailed",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondActivityTaskFailed",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondActivityTaskFailedByID is called by application worker when it is done processing an ActivityTask.
@@ -3092,18 +3238,26 @@ pub mod worker_api_client {
             tonic::Response<super::RespondActivityTaskFailedByIdResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondActivityTaskFailedByID",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondActivityTaskFailedByID",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondActivityTaskFailedByID",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondActivityTaskCanceled is called by application worker when it is successfully canceled an ActivityTask.
@@ -3118,18 +3272,26 @@ pub mod worker_api_client {
             tonic::Response<super::RespondActivityTaskCanceledResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondActivityTaskCanceled",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondActivityTaskCanceled",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondActivityTaskCanceled",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondActivityTaskCanceledByID is called by application worker when it is successfully canceled an ActivityTask.
@@ -3139,23 +3301,33 @@ pub mod worker_api_client {
         /// if the these IDs are not valid anymore due to activity timeout.
         pub async fn respond_activity_task_canceled_by_id(
             &mut self,
-            request: impl tonic::IntoRequest<super::RespondActivityTaskCanceledByIdRequest>,
+            request: impl tonic::IntoRequest<
+                super::RespondActivityTaskCanceledByIdRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<super::RespondActivityTaskCanceledByIdResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondActivityTaskCanceledByID",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondActivityTaskCanceledByID",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondActivityTaskCanceledByID",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RecordActivityTaskHeartbeat is called by application worker while it is processing an ActivityTask.  If worker fails
@@ -3170,18 +3342,26 @@ pub mod worker_api_client {
             tonic::Response<super::RecordActivityTaskHeartbeatResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RecordActivityTaskHeartbeat",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RecordActivityTaskHeartbeat",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RecordActivityTaskHeartbeat",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RecordActivityTaskHeartbeatByID is called by application worker while it is processing an ActivityTask.  If worker
@@ -3191,23 +3371,33 @@ pub mod worker_api_client {
         /// using 'taskToken' like in RecordActivityTaskHeartbeat, use Domain, WorkflowID and ActivityID.
         pub async fn record_activity_task_heartbeat_by_id(
             &mut self,
-            request: impl tonic::IntoRequest<super::RecordActivityTaskHeartbeatByIdRequest>,
+            request: impl tonic::IntoRequest<
+                super::RecordActivityTaskHeartbeatByIdRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<super::RecordActivityTaskHeartbeatByIdResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RecordActivityTaskHeartbeatByID",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RecordActivityTaskHeartbeatByID",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RecordActivityTaskHeartbeatByID",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RespondQueryTaskCompleted is called by application worker to complete a QueryTask (which is a DecisionTask for query)
@@ -3220,18 +3410,26 @@ pub mod worker_api_client {
             tonic::Response<super::RespondQueryTaskCompletedResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/RespondQueryTaskCompleted",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "RespondQueryTaskCompleted",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "RespondQueryTaskCompleted",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// Reset the sticky tasklist related information in mutable state of a given workflow.
@@ -3244,20 +3442,30 @@ pub mod worker_api_client {
         pub async fn reset_sticky_task_list(
             &mut self,
             request: impl tonic::IntoRequest<super::ResetStickyTaskListRequest>,
-        ) -> std::result::Result<tonic::Response<super::ResetStickyTaskListResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::ResetStickyTaskListResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkerAPI/ResetStickyTaskList",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkerAPI",
-                "ResetStickyTaskList",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkerAPI",
+                        "ResetStickyTaskList",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
     }
@@ -3275,10 +3483,14 @@ pub struct Domain {
     #[prost(string, tag = "5")]
     pub owner_email: ::prost::alloc::string::String,
     #[prost(map = "string, string", tag = "6")]
-    pub data:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub data: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
     #[prost(message, optional, tag = "7")]
-    pub workflow_execution_retention_period: ::core::option::Option<::prost_types::Duration>,
+    pub workflow_execution_retention_period: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "8")]
     pub bad_binaries: ::core::option::Option<BadBinaries>,
     #[prost(enumeration = "ArchivalStatus", tag = "9")]
@@ -3314,7 +3526,10 @@ pub struct ClusterReplicationConfiguration {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BadBinaries {
     #[prost(map = "string, message", tag = "1")]
-    pub binaries: ::std::collections::HashMap<::prost::alloc::string::String, BadBinaryInfo>,
+    pub binaries: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        BadBinaryInfo,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BadBinaryInfo {
@@ -3343,11 +3558,15 @@ pub struct FailoverInfo {
 pub struct ActiveClusters {
     /// todo (david.porter) to remove as this is no longer used
     #[prost(map = "string, message", tag = "1")]
-    pub region_to_cluster:
-        ::std::collections::HashMap<::prost::alloc::string::String, ActiveClusterInfo>,
+    pub region_to_cluster: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ActiveClusterInfo,
+    >,
     #[prost(map = "string, message", tag = "2")]
-    pub active_clusters_by_cluster_attribute:
-        ::std::collections::HashMap<::prost::alloc::string::String, ClusterAttributeScope>,
+    pub active_clusters_by_cluster_attribute: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ClusterAttributeScope,
+    >,
 }
 /// ClusterAttributeScope refers to the domain's record of what cluster attributes
 /// are allocated to which clusters, indexed by the cluster attribute key (for example region, city)
@@ -3355,8 +3574,10 @@ pub struct ActiveClusters {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClusterAttributeScope {
     #[prost(map = "string, message", tag = "1")]
-    pub cluster_attributes:
-        ::std::collections::HashMap<::prost::alloc::string::String, ActiveClusterInfo>,
+    pub cluster_attributes: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ActiveClusterInfo,
+    >,
 }
 /// ActiveClusterInfo contains information about the cluster that's active for
 /// the given cluster-attribute and the failover version, indicating how recent
@@ -3534,7 +3755,9 @@ pub struct StartWorkflowExecutionRequest {
     #[prost(message, optional, tag = "5")]
     pub input: ::core::option::Option<Payload>,
     #[prost(message, optional, tag = "6")]
-    pub execution_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
+    pub execution_start_to_close_timeout: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "7")]
     pub task_start_to_close_timeout: ::core::option::Option<::prost_types::Duration>,
     #[prost(string, tag = "8")]
@@ -3562,7 +3785,9 @@ pub struct StartWorkflowExecutionRequest {
     #[prost(enumeration = "CronOverlapPolicy", tag = "19")]
     pub cron_overlap_policy: i32,
     #[prost(message, optional, tag = "20")]
-    pub active_cluster_selection_policy: ::core::option::Option<ActiveClusterSelectionPolicy>,
+    pub active_cluster_selection_policy: ::core::option::Option<
+        ActiveClusterSelectionPolicy,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StartWorkflowExecutionResponse {
@@ -3752,11 +3977,15 @@ pub struct GetTaskListsByDomainRequest {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetTaskListsByDomainResponse {
     #[prost(map = "string, message", tag = "1")]
-    pub decision_task_list_map:
-        ::std::collections::HashMap<::prost::alloc::string::String, DescribeTaskListResponse>,
+    pub decision_task_list_map: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        DescribeTaskListResponse,
+    >,
     #[prost(map = "string, message", tag = "2")]
-    pub activity_task_list_map:
-        ::std::collections::HashMap<::prost::alloc::string::String, DescribeTaskListResponse>,
+    pub activity_task_list_map: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        DescribeTaskListResponse,
+    >,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListTaskListPartitionsRequest {
@@ -3768,9 +3997,13 @@ pub struct ListTaskListPartitionsRequest {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListTaskListPartitionsResponse {
     #[prost(message, repeated, tag = "1")]
-    pub activity_task_list_partitions: ::prost::alloc::vec::Vec<TaskListPartitionMetadata>,
+    pub activity_task_list_partitions: ::prost::alloc::vec::Vec<
+        TaskListPartitionMetadata,
+    >,
     #[prost(message, repeated, tag = "2")]
-    pub decision_task_list_partitions: ::prost::alloc::vec::Vec<TaskListPartitionMetadata>,
+    pub decision_task_list_partitions: ::prost::alloc::vec::Vec<
+        TaskListPartitionMetadata,
+    >,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetClusterInfoRequest {}
@@ -3831,10 +4064,10 @@ pub mod workflow_api_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct WorkflowApiClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -3878,8 +4111,9 @@ pub mod workflow_api_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             WorkflowApiClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -3923,18 +4157,26 @@ pub mod workflow_api_client {
             tonic::Response<super::RestartWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/RestartWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "RestartWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "RestartWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// StartWorkflowExecution starts a new long running workflow instance.  It will create the instance with
@@ -3948,18 +4190,26 @@ pub mod workflow_api_client {
             tonic::Response<super::StartWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/StartWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "StartWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "StartWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// StartWorkflowExecutionAsync starts a new long running workflow instance asynchronously. It will push a StartWorkflowExecutionRequest to a queue
@@ -3971,18 +4221,26 @@ pub mod workflow_api_client {
             tonic::Response<super::StartWorkflowExecutionAsyncResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/StartWorkflowExecutionAsync",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "StartWorkflowExecutionAsync",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "StartWorkflowExecutionAsync",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// SignalWorkflowExecution is used to send a signal event to running workflow execution.  This results in
@@ -3994,18 +4252,26 @@ pub mod workflow_api_client {
             tonic::Response<super::SignalWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/SignalWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "SignalWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "SignalWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// SignalWithStartWorkflowExecution is used to ensure sending signal to a workflow.  If the workflow is running,
@@ -4014,46 +4280,66 @@ pub mod workflow_api_client {
         /// WorkflowExecutionSignaled events being recorded in history, and a decision task being created for the execution.
         pub async fn signal_with_start_workflow_execution(
             &mut self,
-            request: impl tonic::IntoRequest<super::SignalWithStartWorkflowExecutionRequest>,
+            request: impl tonic::IntoRequest<
+                super::SignalWithStartWorkflowExecutionRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<super::SignalWithStartWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/SignalWithStartWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "SignalWithStartWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "SignalWithStartWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// SignalWithStartWorkflowExecutionAsync is used to ensure sending signal to a workflow asynchronously.  It will push a SignalWithStartWorkflowExecutionRequest to a queue
         /// and immediately return a response. The request will be processed by a separate consumer eventually.
         pub async fn signal_with_start_workflow_execution_async(
             &mut self,
-            request: impl tonic::IntoRequest<super::SignalWithStartWorkflowExecutionAsyncRequest>,
+            request: impl tonic::IntoRequest<
+                super::SignalWithStartWorkflowExecutionAsyncRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<super::SignalWithStartWorkflowExecutionAsyncResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/SignalWithStartWorkflowExecutionAsync",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "SignalWithStartWorkflowExecutionAsync",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "SignalWithStartWorkflowExecutionAsync",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ResetWorkflowExecution reset an existing workflow execution to DecisionTaskCompleted event(exclusive).
@@ -4065,41 +4351,59 @@ pub mod workflow_api_client {
             tonic::Response<super::ResetWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/ResetWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "ResetWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "ResetWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RequestCancelWorkflowExecution requests cancellation of a workflow instance.
         /// It allows workflow to properly clean up and gracefully close.
         pub async fn request_cancel_workflow_execution(
             &mut self,
-            request: impl tonic::IntoRequest<super::RequestCancelWorkflowExecutionRequest>,
+            request: impl tonic::IntoRequest<
+                super::RequestCancelWorkflowExecutionRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<super::RequestCancelWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/RequestCancelWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "RequestCancelWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "RequestCancelWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// TerminateWorkflowExecution terminates an existing workflow execution by recording WorkflowExecutionTerminated event
@@ -4111,18 +4415,26 @@ pub mod workflow_api_client {
             tonic::Response<super::TerminateWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/TerminateWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "TerminateWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "TerminateWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// DescribeWorkflowExecution returns information about the specified workflow execution.
@@ -4133,38 +4445,53 @@ pub mod workflow_api_client {
             tonic::Response<super::DescribeWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/DescribeWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "DescribeWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "DescribeWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// QueryWorkflow returns query result for a specified workflow execution.
         pub async fn query_workflow(
             &mut self,
             request: impl tonic::IntoRequest<super::QueryWorkflowRequest>,
-        ) -> std::result::Result<tonic::Response<super::QueryWorkflowResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::QueryWorkflowResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/QueryWorkflow",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "QueryWorkflow",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.WorkflowAPI", "QueryWorkflow"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// DescribeTaskList returns information about the target tasklist, right now this API returns the
@@ -4172,40 +4499,60 @@ pub mod workflow_api_client {
         pub async fn describe_task_list(
             &mut self,
             request: impl tonic::IntoRequest<super::DescribeTaskListRequest>,
-        ) -> std::result::Result<tonic::Response<super::DescribeTaskListResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::DescribeTaskListResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/DescribeTaskList",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "DescribeTaskList",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "DescribeTaskList",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// GetTaskListsByDomain returns all task lists for a given domain
         pub async fn get_task_lists_by_domain(
             &mut self,
             request: impl tonic::IntoRequest<super::GetTaskListsByDomainRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetTaskListsByDomainResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::GetTaskListsByDomainResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/GetTaskListsByDomain",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "GetTaskListsByDomain",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "GetTaskListsByDomain",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ListTaskListPartitions returns information about task list partitions.
@@ -4216,38 +4563,53 @@ pub mod workflow_api_client {
             tonic::Response<super::ListTaskListPartitionsResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/ListTaskListPartitions",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "ListTaskListPartitions",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "ListTaskListPartitions",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// GetClusterInfo returns information about cadence cluster.
         pub async fn get_cluster_info(
             &mut self,
             request: impl tonic::IntoRequest<super::GetClusterInfoRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetClusterInfoResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::GetClusterInfoResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/GetClusterInfo",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "GetClusterInfo",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.WorkflowAPI", "GetClusterInfo"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// Returns the history of specified workflow execution.  It fails with 'EntityNotExistError' if specified workflow
@@ -4259,38 +4621,56 @@ pub mod workflow_api_client {
             tonic::Response<super::GetWorkflowExecutionHistoryResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/GetWorkflowExecutionHistory",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "GetWorkflowExecutionHistory",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "GetWorkflowExecutionHistory",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// RefreshWorkflowTasks refreshes all tasks of a workflow.
         pub async fn refresh_workflow_tasks(
             &mut self,
             request: impl tonic::IntoRequest<super::RefreshWorkflowTasksRequest>,
-        ) -> std::result::Result<tonic::Response<super::RefreshWorkflowTasksResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::RefreshWorkflowTasksResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/RefreshWorkflowTasks",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "RefreshWorkflowTasks",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "RefreshWorkflowTasks",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// Diagnoses a workflow execution and provides a report as response
@@ -4301,18 +4681,26 @@ pub mod workflow_api_client {
             tonic::Response<super::DiagnoseWorkflowExecutionResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.WorkflowAPI/DiagnoseWorkflowExecution",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.WorkflowAPI",
-                "DiagnoseWorkflowExecution",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.WorkflowAPI",
+                        "DiagnoseWorkflowExecution",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
     }
@@ -4405,10 +4793,7 @@ pub struct ListOpenWorkflowExecutionsRequest {
     pub next_page_token: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "4")]
     pub start_time_filter: ::core::option::Option<StartTimeFilter>,
-    #[prost(
-        oneof = "list_open_workflow_executions_request::Filters",
-        tags = "5, 6"
-    )]
+    #[prost(oneof = "list_open_workflow_executions_request::Filters", tags = "5, 6")]
     pub filters: ::core::option::Option<list_open_workflow_executions_request::Filters>,
 }
 /// Nested message and enum types in `ListOpenWorkflowExecutionsRequest`.
@@ -4442,7 +4827,9 @@ pub struct ListClosedWorkflowExecutionsRequest {
         oneof = "list_closed_workflow_executions_request::Filters",
         tags = "5, 6, 7"
     )]
-    pub filters: ::core::option::Option<list_closed_workflow_executions_request::Filters>,
+    pub filters: ::core::option::Option<
+        list_closed_workflow_executions_request::Filters,
+    >,
 }
 /// Nested message and enum types in `ListClosedWorkflowExecutionsRequest`.
 pub mod list_closed_workflow_executions_request {
@@ -4525,10 +4912,10 @@ pub mod visibility_api_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct VisibilityApiClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -4572,8 +4959,9 @@ pub mod visibility_api_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             VisibilityApiClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -4616,18 +5004,26 @@ pub mod visibility_api_client {
             tonic::Response<super::ListWorkflowExecutionsResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.VisibilityAPI/ListWorkflowExecutions",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.VisibilityAPI",
-                "ListWorkflowExecutions",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.VisibilityAPI",
+                        "ListWorkflowExecutions",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ListOpenWorkflowExecutions is a visibility API to list the open executions in a specific domain.
@@ -4638,18 +5034,26 @@ pub mod visibility_api_client {
             tonic::Response<super::ListOpenWorkflowExecutionsResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.VisibilityAPI/ListOpenWorkflowExecutions",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.VisibilityAPI",
-                "ListOpenWorkflowExecutions",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.VisibilityAPI",
+                        "ListOpenWorkflowExecutions",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ListClosedWorkflowExecutions is a visibility API to list the closed executions in a specific domain.
@@ -4660,40 +5064,58 @@ pub mod visibility_api_client {
             tonic::Response<super::ListClosedWorkflowExecutionsResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.VisibilityAPI/ListClosedWorkflowExecutions",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.VisibilityAPI",
-                "ListClosedWorkflowExecutions",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.VisibilityAPI",
+                        "ListClosedWorkflowExecutions",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ListArchivedWorkflowExecutions is a visibility API to list archived workflow executions in a specific domain.
         pub async fn list_archived_workflow_executions(
             &mut self,
-            request: impl tonic::IntoRequest<super::ListArchivedWorkflowExecutionsRequest>,
+            request: impl tonic::IntoRequest<
+                super::ListArchivedWorkflowExecutionsRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<super::ListArchivedWorkflowExecutionsResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.VisibilityAPI/ListArchivedWorkflowExecutions",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.VisibilityAPI",
-                "ListArchivedWorkflowExecutions",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.VisibilityAPI",
+                        "ListArchivedWorkflowExecutions",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ScanWorkflowExecutions is a visibility API to list large amount of workflow executions in a specific domain without order.
@@ -4704,18 +5126,26 @@ pub mod visibility_api_client {
             tonic::Response<super::ScanWorkflowExecutionsResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.VisibilityAPI/ScanWorkflowExecutions",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.VisibilityAPI",
-                "ScanWorkflowExecutions",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.VisibilityAPI",
+                        "ScanWorkflowExecutions",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// CountWorkflowExecutions is a visibility API to count of workflow executions in a specific domain.
@@ -4726,38 +5156,56 @@ pub mod visibility_api_client {
             tonic::Response<super::CountWorkflowExecutionsResponse>,
             tonic::Status,
         > {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.VisibilityAPI/CountWorkflowExecutions",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.VisibilityAPI",
-                "CountWorkflowExecutions",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.VisibilityAPI",
+                        "CountWorkflowExecutions",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// GetSearchAttributes is a visibility API to get all legal keys that could be used in list APIs.
         pub async fn get_search_attributes(
             &mut self,
             request: impl tonic::IntoRequest<super::GetSearchAttributesRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetSearchAttributesResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::GetSearchAttributesResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.VisibilityAPI/GetSearchAttributes",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.VisibilityAPI",
-                "GetSearchAttributes",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.VisibilityAPI",
+                        "GetSearchAttributes",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
     }
@@ -4773,14 +5221,18 @@ pub struct RegisterDomainRequest {
     #[prost(string, tag = "4")]
     pub owner_email: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "5")]
-    pub workflow_execution_retention_period: ::core::option::Option<::prost_types::Duration>,
+    pub workflow_execution_retention_period: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, repeated, tag = "6")]
     pub clusters: ::prost::alloc::vec::Vec<ClusterReplicationConfiguration>,
     #[prost(string, tag = "7")]
     pub active_cluster_name: ::prost::alloc::string::String,
     #[prost(map = "string, string", tag = "8")]
-    pub data:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub data: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
     #[prost(bool, tag = "9")]
     pub is_global_domain: bool,
     #[prost(enumeration = "ArchivalStatus", tag = "10")]
@@ -4793,8 +5245,10 @@ pub struct RegisterDomainRequest {
     pub visibility_archival_uri: ::prost::alloc::string::String,
     /// todo (david.porter) to remove as this is no longer used
     #[prost(map = "string, string", tag = "14")]
-    pub active_clusters_by_region:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub active_clusters_by_region: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
     #[prost(message, optional, tag = "15")]
     pub active_clusters: ::core::option::Option<ActiveClusters>,
 }
@@ -4814,10 +5268,14 @@ pub struct UpdateDomainRequest {
     #[prost(string, tag = "12")]
     pub owner_email: ::prost::alloc::string::String,
     #[prost(map = "string, string", tag = "13")]
-    pub data:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub data: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
     #[prost(message, optional, tag = "14")]
-    pub workflow_execution_retention_period: ::core::option::Option<::prost_types::Duration>,
+    pub workflow_execution_retention_period: ::core::option::Option<
+        ::prost_types::Duration,
+    >,
     #[prost(message, optional, tag = "15")]
     pub bad_binaries: ::core::option::Option<BadBinaries>,
     #[prost(enumeration = "ArchivalStatus", tag = "16")]
@@ -4975,10 +5433,10 @@ pub mod domain_api_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct DomainApiClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -5022,8 +5480,9 @@ pub mod domain_api_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             DomainApiClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -5065,98 +5524,133 @@ pub mod domain_api_client {
         pub async fn register_domain(
             &mut self,
             request: impl tonic::IntoRequest<super::RegisterDomainRequest>,
-        ) -> std::result::Result<tonic::Response<super::RegisterDomainResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::RegisterDomainResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.DomainAPI/RegisterDomain",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "RegisterDomain",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.DomainAPI", "RegisterDomain"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// DescribeDomain returns the information and configuration for a registered domain.
         pub async fn describe_domain(
             &mut self,
             request: impl tonic::IntoRequest<super::DescribeDomainRequest>,
-        ) -> std::result::Result<tonic::Response<super::DescribeDomainResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::DescribeDomainResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.DomainAPI/DescribeDomain",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "DescribeDomain",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.DomainAPI", "DescribeDomain"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ListDomains returns the information and configuration for all domains.
         pub async fn list_domains(
             &mut self,
             request: impl tonic::IntoRequest<super::ListDomainsRequest>,
-        ) -> std::result::Result<tonic::Response<super::ListDomainsResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::ListDomainsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/uber.cadence.api.v1.DomainAPI/ListDomains");
+            let path = http::uri::PathAndQuery::from_static(
+                "/uber.cadence.api.v1.DomainAPI/ListDomains",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "ListDomains",
-            ));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("uber.cadence.api.v1.DomainAPI", "ListDomains"));
             self.inner.unary(req, path, codec).await
         }
         /// UpdateDomain is used to update the information and configuration for a registered domain.
         pub async fn update_domain(
             &mut self,
             request: impl tonic::IntoRequest<super::UpdateDomainRequest>,
-        ) -> std::result::Result<tonic::Response<super::UpdateDomainResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::UpdateDomainResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/uber.cadence.api.v1.DomainAPI/UpdateDomain");
+            let path = http::uri::PathAndQuery::from_static(
+                "/uber.cadence.api.v1.DomainAPI/UpdateDomain",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "UpdateDomain",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.DomainAPI", "UpdateDomain"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// FailoverDomain is used to failover a registered domain to a different cluster
         pub async fn failover_domain(
             &mut self,
             request: impl tonic::IntoRequest<super::FailoverDomainRequest>,
-        ) -> std::result::Result<tonic::Response<super::FailoverDomainResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::FailoverDomainResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.DomainAPI/FailoverDomain",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "FailoverDomain",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.DomainAPI", "FailoverDomain"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// DeprecateDomain us used to update status of a registered domain to DEPRECATED.  Once the domain is deprecated
@@ -5165,20 +5659,27 @@ pub mod domain_api_client {
         pub async fn deprecate_domain(
             &mut self,
             request: impl tonic::IntoRequest<super::DeprecateDomainRequest>,
-        ) -> std::result::Result<tonic::Response<super::DeprecateDomainResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::DeprecateDomainResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.DomainAPI/DeprecateDomain",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "DeprecateDomain",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.DomainAPI", "DeprecateDomain"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// DeleteDomain permanently removes a domain record. This operation:
@@ -5189,39 +5690,57 @@ pub mod domain_api_client {
         pub async fn delete_domain(
             &mut self,
             request: impl tonic::IntoRequest<super::DeleteDomainRequest>,
-        ) -> std::result::Result<tonic::Response<super::DeleteDomainResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::DeleteDomainResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/uber.cadence.api.v1.DomainAPI/DeleteDomain");
+            let path = http::uri::PathAndQuery::from_static(
+                "/uber.cadence.api.v1.DomainAPI/DeleteDomain",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "DeleteDomain",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("uber.cadence.api.v1.DomainAPI", "DeleteDomain"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// ListFailoverHistory returns the history of failover events for a domain.
         pub async fn list_failover_history(
             &mut self,
             request: impl tonic::IntoRequest<super::ListFailoverHistoryRequest>,
-        ) -> std::result::Result<tonic::Response<super::ListFailoverHistoryResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::ListFailoverHistoryResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/uber.cadence.api.v1.DomainAPI/ListFailoverHistory",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "uber.cadence.api.v1.DomainAPI",
-                "ListFailoverHistory",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "uber.cadence.api.v1.DomainAPI",
+                        "ListFailoverHistory",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
     }
