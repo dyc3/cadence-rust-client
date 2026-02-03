@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   cassandra:
@@ -41,7 +41,7 @@ services:
     ports:
       - "8088:8088"
     environment:
-      - CADENCE_TCHANNEL_PEERS=cadence:7933
+      - CADENCE_GRPC_PEERS=cadence:7833
     depends_on:
       - cadence
     networks:
