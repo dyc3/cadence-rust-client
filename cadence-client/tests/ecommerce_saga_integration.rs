@@ -637,7 +637,7 @@ async fn test_order_saga_payment_failure_with_compensation() {
         &domain_name,
         &workflow_id,
         &response.run_id,
-        Duration::from_secs(60),
+        Duration::from_secs(10),
     )
     .await;
 
@@ -783,7 +783,7 @@ async fn test_order_saga_success_path() {
         &domain_name,
         &workflow_id,
         &response.run_id,
-        Duration::from_secs(60),
+        Duration::from_secs(10),
     )
     .await;
 
