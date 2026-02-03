@@ -145,7 +145,7 @@ pub async fn process_payment_activity(
     }
 
     let transaction_id = format!("txn_{}", uuid::Uuid::new_v4());
-    
+
     Ok(PaymentResult {
         transaction_id,
         order_id: input.order_id.clone(),
@@ -169,7 +169,7 @@ pub async fn refund_payment_activity(
     ctx.record_heartbeat(None);
 
     let transaction_id = format!("ref_{}", uuid::Uuid::new_v4());
-    
+
     Ok(PaymentResult {
         transaction_id,
         order_id: input.order_id.clone(),
@@ -186,22 +186,22 @@ pub async fn reserve_inventory_activity(
     info!("Reserving inventory for order: {}", input.order_id);
 
     let mut reserved_items = Vec::new();
-    
+
     for item in &input.items {
         // Simulate inventory check and reservation
         tokio::time::sleep(Duration::from_millis(50)).await;
-        
+
         reserved_items.push(ReservedItem {
             product_id: item.product_id.clone(),
             quantity: item.quantity,
             warehouse_id: format!("wh_{}", &uuid::Uuid::new_v4().to_string()[..8]),
         });
-        
+
         ctx.record_heartbeat(None);
     }
 
     let reservation_id = format!("res_{}", uuid::Uuid::new_v4());
-    
+
     Ok(InventoryResult {
         reservation_id,
         order_id: input.order_id.clone(),
@@ -216,7 +216,10 @@ pub async fn release_inventory_activity(
     reservation_id: String,
     order_id: String,
 ) -> Result<InventoryResult, ActivityError> {
-    info!("Releasing inventory reservation: {} for order: {}", reservation_id, order_id);
+    info!(
+        "Releasing inventory reservation: {} for order: {}",
+        reservation_id, order_id
+    );
 
     tokio::time::sleep(Duration::from_millis(50)).await;
     ctx.record_heartbeat(None);
@@ -240,7 +243,13 @@ pub async fn create_shipment_activity(
     ctx.record_heartbeat(None);
 
     let shipment_id = format!("shp_{}", uuid::Uuid::new_v4());
-    let tracking_number = format!("TRK{}", &uuid::Uuid::new_v4().to_string().replace("-", "").to_uppercase()[..12]);
+    let tracking_number = format!(
+        "TRK{}",
+        &uuid::Uuid::new_v4()
+            .to_string()
+            .replace("-", "")
+            .to_uppercase()[..12]
+    );
 
     Ok(ShippingResult {
         shipment_id,
@@ -257,7 +266,10 @@ pub async fn cancel_shipment_activity(
     shipment_id: String,
     order_id: String,
 ) -> Result<(), ActivityError> {
-    info!("Cancelling shipment: {} for order: {}", shipment_id, order_id);
+    info!(
+        "Cancelling shipment: {} for order: {}",
+        shipment_id, order_id
+    );
 
     tokio::time::sleep(Duration::from_millis(50)).await;
     ctx.record_heartbeat(None);
@@ -311,7 +323,7 @@ pub async fn process_record_activity(
     info!("Processing record: {}", record.record_id);
 
     let start = std::time::Instant::now();
-    
+
     // Simulate data processing
     tokio::time::sleep(Duration::from_millis(50)).await;
     ctx.record_heartbeat(None);

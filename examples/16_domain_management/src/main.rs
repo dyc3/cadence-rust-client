@@ -16,9 +16,9 @@
 //! cargo run -p domain_management
 //! ```
 
+use cadence_client::domain::*;
 use domain_management::*;
 use examples_common::tracing_setup::init_tracing;
-use cadence_client::domain::*;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -58,16 +58,16 @@ fn demonstrate_domain_registration() {
     println!("\n--- Domain Registration ---\n");
 
     // Create a basic domain registration
-    let basic_domain = create_domain_registration_request(
-        "my-app-domain",
-        "admin@mycompany.com"
-    );
+    let basic_domain = create_domain_registration_request("my-app-domain", "admin@mycompany.com");
 
     println!("Domain Registration Request:");
     println!("  Name: {}", basic_domain.name);
     println!("  Description: {:?}", basic_domain.description);
     println!("  Owner: {}", basic_domain.owner_email);
-    println!("  Retention Period: {:?}", basic_domain.workflow_execution_retention_period);
+    println!(
+        "  Retention Period: {:?}",
+        basic_domain.workflow_execution_retention_period
+    );
     println!("  Emit Metrics: {}", basic_domain.emit_metric);
     println!("  Is Global: {}", basic_domain.is_global_domain);
 
@@ -75,16 +75,24 @@ fn demonstrate_domain_registration() {
     let global_domain = create_global_domain_request(
         "my-global-domain",
         "admin@mycompany.com",
-        vec!["cluster-us-east", "cluster-us-west", "cluster-eu-west"]
+        vec!["cluster-us-east", "cluster-us-west", "cluster-eu-west"],
     );
 
     println!("\nGlobal Domain Registration:");
     println!("  Name: {}", global_domain.name);
-    println!("  Clusters: {:?}", 
-        global_domain.clusters.iter().map(|c| &c.cluster_name).collect::<Vec<_>>()
+    println!(
+        "  Clusters: {:?}",
+        global_domain
+            .clusters
+            .iter()
+            .map(|c| &c.cluster_name)
+            .collect::<Vec<_>>()
     );
     println!("  Active Cluster: {}", global_domain.active_cluster_name);
-    println!("  Retention Period: {:?}", global_domain.workflow_execution_retention_period);
+    println!(
+        "  Retention Period: {:?}",
+        global_domain.workflow_execution_retention_period
+    );
 
     println!("\nKey Configuration Options:");
     println!("  - workflow_execution_retention_period: How long to keep workflow history");
@@ -100,12 +108,12 @@ fn demonstrate_domain_updates() {
     let update_request = create_domain_update_request(
         "my-app-domain",
         "Updated description for production domain",
-        "new-admin@mycompany.com"
+        "new-admin@mycompany.com",
     );
 
     println!("Domain Update Request:");
     println!("  Target: {:?}", update_request.name);
-    
+
     if let Some(info) = &update_request.updated_info {
         println!("  New Description: {}", info.description);
         println!("  New Owner: {}", info.owner_email);
@@ -114,7 +122,10 @@ fn demonstrate_domain_updates() {
 
     if let Some(config) = &update_request.configuration {
         println!("\nConfiguration Updates:");
-        println!("  Retention Period: {:?}", config.workflow_execution_retention_period);
+        println!(
+            "  Retention Period: {:?}",
+            config.workflow_execution_retention_period
+        );
         println!("  Emit Metrics: {}", config.emit_metric);
     }
 
@@ -130,10 +141,7 @@ fn demonstrate_domain_updates() {
 fn demonstrate_failover() {
     println!("\n--- Domain Failover ---\n");
 
-    let failover_request = create_failover_request(
-        "my-global-domain",
-        "cluster-us-west"
-    );
+    let failover_request = create_failover_request("my-global-domain", "cluster-us-west");
 
     println!("Failover Request:");
     println!("  Domain: {}", failover_request.name);
@@ -160,7 +168,10 @@ fn demonstrate_archival() {
 
     println!("\nArchival Status Options:");
     let statuses = vec![
-        (ArchivalStatus::Disabled, "No archival, data deleted after retention"),
+        (
+            ArchivalStatus::Disabled,
+            "No archival, data deleted after retention",
+        ),
         (ArchivalStatus::Enabled, "Data archived to specified URI"),
     ];
 
@@ -191,29 +202,38 @@ fn demonstrate_archival() {
         visibility_archival_uri: Some("s3://my-cadence-archive/visibility".to_string()),
     };
 
-    println!("  History Archival: {:?}", archival_config.history_archival_status);
+    println!(
+        "  History Archival: {:?}",
+        archival_config.history_archival_status
+    );
     println!("  History URI: {:?}", archival_config.history_archival_uri);
-    println!("  Visibility Archival: {:?}", archival_config.visibility_archival_status);
-    println!("  Visibility URI: {:?}", archival_config.visibility_archival_uri);
+    println!(
+        "  Visibility Archival: {:?}",
+        archival_config.visibility_archival_status
+    );
+    println!(
+        "  Visibility URI: {:?}",
+        archival_config.visibility_archival_uri
+    );
 }
 
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-// 
+//
 //     #[test]
 //     fn test_domain_registration_request() {
 //         let request = create_domain_registration_request(
 //             "test-domain",
 //             "test@example.com"
 //         );
-//         
+//
 //         assert_eq!(request.name, "test-domain");
 //         assert_eq!(request.owner_email, "test@example.com");
 //         assert!(!request.is_global_domain);
 //         assert_eq!(request.clusters.len(), 1);
 //     }
-// 
+//
 //     #[test]
 //     fn test_global_domain_request() {
 //         let request = create_global_domain_request(
@@ -221,12 +241,12 @@ fn demonstrate_archival() {
 //             "test@example.com",
 //             vec!["cluster-1", "cluster-2"]
 //         );
-//         
+//
 //         assert_eq!(request.name, "global-test");
 //         assert!(request.is_global_domain);
 //         assert_eq!(request.clusters.len(), 2);
 //     }
-// 
+//
 //     #[test]
 //     fn test_domain_update_request() {
 //         let request = create_domain_update_request(
@@ -234,22 +254,22 @@ fn demonstrate_archival() {
 //             "Updated desc",
 //             "new-owner@example.com"
 //         );
-//         
+//
 //         assert_eq!(request.name, Some("test-domain".to_string()));
-//         
+//
 //         let info = request.updated_info.unwrap();
 //         assert_eq!(info.description, "Updated desc");
 //         assert_eq!(info.owner_email, "new-owner@example.com");
 //     }
-// 
+//
 //     #[test]
 //     fn test_failover_request() {
 //         let request = create_failover_request("my-domain", "cluster-west");
-//         
+//
 //         assert_eq!(request.name, "my-domain");
 //         assert_eq!(request.clusters, vec!["cluster-west"]);
 //     }
-// 
+//
 //     #[test]
 //     fn test_archival_status() {
 //         assert_ne!(
@@ -257,7 +277,7 @@ fn demonstrate_archival() {
 //             std::mem::discriminant(&ArchivalStatus::Disabled)
 //         );
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_domain_lifecycle() {
 //         let result = demonstrate_domain_lifecycle().await;

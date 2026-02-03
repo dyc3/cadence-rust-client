@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
 //             approved: true,
 //             comments: Some("Looks good".to_string()),
 //         };
-//         
+//
 //         env.send_signal("approval", signal);
 //
 //         let result = env
@@ -95,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
 //             approved: false,
 //             comments: Some("Budget exceeded".to_string()),
 //         };
-//         
+//
 //         env.send_signal("approval", signal);
 //
 //         let result = env

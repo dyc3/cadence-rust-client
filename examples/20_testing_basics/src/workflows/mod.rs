@@ -2,8 +2,8 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -103,7 +103,9 @@ pub async fn order_processing_workflow(
             .await?;
 
         let inventory_output: CheckInventoryOutput = serde_json::from_slice(&inventory_result)
-            .map_err(|e| WorkflowError::Generic(format!("Failed to parse inventory result: {}", e)))?;
+            .map_err(|e| {
+                WorkflowError::Generic(format!("Failed to parse inventory result: {}", e))
+            })?;
 
         if !inventory_output.available {
             all_available = false;
@@ -246,14 +248,10 @@ pub async fn side_effect_workflow(
     info!("Starting side effect workflow for {}", input.request_id);
 
     // Generate UUID using side effect (non-deterministic operation)
-    let generated_id = ctx
-        .side_effect(|| uuid::Uuid::new_v4().to_string())
-        .await;
+    let generated_id = ctx.side_effect(|| uuid::Uuid::new_v4().to_string()).await;
 
     // Get current time using side effect
-    let timestamp = ctx
-        .side_effect(|| chrono::Utc::now().timestamp())
-        .await;
+    let timestamp = ctx.side_effect(|| chrono::Utc::now().timestamp()).await;
 
     Ok(SideEffectWorkflowOutput {
         request_id: input.request_id,

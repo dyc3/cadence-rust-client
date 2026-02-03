@@ -1517,12 +1517,8 @@ fn convert_workflow_execution_info(info: ProtoWorkflowExecutionInfo) -> Workflow
             .map(|e| WorkflowExecution::new(e.workflow_id, e.run_id))
             .unwrap_or(WorkflowExecution::new("", "")),
         workflow_type: info.workflow_type.map(|t| t.name).unwrap_or_default(),
-        start_time: info
-            .start_time
-            .map(chrono::DateTime::from_timestamp_nanos),
-        close_time: info
-            .close_time
-            .map(chrono::DateTime::from_timestamp_nanos),
+        start_time: info.start_time.map(chrono::DateTime::from_timestamp_nanos),
+        close_time: info.close_time.map(chrono::DateTime::from_timestamp_nanos),
         close_status: info.close_status,
         history_length: info.history_length,
     }

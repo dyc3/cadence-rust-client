@@ -3,8 +3,8 @@
 //! This module provides workflows that demonstrate various client operations
 //! like signals, queries, and long-running operations.
 
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
@@ -28,7 +28,10 @@ pub async fn signal_handling_workflow(
     ctx: &mut WorkflowContext,
     input: SignalWorkflowInput,
 ) -> Result<SignalWorkflowOutput, WorkflowError> {
-    info!("Starting signal_handling_workflow with initial value: {}", input.initial_value);
+    info!(
+        "Starting signal_handling_workflow with initial value: {}",
+        input.initial_value
+    );
 
     let mut value = input.initial_value;
     let mut signals_received = 0u32;
@@ -74,7 +77,10 @@ pub async fn signal_handling_workflow(
         }
     }
 
-    info!("Signal workflow completed. Final value: {}, Signals received: {}", value, signals_received);
+    info!(
+        "Signal workflow completed. Final value: {}, Signals received: {}",
+        value, signals_received
+    );
 
     Ok(SignalWorkflowOutput {
         final_value: value,
@@ -108,14 +114,22 @@ pub async fn queryable_workflow(
     ctx: &mut WorkflowContext,
     input: QueryableWorkflowInput,
 ) -> Result<QueryableWorkflowOutput, WorkflowError> {
-    info!("Starting queryable_workflow with {} steps", input.steps.len());
+    info!(
+        "Starting queryable_workflow with {} steps",
+        input.steps.len()
+    );
 
     let start_time = ctx.current_time();
     let mut completed_steps = Vec::new();
 
     for (idx, step) in input.steps.iter().enumerate() {
         let progress = ((idx as f32 / input.steps.len() as f32) * 100.0) as u8;
-        info!("Executing step {}: {} ({}% complete)", idx + 1, step, progress);
+        info!(
+            "Executing step {}: {} ({}% complete)",
+            idx + 1,
+            step,
+            progress
+        );
 
         // Simulate step execution
         ctx.sleep(Duration::from_millis(100)).await;
@@ -127,7 +141,11 @@ pub async fn queryable_workflow(
     let end_time = ctx.current_time();
     let duration = end_time.signed_duration_since(start_time);
 
-    info!("Queryable workflow completed {} steps in {:?}", completed_steps.len(), duration);
+    info!(
+        "Queryable workflow completed {} steps in {:?}",
+        completed_steps.len(),
+        duration
+    );
 
     Ok(QueryableWorkflowOutput {
         completed_steps,
@@ -154,7 +172,10 @@ pub async fn cancellable_workflow(
     ctx: &mut WorkflowContext,
     input: CancellableWorkflowInput,
 ) -> Result<CancellableWorkflowOutput, WorkflowError> {
-    info!("Starting cancellable_workflow for {} seconds", input.duration_seconds);
+    info!(
+        "Starting cancellable_workflow for {} seconds",
+        input.duration_seconds
+    );
 
     let mut last_checkpoint = "start".to_string();
 

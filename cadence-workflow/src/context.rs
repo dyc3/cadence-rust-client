@@ -3,15 +3,17 @@
 //! This module provides the main API for implementing workflows including
 //! scheduling activities, child workflows, handling signals, and more.
 
+use crate::commands::{
+    ScheduleActivityCommand, StartChildWorkflowCommand, StartTimerCommand, WorkflowCommand,
+};
 use cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
-use std::time::Duration;
-use std::sync::{Arc, Mutex};
+use futures::future::poll_fn;
 use std::collections::HashMap;
-use crate::commands::{WorkflowCommand, ScheduleActivityCommand, StartTimerCommand, StartChildWorkflowCommand};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::task::Poll;
-use futures::future::poll_fn;
+use std::time::Duration;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -20,13 +22,19 @@ pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
 
 /// Trait for handling workflow commands (implemented by worker)
 pub trait CommandSink: Send + Sync {
-    fn submit(&self, command: WorkflowCommand) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
+    fn submit(
+        &self,
+        command: WorkflowCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
 }
 
 /// No-op command sink for testing/initialization
 struct NoopCommandSink;
 impl CommandSink for NoopCommandSink {
-    fn submit(&self, _command: WorkflowCommand) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+    fn submit(
+        &self,
+        _command: WorkflowCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async { Err(WorkflowError::Generic("No command sink configured".into())) })
     }
 }
@@ -43,7 +51,7 @@ pub struct WorkflowContext {
 
 impl WorkflowContext {
     pub fn new(workflow_info: WorkflowInfo) -> Self {
-        Self { 
+        Self {
             workflow_info,
             command_sink: Arc::new(NoopCommandSink),
             sequence: AtomicU64::new(0),
@@ -52,10 +60,10 @@ impl WorkflowContext {
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
-    
+
     pub fn with_sink(
-        workflow_info: WorkflowInfo, 
-        sink: Arc<dyn CommandSink>, 
+        workflow_info: WorkflowInfo,
+        sink: Arc<dyn CommandSink>,
         signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
     ) -> Self {
@@ -68,7 +76,7 @@ impl WorkflowContext {
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
-    
+
     fn next_id(&self) -> String {
         let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
         format!("{}", seq)
@@ -87,14 +95,14 @@ impl WorkflowContext {
         options: ActivityOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
         let activity_id = self.next_id();
-        
+
         let command = WorkflowCommand::ScheduleActivity(ScheduleActivityCommand {
             activity_id,
             activity_type: activity_type.to_string(),
             args,
             options,
         });
-        
+
         self.command_sink.submit(command).await
     }
 
@@ -117,9 +125,9 @@ impl WorkflowContext {
         options: ChildWorkflowOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
         let workflow_id = if options.workflow_id.is_empty() {
-             self.next_id()
+            self.next_id()
         } else {
-             options.workflow_id.clone()
+            options.workflow_id.clone()
         };
 
         let command = WorkflowCommand::StartChildWorkflow(StartChildWorkflowCommand {
@@ -146,16 +154,18 @@ impl WorkflowContext {
         args: Option<Vec<u8>>,
     ) -> Result<(), WorkflowError> {
         let signal_id = self.next_id();
-        let command = WorkflowCommand::SignalExternalWorkflow(crate::commands::SignalExternalWorkflowCommand {
-            signal_id,
-            domain: None, // TODO: support domain
-            workflow_id: workflow_id.to_string(),
-            run_id: run_id.map(|s| s.to_string()),
-            signal_name: signal_name.to_string(),
-            args,
-            child_workflow_only: false,
-        });
-        
+        let command = WorkflowCommand::SignalExternalWorkflow(
+            crate::commands::SignalExternalWorkflowCommand {
+                signal_id,
+                domain: None, // TODO: support domain
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.map(|s| s.to_string()),
+                signal_name: signal_name.to_string(),
+                args,
+                child_workflow_only: false,
+            },
+        );
+
         let _ = self.command_sink.submit(command).await?;
         Ok(())
     }
@@ -167,14 +177,16 @@ impl WorkflowContext {
         run_id: Option<&str>,
     ) -> Result<(), WorkflowError> {
         let cancellation_id = self.next_id();
-        let command = WorkflowCommand::RequestCancelExternalWorkflow(crate::commands::RequestCancelExternalWorkflowCommand {
-            cancellation_id,
-            domain: None, // TODO: support domain
-            workflow_id: workflow_id.to_string(),
-            run_id: run_id.map(|s| s.to_string()),
-            child_workflow_only: false,
-        });
-        
+        let command = WorkflowCommand::RequestCancelExternalWorkflow(
+            crate::commands::RequestCancelExternalWorkflowCommand {
+                cancellation_id,
+                domain: None, // TODO: support domain
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.map(|s| s.to_string()),
+                child_workflow_only: false,
+            },
+        );
+
         let _ = self.command_sink.submit(command).await?;
         Ok(())
     }
@@ -221,10 +233,7 @@ impl WorkflowContext {
     /// Sleep for a duration (workflow-aware)
     pub async fn sleep(&self, duration: Duration) {
         let timer_id = self.next_id();
-        let command = WorkflowCommand::StartTimer(StartTimerCommand {
-            timer_id,
-            duration,
-        });
+        let command = WorkflowCommand::StartTimer(StartTimerCommand { timer_id, duration });
         let _ = self.command_sink.submit(command).await;
     }
 
@@ -242,10 +251,7 @@ impl WorkflowContext {
     /// Create a timer
     pub fn new_timer(&self, duration: Duration) -> TimerFuture {
         let timer_id = self.next_id();
-        let command = WorkflowCommand::StartTimer(StartTimerCommand {
-            timer_id,
-            duration,
-        });
+        let command = WorkflowCommand::StartTimer(StartTimerCommand { timer_id, duration });
         let future = self.command_sink.submit(command);
         Box::pin(async move {
             let _ = future.await;
@@ -269,14 +275,15 @@ impl WorkflowContext {
         args: Option<Vec<u8>>,
         options: ContinueAsNewOptions,
     ) -> ! {
-        let command = WorkflowCommand::ContinueAsNewWorkflow(crate::commands::ContinueAsNewWorkflowCommand {
-            workflow_type: workflow_type.to_string(),
-            input: args,
-            options,
-        });
+        let command =
+            WorkflowCommand::ContinueAsNewWorkflow(crate::commands::ContinueAsNewWorkflowCommand {
+                workflow_type: workflow_type.to_string(),
+                input: args,
+                options,
+            });
 
         let _ = self.command_sink.submit(command).await;
-        
+
         // Block forever
         std::future::pending().await
     }
@@ -290,7 +297,7 @@ impl WorkflowContext {
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::Relaxed)
     }
-    
+
     pub fn set_cancelled(&self, cancelled: bool) {
         self.cancelled.store(cancelled, Ordering::Relaxed);
     }
@@ -338,7 +345,8 @@ impl SignalChannel {
                 }
             }
             Poll::Pending
-        }).await
+        })
+        .await
     }
 
     pub fn try_recv(&mut self) -> Option<Vec<u8>> {
@@ -369,7 +377,8 @@ impl CancellationChannel {
             } else {
                 Poll::Pending
             }
-        }).await
+        })
+        .await
     }
 }
 

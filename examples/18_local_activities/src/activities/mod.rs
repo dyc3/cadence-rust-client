@@ -52,8 +52,12 @@ pub async fn validate_data_activity(
 
     let valid = errors.is_empty();
 
-    info!("Validation complete: valid={}, errors={}, warnings={}", 
-        valid, errors.len(), warnings.len());
+    info!(
+        "Validation complete: valid={}, errors={}, warnings={}",
+        valid,
+        errors.len(),
+        warnings.len()
+    );
 
     Ok(ValidateOutput {
         valid,
@@ -139,14 +143,17 @@ pub async fn enrich_data_activity(
     _ctx: &ActivityContext,
     input: EnrichInput,
 ) -> Result<EnrichOutput, ActivityError> {
-    info!("Enriching record with {} fields", input.enrichment_fields.len());
+    info!(
+        "Enriching record with {} fields",
+        input.enrichment_fields.len()
+    );
 
     let mut record = input.record.clone();
     let mut fields_added = Vec::new();
 
     if let Some(obj) = record.as_object_mut() {
         let mut new_obj = obj.clone();
-        
+
         for field in &input.enrichment_fields {
             match field.as_str() {
                 "uuid" => {
@@ -173,7 +180,7 @@ pub async fn enrich_data_activity(
                 _ => {}
             }
         }
-        
+
         record = serde_json::Value::Object(new_obj);
     }
 
@@ -223,7 +230,11 @@ pub async fn make_decision_activity(
             let reasons = vec!["Classification complete".to_string()];
             ("CLASS_B".to_string(), 0.92, reasons)
         }
-        _ => ("UNKNOWN".to_string(), 0.0, vec!["Unknown decision type".to_string()]),
+        _ => (
+            "UNKNOWN".to_string(),
+            0.0,
+            vec!["Unknown decision type".to_string()],
+        ),
     };
 
     tokio::time::sleep(Duration::from_millis(1)).await;

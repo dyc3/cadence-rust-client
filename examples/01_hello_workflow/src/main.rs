@@ -21,8 +21,8 @@
 //! cargo test -p hello_workflow
 //! ```
 
-use hello_workflow::{HelloInput, GreetingType};
 use examples_common::tracing_setup::init_tracing;
+use hello_workflow::{GreetingType, HelloInput};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -44,14 +44,17 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let serialized = serde_json::to_vec(&input)?;
-    println!("Example input serialized: {:?}", String::from_utf8_lossy(&serialized));
+    println!(
+        "Example input serialized: {:?}",
+        String::from_utf8_lossy(&serialized)
+    );
 
     let deserialized: HelloInput = serde_json::from_slice(&serialized)?;
     println!("Deserialized: {:?}", deserialized);
-    
+
     println!("\nTo run the full workflow test:");
     println!("  cargo test -p hello_workflow");
-    
+
     println!("\nExample completed successfully!");
 
     Ok(())
@@ -63,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 //     use cadence_testsuite::{TestWorkflowEnvironment, TestWorkflowContext};
 //     use cadence_workflow::context::WorkflowError;
 //     use std::time::Duration;
-// 
+//
 //     // Test wrapper for hello_workflow that uses TestWorkflowContext
 //     async fn test_hello_workflow(
 //         ctx: &mut TestWorkflowContext,
@@ -71,22 +74,22 @@ async fn main() -> anyhow::Result<()> {
 //     ) -> Result<HelloOutput, WorkflowError> {
 //         use cadence_core::ActivityOptions;
 //         use tracing::{info};
-// 
+//
 //         info!("Starting hello_workflow for: {}", input.name);
-// 
+//
 //         let workflow_info = ctx.workflow_info();
 //         info!(
 //             "Workflow ID: {}, Run ID: {}",
 //             workflow_info.workflow_execution.workflow_id,
 //             workflow_info.workflow_execution.run_id
 //         );
-// 
+//
 //         let activity_options = ActivityOptions {
 //             task_list: workflow_info.task_list.clone(),
 //             start_to_close_timeout: Duration::from_secs(30),
 //             ..Default::default()
 //         };
-// 
+//
 //         let result = ctx
 //             .execute_activity(
 //                 "format_greeting",
@@ -94,14 +97,14 @@ async fn main() -> anyhow::Result<()> {
 //                 activity_options,
 //             )
 //             .await?;
-// 
+//
 //         let output: HelloOutput = serde_json::from_slice(&result)
 //             .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-// 
+//
 //         info!("Workflow completed with message: {}", output.message);
 //         Ok(output)
 //     }
-// 
+//
 //     // Test wrapper for greeting_with_signal_workflow that uses TestWorkflowContext
 //     async fn test_greeting_with_signal_workflow(
 //         ctx: &mut TestWorkflowContext,
@@ -109,11 +112,11 @@ async fn main() -> anyhow::Result<()> {
 //     ) -> Result<HelloOutput, WorkflowError> {
 //         use cadence_core::ActivityOptions;
 //         use tracing::{info, warn};
-// 
+//
 //         info!("Starting greeting_with_signal_workflow");
-// 
+//
 //         let mut signal_channel = ctx.get_signal_channel("greeting_style");
-// 
+//
 //         let greeting_type = tokio::select! {
 //             signal_data = signal_channel.recv() => {
 //                 if let Some(data) = signal_data {
@@ -127,12 +130,12 @@ async fn main() -> anyhow::Result<()> {
 //                 initial_input.greeting_type
 //             }
 //         };
-// 
+//
 //         let input = HelloInput {
 //             greeting_type,
 //             ..initial_input
 //         };
-// 
+//
 //         let result = ctx
 //             .execute_activity(
 //                 "format_greeting",
@@ -140,34 +143,34 @@ async fn main() -> anyhow::Result<()> {
 //                 ActivityOptions::default(),
 //             )
 //             .await?;
-// 
+//
 //         let output: HelloOutput = serde_json::from_slice(&result)
 //             .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-// 
+//
 //         Ok(output)
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_hello_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
-// 
+//
 //         // Register the activity
 //         env.register_activity("format_greeting", format_greeting_activity);
-// 
+//
 //         // Register the test workflow with TestWorkflowContext
 //         env.register_workflow("hello_workflow", test_hello_workflow);
-// 
+//
 //         let input = HelloInput {
 //             name: "Test".to_string(),
 //             greeting_type: GreetingType::Casual,
 //         };
-// 
+//
 //         // Execute the workflow
 //         let result = env
 //             .execute_workflow("hello_workflow", input)
 //             .await
 //             .expect("Workflow should complete successfully");
-// 
+//
 //         assert!(
 //             result.message.contains("Test"),
 //             "Output should contain the name"
@@ -177,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
 //             "Casual greeting should use 'Hey'"
 //         );
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_greeting_types() {
 //         let test_cases = vec![
@@ -185,22 +188,22 @@ async fn main() -> anyhow::Result<()> {
 //             (GreetingType::Casual, "Hey"),
 //             (GreetingType::Excited, "WOW"),
 //         ];
-// 
+//
 //         for (greeting_type, expected) in test_cases {
 //             let mut env = TestWorkflowEnvironment::new();
 //             env.register_activity("format_greeting", format_greeting_activity);
 //             env.register_workflow("hello_workflow", test_hello_workflow);
-// 
+//
 //             let input = HelloInput {
 //                 name: "Tester".to_string(),
 //                 greeting_type,
 //             };
-// 
+//
 //             let result = env
 //                 .execute_workflow("hello_workflow", input)
 //                 .await
 //                 .expect("Workflow should complete");
-// 
+//
 //             assert!(
 //                 result.message.contains(expected),
 //                 "Expected '{}' in message: {}",
@@ -209,41 +212,41 @@ async fn main() -> anyhow::Result<()> {
 //             );
 //         }
 //     }
-// 
+//
 //     #[test]
 //     fn test_serialization() {
 //         let output = HelloOutput {
 //             message: "Hello, World!".to_string(),
 //             timestamp: 1234567890,
 //         };
-// 
+//
 //         let serialized = serde_json::to_vec(&output).unwrap();
 //         let deserialized: HelloOutput = serde_json::from_slice(&serialized).unwrap();
-// 
+//
 //         assert_eq!(output.message, deserialized.message);
 //         assert_eq!(output.timestamp, deserialized.timestamp);
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_signal_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
 //         env.register_activity("format_greeting", format_greeting_activity);
 //         env.register_workflow("greeting_with_signal", test_greeting_with_signal_workflow);
-// 
+//
 //         let initial_input = HelloInput {
 //             name: "SignalTest".to_string(),
 //             greeting_type: GreetingType::Formal,
 //         };
-// 
+//
 //         // Send a signal to change greeting type to Excited
 //         let signal_data = serde_json::to_vec(&GreetingType::Excited).unwrap();
 //         env.signal_workflow("greeting_style", signal_data);
-// 
+//
 //         let result = env
 //             .execute_workflow("greeting_with_signal", initial_input)
 //             .await
 //             .expect("Workflow should complete");
-// 
+//
 //         // The signal should have changed the greeting type to Excited
 //         assert!(
 //             result.message.contains("WOW"),

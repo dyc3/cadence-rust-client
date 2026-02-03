@@ -4,8 +4,8 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::{WorkflowContext, SignalChannel};
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::{SignalChannel, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
@@ -117,7 +117,10 @@ pub async fn order_management_workflow(
         }
 
         // Check if order is in final state
-        if matches!(state.status, OrderStatus::Delivered | OrderStatus::Cancelled) {
+        if matches!(
+            state.status,
+            OrderStatus::Delivered | OrderStatus::Cancelled
+        ) {
             info!("Order reached final state: {:?}", state.status);
             break;
         }
@@ -129,7 +132,7 @@ pub async fn order_management_workflow(
                 if let Some(data) = signal_data {
                     if let Ok(signal) = serde_json::from_slice::<UpdateStatusSignal>(&data) {
                         info!("Received status update signal: {:?}", signal);
-                        
+
                         let old_status = state.status.clone();
                         state.status = signal.new_status;
                         state.updated_at = chrono::Utc::now().to_rfc3339();
@@ -246,7 +249,10 @@ pub async fn order_management_workflow(
         }
     }
 
-    info!("Order management workflow completed for order: {}", order_id);
+    info!(
+        "Order management workflow completed for order: {}",
+        order_id
+    );
 
     Ok(OrderWorkflowResult {
         order_id: state.order_id,
@@ -288,28 +294,39 @@ pub async fn approval_workflow(
 
     // Wait for approval signal (blocking)
     info!("Waiting for approval signal...");
-    
+
     let signal_data = approval_channel.recv().await;
-    
+
     if let Some(data) = signal_data {
         if let Ok(signal) = serde_json::from_slice::<ApprovalSignal>(&data) {
-            info!("Received approval from {}: approved={}", signal.approver, signal.approved);
+            info!(
+                "Received approval from {}: approved={}",
+                signal.approver, signal.approved
+            );
 
             // Send notification about approval decision
             let notif_input = NotificationInput {
                 recipient: "requester@example.com".to_string(),
-                message: format!("Request {} has been {} by {}",
+                message: format!(
+                    "Request {} has been {} by {}",
                     request_id,
-                    if signal.approved { "approved" } else { "rejected" },
-                    signal.approver),
+                    if signal.approved {
+                        "approved"
+                    } else {
+                        "rejected"
+                    },
+                    signal.approver
+                ),
                 notification_type: NotificationType::Email,
             };
 
-            let _ = ctx.execute_activity(
-                "send_notification",
-                Some(serde_json::to_vec(&notif_input).unwrap()),
-                ActivityOptions::default(),
-            ).await;
+            let _ = ctx
+                .execute_activity(
+                    "send_notification",
+                    Some(serde_json::to_vec(&notif_input).unwrap()),
+                    ActivityOptions::default(),
+                )
+                .await;
 
             return Ok(ApprovalResult {
                 request_id,
@@ -320,7 +337,9 @@ pub async fn approval_workflow(
         }
     }
 
-    Err(WorkflowError::Generic("No approval signal received".to_string()))
+    Err(WorkflowError::Generic(
+        "No approval signal received".to_string(),
+    ))
 }
 
 /// Signal for configuration update
@@ -344,7 +363,10 @@ pub async fn config_update_workflow(
     ctx: &mut WorkflowContext,
     max_updates: usize,
 ) -> Result<ConfigWorkflowResult, WorkflowError> {
-    info!("Starting config update workflow (max {} updates)", max_updates);
+    info!(
+        "Starting config update workflow (max {} updates)",
+        max_updates
+    );
 
     let mut config_channel: SignalChannel = ctx.get_signal_channel("config_update");
     let mut configs: Vec<(String, String)> = vec![];
@@ -354,7 +376,10 @@ pub async fn config_update_workflow(
         match config_channel.recv().await {
             Some(data) => {
                 if let Ok(signal) = serde_json::from_slice::<ConfigUpdateSignal>(&data) {
-                    info!("Received config update: {} = {}", signal.config_key, signal.config_value);
+                    info!(
+                        "Received config update: {} = {}",
+                        signal.config_key, signal.config_value
+                    );
                     configs.push((signal.config_key, signal.config_value));
                 }
             }

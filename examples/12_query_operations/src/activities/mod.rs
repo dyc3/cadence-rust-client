@@ -59,42 +59,47 @@ pub async fn process_data_activity(
         "Starting data processing task {} with {} records",
         task.task_id, task.record_count
     );
-    
+
     let mut success_count = 0;
     let mut error_count = 0;
-    
+
     // Process records in batches
     let batch_size = 10;
     let total_batches = task.record_count.div_ceil(batch_size);
-    
+
     for batch in 0..total_batches {
         // Record heartbeat with progress info
         let progress = format!(
             "{{\"batch\":{},\"total_batches\":{},\"processed\":{}}}",
-            batch, total_batches, batch * batch_size
+            batch,
+            total_batches,
+            batch * batch_size
         );
         ctx.record_heartbeat(Some(progress.as_bytes()));
-        
+
         // Simulate processing
         tokio::time::sleep(Duration::from_millis(50)).await;
-        
+
         // Simulate some failures (5% error rate)
         let records_in_batch = std::cmp::min(batch_size, task.record_count - batch * batch_size);
         let errors_in_batch = if batch % 20 == 19 { 1 } else { 0 };
         success_count += records_in_batch - errors_in_batch;
         error_count += errors_in_batch;
-        
+
         info!(
             "Task {}: Processed batch {}/{} ({} records)",
-            task.task_id, batch + 1, total_batches, records_in_batch
+            task.task_id,
+            batch + 1,
+            total_batches,
+            records_in_batch
         );
     }
-    
+
     info!(
         "Task {} completed: {} succeeded, {} failed",
         task.task_id, success_count, error_count
     );
-    
+
     Ok(ProcessingResult {
         task_id: task.task_id,
         records_processed: success_count + error_count,
@@ -108,21 +113,25 @@ pub async fn process_batch_activity(
     ctx: &ActivityContext,
     batch: BatchProcessingInput,
 ) -> Result<BatchProcessingResult, ActivityError> {
-    info!("Processing batch {} with {} items", batch.batch_id, batch.items.len());
-    
+    info!(
+        "Processing batch {} with {} items",
+        batch.batch_id,
+        batch.items.len()
+    );
+
     let mut processed = Vec::new();
     let mut failed = Vec::new();
-    
+
     for (idx, item) in batch.items.iter().enumerate() {
         // Record periodic heartbeats
         if idx % 5 == 0 {
             let progress = format!("{{\"progress\":{}/{} }}", idx, batch.items.len());
             ctx.record_heartbeat(Some(progress.as_bytes()));
         }
-        
+
         // Simulate processing
         tokio::time::sleep(Duration::from_millis(20)).await;
-        
+
         // Simulate occasional failures
         if item.data.contains("error") {
             failed.push(item.item_id.clone());
@@ -130,12 +139,14 @@ pub async fn process_batch_activity(
             processed.push(item.item_id.clone());
         }
     }
-    
+
     info!(
         "Batch {} completed: {} processed, {} failed",
-        batch.batch_id, processed.len(), failed.len()
+        batch.batch_id,
+        processed.len(),
+        failed.len()
     );
-    
+
     Ok(BatchProcessingResult {
         batch_id: batch.batch_id,
         processed_items: processed,
@@ -149,13 +160,13 @@ pub async fn validate_data_activity(
     data_source: String,
 ) -> Result<bool, ActivityError> {
     info!("Validating data source: {}", data_source);
-    
+
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Simple validation - reject empty or error sources
     if data_source.is_empty() || data_source.contains("invalid") {
         return Ok(false);
     }
-    
+
     Ok(true)
 }

@@ -2,8 +2,8 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
@@ -31,7 +31,10 @@ pub async fn order_saga_workflow(
     ctx: &mut WorkflowContext,
     order_input: OrderSagaInput,
 ) -> Result<OrderSagaResult, WorkflowError> {
-    info!("Starting order saga workflow for order: {}", order_input.order_id);
+    info!(
+        "Starting order saga workflow for order: {}",
+        order_input.order_id
+    );
 
     let workflow_info = ctx.workflow_info();
     let activity_options = ActivityOptions {
@@ -60,14 +63,18 @@ pub async fn order_saga_workflow(
         .await
     {
         Ok(result) => {
-            let payment: PaymentResult = serde_json::from_slice(&result)
-                .map_err(|e| WorkflowError::Generic(format!("Failed to parse payment result: {}", e)))?;
+            let payment: PaymentResult = serde_json::from_slice(&result).map_err(|e| {
+                WorkflowError::Generic(format!("Failed to parse payment result: {}", e))
+            })?;
             completed_steps.push("payment".to_string());
             payment
         }
         Err(e) => {
             error!("Payment processing failed: {}", e);
-            return Err(WorkflowError::ActivityFailed(format!("Payment failed: {}", e)));
+            return Err(WorkflowError::ActivityFailed(format!(
+                "Payment failed: {}",
+                e
+            )));
         }
     };
 
@@ -86,8 +93,9 @@ pub async fn order_saga_workflow(
         .await
     {
         Ok(result) => {
-            let inventory: InventoryResult = serde_json::from_slice(&result)
-                .map_err(|e| WorkflowError::Generic(format!("Failed to parse inventory result: {}", e)))?;
+            let inventory: InventoryResult = serde_json::from_slice(&result).map_err(|e| {
+                WorkflowError::Generic(format!("Failed to parse inventory result: {}", e))
+            })?;
             completed_steps.push("inventory".to_string());
             inventory
         }
@@ -95,7 +103,10 @@ pub async fn order_saga_workflow(
             error!("Inventory reservation failed: {}", e);
             // Compensate: Refund payment
             compensate_payment(ctx, &payment_input, &activity_options).await?;
-            return Err(WorkflowError::ActivityFailed(format!("Inventory reservation failed: {}", e)));
+            return Err(WorkflowError::ActivityFailed(format!(
+                "Inventory reservation failed: {}",
+                e
+            )));
         }
     };
 
@@ -124,17 +135,27 @@ pub async fn order_saga_workflow(
         .await
     {
         Ok(result) => {
-            let shipping: ShippingResult = serde_json::from_slice(&result)
-                .map_err(|e| WorkflowError::Generic(format!("Failed to parse shipping result: {}", e)))?;
+            let shipping: ShippingResult = serde_json::from_slice(&result).map_err(|e| {
+                WorkflowError::Generic(format!("Failed to parse shipping result: {}", e))
+            })?;
             completed_steps.push("shipping".to_string());
             shipping
         }
         Err(e) => {
             error!("Shipment creation failed: {}", e);
             // Compensate: Release inventory and refund payment
-            compensate_inventory(ctx, &inventory_result.reservation_id, &order_input.order_id, &activity_options).await?;
+            compensate_inventory(
+                ctx,
+                &inventory_result.reservation_id,
+                &order_input.order_id,
+                &activity_options,
+            )
+            .await?;
             compensate_payment(ctx, &payment_input, &activity_options).await?;
-            return Err(WorkflowError::ActivityFailed(format!("Shipment creation failed: {}", e)));
+            return Err(WorkflowError::ActivityFailed(format!(
+                "Shipment creation failed: {}",
+                e
+            )));
         }
     };
 
@@ -183,7 +204,7 @@ async fn compensate_payment(
     options: &ActivityOptions,
 ) -> Result<(), WorkflowError> {
     warn!("Compensating payment for order: {}", payment_input.order_id);
-    
+
     ctx.execute_activity(
         "refund_payment",
         Some(serde_json::to_vec(payment_input).unwrap()),
@@ -191,7 +212,7 @@ async fn compensate_payment(
     )
     .await
     .map_err(|e| WorkflowError::Generic(format!("Compensation failed: {}", e)))?;
-    
+
     Ok(())
 }
 
@@ -203,12 +224,12 @@ async fn compensate_inventory(
     options: &ActivityOptions,
 ) -> Result<(), WorkflowError> {
     warn!("Compensating inventory for order: {}", order_id);
-    
+
     let compensation_data = serde_json::json!({
         "reservation_id": reservation_id,
         "order_id": order_id,
     });
-    
+
     ctx.execute_activity(
         "release_inventory",
         Some(serde_json::to_vec(&compensation_data).unwrap()),
@@ -216,7 +237,7 @@ async fn compensate_inventory(
     )
     .await
     .map_err(|e| WorkflowError::Generic(format!("Inventory compensation failed: {}", e)))?;
-    
+
     Ok(())
 }
 
@@ -331,7 +352,10 @@ pub async fn circuit_breaker_workflow(
     ctx: &mut WorkflowContext,
     operation: CircuitBreakerOperation,
 ) -> Result<CircuitBreakerResult, WorkflowError> {
-    info!("Executing circuit breaker workflow for operation: {}", operation.operation_type);
+    info!(
+        "Executing circuit breaker workflow for operation: {}",
+        operation.operation_type
+    );
 
     // Check circuit state from previous runs using mutable side effect
     let failure_count: u32 = ctx
@@ -380,7 +404,7 @@ pub async fn circuit_breaker_workflow(
             // Failure - increment failure count
             error!("Operation failed: {}", e);
             let new_failure_count = failure_count + 1;
-            
+
             Ok(CircuitBreakerResult {
                 success: false,
                 result: None,

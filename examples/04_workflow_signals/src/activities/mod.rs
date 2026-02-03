@@ -43,7 +43,8 @@ pub async fn send_notification_activity(
     // Simulate sending notification
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-    let notification_id = format!("notif_{}_{}", 
+    let notification_id = format!(
+        "notif_{}_{}",
         input.recipient.replace("@", "_"),
         chrono::Utc::now().timestamp()
     );

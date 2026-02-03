@@ -47,9 +47,12 @@ pub async fn compute_activity(
         }
         "max" => input.values.iter().cloned().fold(f64::MIN, f64::max),
         "min" => input.values.iter().cloned().fold(f64::MAX, f64::min),
-        _ => return Err(ActivityError::ExecutionFailed(format!(
-            "Unknown operation: {}", input.operation
-        ))),
+        _ => {
+            return Err(ActivityError::ExecutionFailed(format!(
+                "Unknown operation: {}",
+                input.operation
+            )))
+        }
     };
 
     // Simulate some processing time

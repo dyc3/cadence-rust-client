@@ -109,7 +109,11 @@ pub async fn validate_data_activity(
 
     let is_valid = errors.is_empty();
 
-    info!("Validation of {}: {}", input.data_id, if is_valid { "passed" } else { "failed" });
+    info!(
+        "Validation of {}: {}",
+        input.data_id,
+        if is_valid { "passed" } else { "failed" }
+    );
 
     Ok(ValidationResult {
         data_id: input.data_id,
@@ -155,7 +159,11 @@ pub async fn aggregate_results_activity(
         total_count += partial.count;
     }
 
-    info!("Aggregation complete: {} items from {} children", total_count, input.results.len());
+    info!(
+        "Aggregation complete: {} items from {} children",
+        total_count,
+        input.results.len()
+    );
 
     Ok(AggregationResult {
         total_count,

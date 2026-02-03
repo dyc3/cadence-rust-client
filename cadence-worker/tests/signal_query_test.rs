@@ -1,28 +1,40 @@
+use cadence_proto::shared::{
+    EventAttributes, EventType, History, HistoryEvent, WorkflowExecution,
+    WorkflowExecutionSignaledEventAttributes, WorkflowExecutionStartedEventAttributes,
+    WorkflowType,
+};
+use cadence_proto::workflow_service::PollForDecisionTaskResponse;
+use cadence_proto::WorkflowQuery;
 use cadence_worker::executor::cache::WorkflowCache;
 use cadence_worker::executor::workflow::WorkflowExecutor;
-use cadence_worker::registry::{Registry, WorkflowRegistry, Workflow, WorkflowError};
+use cadence_worker::registry::{Registry, Workflow, WorkflowError, WorkflowRegistry};
 use cadence_worker::WorkerOptions;
 use cadence_workflow::context::WorkflowContext;
-use cadence_proto::workflow_service::PollForDecisionTaskResponse;
-use cadence_proto::shared::{
-    History, HistoryEvent, EventType, EventAttributes,
-    WorkflowExecutionStartedEventAttributes,
-    WorkflowExecutionSignaledEventAttributes,
-    WorkflowType, WorkflowExecution,
-};
-use cadence_proto::WorkflowQuery;
-use std::sync::Arc;
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 struct ClosureWorkflow<F>(F)
 where
-    F: Fn(WorkflowContext, Option<Vec<u8>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> + Send + Sync + Clone;
+    F: Fn(
+            WorkflowContext,
+            Option<Vec<u8>>,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>
+        + Send
+        + Sync
+        + Clone;
 
 impl<F> Workflow for ClosureWorkflow<F>
 where
-    F: Fn(WorkflowContext, Option<Vec<u8>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> + Send + Sync + Clone + 'static
+    F: Fn(
+            WorkflowContext,
+            Option<Vec<u8>>,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>
+        + Send
+        + Sync
+        + Clone
+        + 'static,
 {
     fn execute(
         &self,
@@ -50,7 +62,9 @@ fn default_event(id: i64, event_type: EventType) -> HistoryEvent {
 
 fn default_started_attrs(name: &str) -> WorkflowExecutionStartedEventAttributes {
     WorkflowExecutionStartedEventAttributes {
-        workflow_type: Some(WorkflowType { name: name.to_string() }),
+        workflow_type: Some(WorkflowType {
+            name: name.to_string(),
+        }),
         parent_workflow_execution: None,
         task_list: None,
         input: vec![],
@@ -82,7 +96,10 @@ fn default_signaled_attrs(name: &str, input: &[u8]) -> WorkflowExecutionSignaled
 #[tokio::test]
 async fn test_signal_handling() {
     // 1. Define workflow
-    fn signal_workflow(ctx: WorkflowContext, _: Option<Vec<u8>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+    fn signal_workflow(
+        ctx: WorkflowContext,
+        _: Option<Vec<u8>>,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let mut channel = ctx.get_signal_channel("test-signal");
             let val = channel.recv().await.unwrap();
@@ -97,18 +114,23 @@ async fn test_signal_handling() {
 
     // 3. Setup Executor
     let cache = Arc::new(WorkflowCache::new(100));
-    let executor = WorkflowExecutor::new(registry, cache, WorkerOptions::default(), "test-task-list".to_string());
+    let executor = WorkflowExecutor::new(
+        registry,
+        cache,
+        WorkerOptions::default(),
+        "test-task-list".to_string(),
+    );
 
     // 4. Create History
     let mut event1 = default_event(1, EventType::WorkflowExecutionStarted);
-    event1.attributes = Some(EventAttributes::WorkflowExecutionStartedEventAttributes(Box::new(
-        default_started_attrs("SignalWorkflow")
-    )));
+    event1.attributes = Some(EventAttributes::WorkflowExecutionStartedEventAttributes(
+        Box::new(default_started_attrs("SignalWorkflow")),
+    ));
 
     let mut event2 = default_event(2, EventType::WorkflowExecutionSignaled);
-    event2.attributes = Some(EventAttributes::WorkflowExecutionSignaledEventAttributes(Box::new(
-        default_signaled_attrs("test-signal", b"signal-data")
-    )));
+    event2.attributes = Some(EventAttributes::WorkflowExecutionSignaledEventAttributes(
+        Box::new(default_signaled_attrs("test-signal", b"signal-data")),
+    ));
 
     let event3 = default_event(3, EventType::DecisionTaskScheduled);
     let event4 = default_event(4, EventType::DecisionTaskStarted);
@@ -121,7 +143,9 @@ async fn test_signal_handling() {
             workflow_id: "w1".to_string(),
             run_id: "r1".to_string(),
         }),
-        workflow_type: Some(WorkflowType { name: "SignalWorkflow".to_string() }),
+        workflow_type: Some(WorkflowType {
+            name: "SignalWorkflow".to_string(),
+        }),
         history: Some(History { events }),
         previous_started_event_id: 0,
         started_event_id: 4,
@@ -146,8 +170,8 @@ async fn test_signal_handling() {
     let decision = &decisions[0];
     match decision.decision_type {
         cadence_proto::shared::DecisionType::CompleteWorkflowExecution => {
-             // success
-        },
+            // success
+        }
         dt => panic!("Expected CompleteWorkflowExecution, got {:?}", dt),
     }
 }
@@ -155,13 +179,16 @@ async fn test_signal_handling() {
 #[tokio::test]
 async fn test_query_handling() {
     // 1. Define workflow
-    fn query_workflow(ctx: WorkflowContext, _: Option<Vec<u8>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+    fn query_workflow(
+        ctx: WorkflowContext,
+        _: Option<Vec<u8>>,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             ctx.set_query_handler("get_state", |args| {
                 // Echo args
                 args
             });
-            
+
             // Wait forever (blocked)
             let mut channel = ctx.get_signal_channel("non-existent");
             channel.recv().await;
@@ -176,13 +203,18 @@ async fn test_query_handling() {
 
     // 3. Setup Executor
     let cache = Arc::new(WorkflowCache::new(100));
-    let executor = WorkflowExecutor::new(registry, cache, WorkerOptions::default(), "test-task-list".to_string());
+    let executor = WorkflowExecutor::new(
+        registry,
+        cache,
+        WorkerOptions::default(),
+        "test-task-list".to_string(),
+    );
 
     // 4. Create History
     let mut event1 = default_event(1, EventType::WorkflowExecutionStarted);
-    event1.attributes = Some(EventAttributes::WorkflowExecutionStartedEventAttributes(Box::new(
-        default_started_attrs("QueryWorkflow")
-    )));
+    event1.attributes = Some(EventAttributes::WorkflowExecutionStartedEventAttributes(
+        Box::new(default_started_attrs("QueryWorkflow")),
+    ));
 
     let event2 = default_event(2, EventType::DecisionTaskScheduled);
     let event3 = default_event(3, EventType::DecisionTaskStarted);
@@ -191,10 +223,13 @@ async fn test_query_handling() {
 
     // 5. Create Query
     let mut queries = HashMap::new();
-    queries.insert("q1".to_string(), WorkflowQuery {
-        query_type: "get_state".to_string(),
-        query_args: Some(b"query-input".to_vec()),
-    });
+    queries.insert(
+        "q1".to_string(),
+        WorkflowQuery {
+            query_type: "get_state".to_string(),
+            query_args: Some(b"query-input".to_vec()),
+        },
+    );
 
     let task = PollForDecisionTaskResponse {
         task_token: b"token".to_vec(),
@@ -202,7 +237,9 @@ async fn test_query_handling() {
             workflow_id: "w1".to_string(),
             run_id: "r1".to_string(),
         }),
-        workflow_type: Some(WorkflowType { name: "QueryWorkflow".to_string() }),
+        workflow_type: Some(WorkflowType {
+            name: "QueryWorkflow".to_string(),
+        }),
         history: Some(History { events }),
         queries: Some(queries),
         previous_started_event_id: 0,

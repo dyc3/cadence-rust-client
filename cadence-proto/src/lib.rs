@@ -19,5 +19,5 @@ pub use shared::*;
 pub use workflow_service::*;
 
 // Re-export tonic and prost for use by other crates
-pub use tonic;
 pub use prost;
+pub use tonic;

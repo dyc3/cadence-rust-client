@@ -5,25 +5,28 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
-use tracing::{info, warn, error};
+use cadence_workflow::WorkflowContext;
 use std::time::Duration;
+use tracing::{error, info, warn};
 
 /// A workflow that demonstrates error handling with retry logic
 pub async fn error_handling_workflow(
     ctx: &mut WorkflowContext,
     items: Vec<ProcessInput>,
 ) -> Result<BatchProcessingResult, WorkflowError> {
-    info!("Starting error handling workflow with {} items", items.len());
-    
+    info!(
+        "Starting error handling workflow with {} items",
+        items.len()
+    );
+
     let mut successful = Vec::new();
     let mut failed = Vec::new();
     let mut retried = Vec::new();
-    
+
     for item in &items {
         info!("Processing item: {}", item.item_id);
-        
+
         let activity_options = ActivityOptions {
             start_to_close_timeout: Duration::from_secs(30),
             schedule_to_close_timeout: Duration::from_secs(60),
@@ -37,7 +40,7 @@ pub async fn error_handling_workflow(
             }),
             ..Default::default()
         };
-        
+
         match ctx
             .execute_activity(
                 "unreliable_process",
@@ -47,13 +50,15 @@ pub async fn error_handling_workflow(
             .await
         {
             Ok(result) => {
-                let process_result: ProcessResult = serde_json::from_slice(&result)
-                    .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-                
+                let process_result: ProcessResult =
+                    serde_json::from_slice(&result).map_err(|e| {
+                        WorkflowError::Generic(format!("Failed to parse result: {}", e))
+                    })?;
+
                 if process_result.attempt > 1 {
                     retried.push(item.item_id.clone());
                 }
-                
+
                 successful.push(process_result);
                 info!("Item {} processed successfully", item.item_id);
             }
@@ -63,14 +68,14 @@ pub async fn error_handling_workflow(
             }
         }
     }
-    
+
     info!(
         "Workflow completed: {} successful, {} failed, {} retried",
         successful.len(),
         failed.len(),
         retried.len()
     );
-    
+
     Ok(BatchProcessingResult {
         successful,
         failed,
@@ -94,7 +99,7 @@ pub async fn fallback_workflow(
     item: ProcessInput,
 ) -> Result<FallbackResult, WorkflowError> {
     info!("Starting fallback workflow for item: {}", item.item_id);
-    
+
     // Try primary processing
     let primary_options = ActivityOptions {
         start_to_close_timeout: Duration::from_secs(10),
@@ -107,7 +112,7 @@ pub async fn fallback_workflow(
         }),
         ..Default::default()
     };
-    
+
     match ctx
         .execute_activity(
             "unreliable_process",
@@ -119,7 +124,7 @@ pub async fn fallback_workflow(
         Ok(result) => {
             let process_result: ProcessResult = serde_json::from_slice(&result)
                 .map_err(|e| WorkflowError::Generic(format!("Failed to parse: {}", e)))?;
-            
+
             Ok(FallbackResult {
                 item_id: item.item_id,
                 success: true,
@@ -129,11 +134,11 @@ pub async fn fallback_workflow(
         }
         Err(_) => {
             warn!("Primary processing failed, trying fallback");
-            
+
             // Fallback: Try with different parameters
             let mut fallback_item = item.clone();
             fallback_item.should_fail = false; // Force success in fallback
-            
+
             let fallback_options = ActivityOptions {
                 start_to_close_timeout: Duration::from_secs(20),
                 retry_policy: Some(cadence_core::RetryPolicy {
@@ -145,7 +150,7 @@ pub async fn fallback_workflow(
                 }),
                 ..Default::default()
             };
-            
+
             match ctx
                 .execute_activity(
                     "unreliable_process",
@@ -157,7 +162,7 @@ pub async fn fallback_workflow(
                 Ok(result) => {
                     let process_result: ProcessResult = serde_json::from_slice(&result)
                         .map_err(|e| WorkflowError::Generic(format!("Failed to parse: {}", e)))?;
-                    
+
                     Ok(FallbackResult {
                         item_id: item.item_id,
                         success: true,
@@ -194,7 +199,7 @@ pub async fn validation_workflow(
     data: serde_json::Value,
 ) -> Result<ValidationWorkflowResult, WorkflowError> {
     info!("Starting validation workflow");
-    
+
     // First, validate the data
     let validation_result = ctx
         .execute_activity(
@@ -203,25 +208,28 @@ pub async fn validation_workflow(
             ActivityOptions::default(),
         )
         .await;
-    
+
     match validation_result {
         Ok(result) => {
-            let validation: ValidationResult = serde_json::from_slice(&result)
-                .map_err(|e| WorkflowError::Generic(format!("Failed to parse validation: {}", e)))?;
-            
+            let validation: ValidationResult = serde_json::from_slice(&result).map_err(|e| {
+                WorkflowError::Generic(format!("Failed to parse validation: {}", e))
+            })?;
+
             if validation.valid {
                 info!("Data validation passed, proceeding with processing");
-                
+
                 // Process the validated data
                 let process_input = ProcessInput {
-                    item_id: validation.normalized_data.get("id")
+                    item_id: validation
+                        .normalized_data
+                        .get("id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown")
                         .to_string(),
                     should_fail: false,
                     failure_type: None,
                 };
-                
+
                 let process_result = ctx
                     .execute_activity(
                         "unreliable_process",
@@ -229,10 +237,10 @@ pub async fn validation_workflow(
                         ActivityOptions::default(),
                     )
                     .await?;
-                
+
                 let result: ProcessResult = serde_json::from_slice(&process_result)
                     .map_err(|e| WorkflowError::Generic(format!("Failed to parse: {}", e)))?;
-                
+
                 Ok(ValidationWorkflowResult {
                     validated: true,
                     processed: true,
@@ -245,7 +253,10 @@ pub async fn validation_workflow(
                     validated: false,
                     processed: false,
                     result: None,
-                    error: Some(format!("Validation failed: {}", validation.errors.join(", "))),
+                    error: Some(format!(
+                        "Validation failed: {}",
+                        validation.errors.join(", ")
+                    )),
                 })
             }
         }

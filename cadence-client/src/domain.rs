@@ -3,8 +3,8 @@
 //! This module provides the interface for domain lifecycle management
 //! including registration, updates, and failover operations.
 
-use cadence_core::{CadenceError, CadenceResult};
 use async_trait::async_trait;
+use cadence_core::{CadenceError, CadenceResult};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -13,13 +13,13 @@ use std::time::Duration;
 pub trait DomainClient: Send + Sync {
     /// Register a new domain
     async fn register(&self, request: RegisterDomainRequest) -> CadenceResult<()>;
-    
+
     /// Describe a domain
     async fn describe(&self, name: &str) -> CadenceResult<DomainDescription>;
-    
+
     /// Update a domain configuration
     async fn update(&self, request: UpdateDomainRequest) -> CadenceResult<UpdateDomainResponse>;
-    
+
     /// Failover a domain to another cluster
     async fn failover(&self, request: FailoverDomainRequest) -> CadenceResult<()>;
 }
@@ -180,17 +180,17 @@ impl DomainClient for DomainClientImpl {
         // TODO: Implement
         Ok(())
     }
-    
+
     async fn describe(&self, _name: &str) -> CadenceResult<DomainDescription> {
         // TODO: Implement
         Err(CadenceError::Other("Not implemented".to_string()))
     }
-    
+
     async fn update(&self, _request: UpdateDomainRequest) -> CadenceResult<UpdateDomainResponse> {
         // TODO: Implement
         Err(CadenceError::Other("Not implemented".to_string()))
     }
-    
+
     async fn failover(&self, _request: FailoverDomainRequest) -> CadenceResult<()> {
         // TODO: Implement
         Ok(())

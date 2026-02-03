@@ -56,26 +56,26 @@ pub async fn external_api_call_activity(
     ctx: &ActivityContext,
     input: ApiCallInput,
 ) -> Result<ApiCallResult, ActivityError> {
-    info!(
-        "Making API call to {} ({}",
-        input.endpoint, input.method
-    );
-    
+    info!("Making API call to {} ({}", input.endpoint, input.method);
+
     // Simulate API call latency
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Record heartbeat with progress
-    ctx.record_heartbeat(Some(&serde_json::to_vec(&serde_json::json!({
-        "progress": 50,
-        "endpoint": &input.endpoint,
-    })).unwrap()));
-    
+    ctx.record_heartbeat(Some(
+        &serde_json::to_vec(&serde_json::json!({
+            "progress": 50,
+            "endpoint": &input.endpoint,
+        }))
+        .unwrap(),
+    ));
+
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     let call_id = Uuid::new_v4().to_string();
-    
+
     info!("API call {} completed", call_id);
-    
+
     Ok(ApiCallResult {
         call_id,
         status_code: 200,
@@ -95,23 +95,26 @@ pub async fn database_query_activity(
         "Executing database query: {} (new schema: {})",
         input.query, input.use_new_schema
     );
-    
+
     // Simulate query execution
     tokio::time::sleep(Duration::from_millis(75)).await;
-    
+
     ctx.record_heartbeat(None);
-    
+
     let query_id = Uuid::new_v4().to_string();
-    
+
     // Simulate different behavior based on schema version
     let rows_affected = if input.use_new_schema {
         5 // New schema returns more data
     } else {
         3 // Old schema returns less data
     };
-    
-    info!("Query {} completed, {} rows affected", query_id, rows_affected);
-    
+
+    info!(
+        "Query {} completed, {} rows affected",
+        query_id, rows_affected
+    );
+
     let mut data = Vec::new();
     for i in 0..rows_affected {
         data.push(serde_json::json!({
@@ -119,7 +122,7 @@ pub async fn database_query_activity(
             "value": format!("data_{}", i),
         }));
     }
-    
+
     Ok(DatabaseQueryResult {
         query_id,
         rows_affected,
@@ -133,17 +136,17 @@ pub async fn get_service_config_activity(
     service_name: String,
 ) -> Result<ServiceConfig, ActivityError> {
     info!("Fetching configuration for service: {}", service_name);
-    
+
     // Simulate config fetch
     tokio::time::sleep(Duration::from_millis(25)).await;
-    
+
     // Return versioned config based on service
     let (endpoint, api_version) = match service_name.as_str() {
         "payment_service" => ("https://api.payment.example.com", "v2"),
         "user_service" => ("https://api.user.example.com", "v1"),
         _ => ("https://api.default.example.com", "v1"),
     };
-    
+
     Ok(ServiceConfig {
         service_name,
         endpoint: endpoint.to_string(),

@@ -1,7 +1,7 @@
 //! Workflow implementations for data converter example.
 
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use tracing::info;
 
 /// A workflow demonstrating custom serialization

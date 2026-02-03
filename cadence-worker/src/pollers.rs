@@ -5,9 +5,9 @@
 
 use crate::handlers::activity::ActivityTaskHandler;
 use crate::handlers::decision::DecisionTaskHandler;
+use async_trait::async_trait;
 use cadence_core::CadenceError;
 use cadence_proto::workflow_service::*;
-use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
@@ -17,10 +17,10 @@ use tokio::time::interval;
 pub trait TaskPoller: Send + Sync {
     type Task: Send;
     type Response: Send;
-    
+
     /// Poll for a new task
     async fn poll(&self) -> Result<Option<Self::Task>, CadenceError>;
-    
+
     /// Process a task
     async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError>;
 }
@@ -54,19 +54,21 @@ impl DecisionTaskPoller {
             handler,
         }
     }
-    
+
     pub fn with_sticky_task_list(mut self, sticky_task_list: impl Into<String>) -> Self {
         self.sticky_task_list = Some(sticky_task_list.into());
         self
     }
-    
+
     pub fn with_binary_checksum(mut self, checksum: impl Into<String>) -> Self {
         self.binary_checksum = checksum.into();
         self
     }
-    
+
     /// Poll for decision task with sticky execution support
-    async fn poll_decision_task(&self) -> Result<Option<PollForDecisionTaskResponse>, CadenceError> {
+    async fn poll_decision_task(
+        &self,
+    ) -> Result<Option<PollForDecisionTaskResponse>, CadenceError> {
         // Try sticky task list first if available
         if let Some(ref sticky) = self.sticky_task_list {
             let request = PollForDecisionTaskRequest {
@@ -78,18 +80,20 @@ impl DecisionTaskPoller {
                 identity: self.identity.clone(),
                 binary_checksum: self.binary_checksum.clone(),
             };
-            
+
             // Poll with shorter timeout for sticky queue
             match tokio::time::timeout(
                 Duration::from_millis(500),
-                self.service.poll_for_decision_task(request)
-            ).await {
+                self.service.poll_for_decision_task(request),
+            )
+            .await
+            {
                 Ok(Ok(response)) => return Ok(Some(response)),
                 Ok(Err(_)) => {} // Error polling sticky, fall through to normal
-                Err(_) => {} // Timeout, fall through to normal
+                Err(_) => {}     // Timeout, fall through to normal
             }
         }
-        
+
         // Poll normal task list
         let request = PollForDecisionTaskRequest {
             domain: self.domain.clone(),
@@ -100,7 +104,7 @@ impl DecisionTaskPoller {
             identity: self.identity.clone(),
             binary_checksum: self.binary_checksum.clone(),
         };
-        
+
         match self.service.poll_for_decision_task(request).await {
             Ok(response) => {
                 if response.task_token.is_empty() {
@@ -121,11 +125,11 @@ impl DecisionTaskPoller {
 impl TaskPoller for DecisionTaskPoller {
     type Task = PollForDecisionTaskResponse;
     type Response = RespondDecisionTaskCompletedResponse;
-    
+
     async fn poll(&self) -> Result<Option<Self::Task>, CadenceError> {
         self.poll_decision_task().await
     }
-    
+
     async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError> {
         self.handler.handle(task).await
     }
@@ -156,11 +160,13 @@ impl ActivityTaskPoller {
             handler,
         }
     }
-    
+
     /// Poll for activity task
-    async fn poll_activity_task(&self) -> Result<Option<PollForActivityTaskResponse>, CadenceError> {
+    async fn poll_activity_task(
+        &self,
+    ) -> Result<Option<PollForActivityTaskResponse>, CadenceError> {
         println!("[ActivityTaskPoller] Polling task list: {}", self.task_list);
-        
+
         let request = PollForActivityTaskRequest {
             domain: self.domain.clone(),
             task_list: Some(cadence_proto::shared::TaskList {
@@ -170,17 +176,23 @@ impl ActivityTaskPoller {
             identity: self.identity.clone(),
             task_list_metadata: None,
         };
-        
+
         match self.service.poll_for_activity_task(request).await {
             Ok(response) => {
                 if response.task_token.is_empty() {
                     return Ok(None);
                 }
-                println!("[ActivityTaskPoller] Received task on list {}: ActivityId={:?}", self.task_list, response.activity_id);
+                println!(
+                    "[ActivityTaskPoller] Received task on list {}: ActivityId={:?}",
+                    self.task_list, response.activity_id
+                );
                 Ok(Some(response))
             }
             Err(e) => {
-                println!("[ActivityTaskPoller] Error polling task list {}: {}", self.task_list, e);
+                println!(
+                    "[ActivityTaskPoller] Error polling task list {}: {}",
+                    self.task_list, e
+                );
                 tracing::error!("Error polling activity task: {}", e);
                 Ok(None)
             }
@@ -192,11 +204,11 @@ impl ActivityTaskPoller {
 impl TaskPoller for ActivityTaskPoller {
     type Task = PollForActivityTaskResponse;
     type Response = RespondActivityTaskCompletedResponse;
-    
+
     async fn poll(&self) -> Result<Option<Self::Task>, CadenceError> {
         self.poll_activity_task().await
     }
-    
+
     async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError> {
         self.handler.handle(task).await
     }
@@ -219,17 +231,17 @@ impl PollerManager {
             join_handles: Vec::new(),
         }
     }
-    
+
     /// Add a decision task poller
     pub fn add_decision_poller(&mut self, poller: Arc<DecisionTaskPoller>) {
         self.decision_pollers.push(poller);
     }
-    
+
     /// Add an activity task poller
     pub fn add_activity_poller(&mut self, poller: Arc<ActivityTaskPoller>) {
         self.activity_pollers.push(poller);
     }
-    
+
     /// Start all pollers
     pub fn start(&mut self) {
         // Start decision pollers
@@ -239,7 +251,7 @@ impl PollerManager {
                 let mut poll_interval = interval(Duration::from_millis(100));
                 loop {
                     poll_interval.tick().await;
-                    
+
                     match poller.poll().await {
                         Ok(Some(task)) => {
                             if let Err(e) = poller.process(task).await {
@@ -255,7 +267,7 @@ impl PollerManager {
             });
             self.join_handles.push(handle);
         }
-        
+
         // Start activity pollers
         for poller in &self.activity_pollers {
             let poller = Arc::clone(poller);
@@ -263,7 +275,7 @@ impl PollerManager {
                 let mut poll_interval = interval(Duration::from_millis(100));
                 loop {
                     poll_interval.tick().await;
-                    
+
                     match poller.poll().await {
                         Ok(Some(task)) => {
                             if let Err(e) = poller.process(task).await {
@@ -280,7 +292,7 @@ impl PollerManager {
             self.join_handles.push(handle);
         }
     }
-    
+
     /// Stop all pollers
     pub async fn stop(&mut self) {
         for handle in &self.join_handles {
@@ -310,7 +322,7 @@ impl<P: TaskPoller> RateLimitedPoller<P> {
         } else {
             (max_tasks_per_second as usize).max(1)
         };
-        
+
         Self {
             inner,
             rate_limiter: tokio::sync::Semaphore::new(permits),
@@ -322,12 +334,12 @@ impl<P: TaskPoller> RateLimitedPoller<P> {
 impl<P: TaskPoller> TaskPoller for RateLimitedPoller<P> {
     type Task = P::Task;
     type Response = P::Response;
-    
+
     async fn poll(&self) -> Result<Option<Self::Task>, CadenceError> {
         let _permit = self.rate_limiter.acquire().await.unwrap();
         self.inner.poll().await
     }
-    
+
     async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError> {
         self.inner.process(task).await
     }

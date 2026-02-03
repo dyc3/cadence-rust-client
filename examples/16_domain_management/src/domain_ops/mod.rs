@@ -9,10 +9,7 @@ use std::time::Duration;
 use tracing::info;
 
 /// Example: Register a new domain with full configuration
-pub fn create_domain_registration_request(
-    name: &str,
-    owner_email: &str,
-) -> RegisterDomainRequest {
+pub fn create_domain_registration_request(name: &str, owner_email: &str) -> RegisterDomainRequest {
     let mut data = HashMap::new();
     data.insert("created_by".to_string(), "example_16".to_string());
     data.insert("environment".to_string(), "development".to_string());
@@ -101,10 +98,7 @@ pub fn create_domain_update_request(
 }
 
 /// Example: Create a failover request
-pub fn create_failover_request(
-    domain_name: &str,
-    target_cluster: &str,
-) -> FailoverDomainRequest {
+pub fn create_failover_request(domain_name: &str, target_cluster: &str) -> FailoverDomainRequest {
     FailoverDomainRequest {
         name: domain_name.to_string(),
         clusters: vec![target_cluster.to_string()],
@@ -119,17 +113,34 @@ pub fn print_domain_info(description: &DomainDescription) {
     info!("  Description: {}", description.domain_info.description);
     info!("  Owner: {}", description.domain_info.owner_email);
     info!("  UUID: {}", description.domain_info.uuid);
-    
+
     info!("Configuration:");
-    info!("  Retention Period: {:?}", description.configuration.workflow_execution_retention_period);
+    info!(
+        "  Retention Period: {:?}",
+        description
+            .configuration
+            .workflow_execution_retention_period
+    );
     info!("  Emit Metrics: {}", description.configuration.emit_metric);
-    info!("  History Archival: {:?}", description.configuration.history_archival_status);
-    info!("  Visibility Archival: {:?}", description.configuration.visibility_archival_status);
-    
+    info!(
+        "  History Archival: {:?}",
+        description.configuration.history_archival_status
+    );
+    info!(
+        "  Visibility Archival: {:?}",
+        description.configuration.visibility_archival_status
+    );
+
     info!("Replication:");
-    info!("  Active Cluster: {}", description.replication_configuration.active_cluster_name);
-    info!("  Clusters: {:?}", 
-        description.replication_configuration.clusters
+    info!(
+        "  Active Cluster: {}",
+        description.replication_configuration.active_cluster_name
+    );
+    info!(
+        "  Clusters: {:?}",
+        description
+            .replication_configuration
+            .clusters
             .iter()
             .map(|c| c.cluster_name.clone())
             .collect::<Vec<_>>()
@@ -139,37 +150,38 @@ pub fn print_domain_info(description: &DomainDescription) {
 /// Example workflow demonstrating domain operations
 pub async fn demonstrate_domain_lifecycle() -> Result<(), String> {
     info!("Starting domain lifecycle demonstration");
-    
+
     // 1. Create registration request
-    let register_request = create_domain_registration_request(
-        "example-domain",
-        "admin@example.com"
+    let register_request =
+        create_domain_registration_request("example-domain", "admin@example.com");
+    info!(
+        "Created registration request for domain: {}",
+        register_request.name
     );
-    info!("Created registration request for domain: {}", register_request.name);
-    
+
     // 2. Create global domain request
     let global_request = create_global_domain_request(
         "global-example-domain",
         "admin@example.com",
-        vec!["cluster-1", "cluster-2"]
+        vec!["cluster-1", "cluster-2"],
     );
     info!("Created global domain request: {}", global_request.name);
-    
+
     // 3. Create update request
     let _update_request = create_domain_update_request(
         "example-domain",
         "Updated description",
-        "new-owner@example.com"
+        "new-owner@example.com",
     );
     info!("Created update request for domain");
-    
+
     // 4. Create failover request
-    let failover_request = create_failover_request(
-        "global-example-domain",
-        "cluster-2"
+    let failover_request = create_failover_request("global-example-domain", "cluster-2");
+    info!(
+        "Created failover request to cluster: {}",
+        failover_request.clusters[0]
     );
-    info!("Created failover request to cluster: {}", failover_request.clusters[0]);
-    
+
     info!("Domain lifecycle demonstration completed");
     Ok(())
 }

@@ -4,8 +4,8 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
@@ -60,7 +60,12 @@ pub async fn orchestrator_workflow(
 
     // Simulate workflow coordination
     for (idx, workflow_id) in workflow_ids.iter().enumerate() {
-        info!("Managing workflow {}/{}: {}", idx + 1, workflow_ids.len(), workflow_id);
+        info!(
+            "Managing workflow {}/{}: {}",
+            idx + 1,
+            workflow_ids.len(),
+            workflow_id
+        );
 
         // Send execution signal to the workflow
         let signal = ExecuteTaskSignal {
@@ -90,11 +95,13 @@ pub async fn orchestrator_workflow(
             level: LogLevel::Info,
         };
 
-        let _ = ctx.execute_activity(
-            "log_execution",
-            Some(serde_json::to_vec(&log_input).unwrap()),
-            ActivityOptions::default(),
-        ).await;
+        let _ = ctx
+            .execute_activity(
+                "log_execution",
+                Some(serde_json::to_vec(&log_input).unwrap()),
+                ActivityOptions::default(),
+            )
+            .await;
     }
 
     // Simulate monitoring completion (in real scenario, would poll or wait for completion signals)
@@ -103,15 +110,18 @@ pub async fn orchestrator_workflow(
 
         // Simulate success for most, failure for some
         if workflow_id.contains("fail") {
-            warn!("Workflow {} failed, cancelling dependent workflows", workflow_id);
+            warn!(
+                "Workflow {} failed, cancelling dependent workflows",
+                workflow_id
+            );
 
             // Cancel dependent workflows
             for other_id in &running_workflows {
                 if other_id != workflow_id {
                     info!("Cancelling workflow {} due to dependency failure", other_id);
-                    
+
                     ctx.request_cancel_external_workflow(other_id, None).await?;
-                    
+
                     cancelled_workflows.push(other_id.clone());
 
                     // Notify about cancellation
@@ -121,11 +131,13 @@ pub async fn orchestrator_workflow(
                         message: format!("Cancelled due to failure in {}", workflow_id),
                     };
 
-                    let _ = ctx.execute_activity(
-                        "send_external_notification",
-                        Some(serde_json::to_vec(&notif_input).unwrap()),
-                        ActivityOptions::default(),
-                    ).await;
+                    let _ = ctx
+                        .execute_activity(
+                            "send_external_notification",
+                            Some(serde_json::to_vec(&notif_input).unwrap()),
+                            ActivityOptions::default(),
+                        )
+                        .await;
                 }
             }
 
@@ -187,7 +199,7 @@ pub async fn producer_workflow(
 
     // Notify all consumers
     let mut consumers_notified = vec![];
-    
+
     for consumer_id in &consumer_workflow_ids {
         let signal = DataReadySignal {
             data_id: data_id.clone(),
@@ -195,12 +207,15 @@ pub async fn producer_workflow(
             producer_workflow_id: producer_id.clone(),
         };
 
-        match ctx.signal_external_workflow(
-            consumer_id,
-            None,
-            "data_ready",
-            Some(serde_json::to_vec(&signal).unwrap()),
-        ).await {
+        match ctx
+            .signal_external_workflow(
+                consumer_id,
+                None,
+                "data_ready",
+                Some(serde_json::to_vec(&signal).unwrap()),
+            )
+            .await
+        {
             Ok(_) => {
                 info!("Notified consumer {} about data {}", consumer_id, data_id);
                 consumers_notified.push(consumer_id.clone());
@@ -218,11 +233,13 @@ pub async fn producer_workflow(
             level: LogLevel::Info,
         };
 
-        let _ = ctx.execute_activity(
-            "log_execution",
-            Some(serde_json::to_vec(&log_input).unwrap()),
-            ActivityOptions::default(),
-        ).await;
+        let _ = ctx
+            .execute_activity(
+                "log_execution",
+                Some(serde_json::to_vec(&log_input).unwrap()),
+                ActivityOptions::default(),
+            )
+            .await;
     }
 
     info!(
@@ -296,9 +313,7 @@ pub async fn consumer_workflow(
                 if let Ok(signal) = serde_json::from_slice::<DataReadySignal>(&data) {
                     info!(
                         "Consumer {} received data {} from producer {}",
-                        input.consumer_id,
-                        signal.data_id,
-                        signal.producer_workflow_id
+                        input.consumer_id, signal.data_id, signal.producer_workflow_id
                     );
 
                     // Simulate processing
@@ -311,15 +326,20 @@ pub async fn consumer_workflow(
                     let log_input = LogActivityInput {
                         workflow_id: input.consumer_id.clone(),
                         activity_name: "process_data".to_string(),
-                        message: format!("Processed data {} from {}", data_id, signal.producer_workflow_id),
+                        message: format!(
+                            "Processed data {} from {}",
+                            data_id, signal.producer_workflow_id
+                        ),
                         level: LogLevel::Info,
                     };
 
-                    let _ = ctx.execute_activity(
-                        "log_execution",
-                        Some(serde_json::to_vec(&log_input).unwrap()),
-                        ActivityOptions::default(),
-                    ).await;
+                    let _ = ctx
+                        .execute_activity(
+                            "log_execution",
+                            Some(serde_json::to_vec(&log_input).unwrap()),
+                            ActivityOptions::default(),
+                        )
+                        .await;
                 }
             }
             None => {
@@ -369,15 +389,16 @@ pub async fn timer_workflow(
 ) -> Result<TimerResult, WorkflowError> {
     info!(
         "Starting timer {} for workflow {} (delay: {}ms)",
-        timer_id,
-        target_workflow_id,
-        duration_ms
+        timer_id, target_workflow_id, duration_ms
     );
 
     // Sleep for the specified duration
     ctx.sleep(Duration::from_millis(duration_ms)).await;
 
-    info!("Timer {} expired, signaling workflow {}", timer_id, target_workflow_id);
+    info!(
+        "Timer {} expired, signaling workflow {}",
+        timer_id, target_workflow_id
+    );
 
     // Send signal to target workflow
     let signal = TimerExpiredSignal {

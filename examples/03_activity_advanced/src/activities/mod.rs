@@ -36,7 +36,7 @@ pub struct FileProcessingResult {
 }
 
 /// Long-running file processing activity with heartbeats
-/// 
+///
 /// This activity simulates processing a large file in chunks,
 /// recording heartbeats periodically to report progress.
 pub async fn process_large_file_activity(
@@ -46,8 +46,7 @@ pub async fn process_large_file_activity(
     let info = ctx.get_info();
     info!(
         "Starting file processing for {} (attempt {})",
-        input.file_path,
-        info.attempt
+        input.file_path, info.attempt
     );
 
     // Check for heartbeat details from previous attempt
@@ -97,23 +96,32 @@ pub async fn process_large_file_activity(
         if ctx.is_cancelled() {
             info!("Activity cancelled, saving progress and exiting");
             // Save current progress as heartbeat details
-            let details = serde_json::to_vec(&progress)
-                .map_err(|e| ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e)))?;
+            let details = serde_json::to_vec(&progress).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e))
+            })?;
             ctx.record_heartbeat(Some(&details));
-            return Err(ActivityError::ExecutionFailed("Activity cancelled by request".to_string()));
+            return Err(ActivityError::ExecutionFailed(
+                "Activity cancelled by request".to_string(),
+            ));
         }
 
         // Check deadline
         if let Some(remaining) = ctx.get_remaining_time() {
             if remaining < Duration::from_secs(5) {
                 warn!("Approaching deadline, saving progress");
-                let details = serde_json::to_vec(&progress)
-                    .map_err(|e| ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e)))?;
+                let details = serde_json::to_vec(&progress).map_err(|e| {
+                    ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e))
+                })?;
                 ctx.record_heartbeat(Some(&details));
             }
         }
 
-        info!("Processing chunk {}/{} for {}", chunk_idx + 1, total_chunks, input.file_path);
+        info!(
+            "Processing chunk {}/{} for {}",
+            chunk_idx + 1,
+            total_chunks,
+            input.file_path
+        );
 
         // Simulate work
         sleep(Duration::from_millis(100)).await;
@@ -125,17 +133,20 @@ pub async fn process_large_file_activity(
 
         // Record heartbeat every 3 chunks
         if (chunk_idx + 1) % 3 == 0 || chunk_idx == total_chunks - 1 {
-            let details = serde_json::to_vec(&progress)
-                .map_err(|e| ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e)))?;
+            let details = serde_json::to_vec(&progress).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e))
+            })?;
             ctx.record_heartbeat(Some(&details));
-            info!("Recorded heartbeat: {} chunks processed", progress.chunks_processed);
+            info!(
+                "Recorded heartbeat: {} chunks processed",
+                progress.chunks_processed
+            );
         }
     }
 
     info!(
         "File processing completed: {} chunks, {} bytes",
-        progress.chunks_processed,
-        progress.bytes_processed
+        progress.chunks_processed, progress.bytes_processed
     );
 
     Ok(FileProcessingResult {
@@ -172,7 +183,7 @@ pub struct MigrationResult {
 }
 
 /// Data migration activity with cancellation support
-/// 
+///
 /// This activity demonstrates handling cancellation gracefully,
 /// allowing partial work to be saved via heartbeats.
 pub async fn migrate_data_activity(
@@ -182,20 +193,17 @@ pub async fn migrate_data_activity(
     let info = ctx.get_info();
     info!(
         "Starting data migration from {} to {} (attempt {})",
-        input.source_table,
-        input.destination_table,
-        info.attempt
+        input.source_table, input.destination_table, info.attempt
     );
 
     // Resume from previous progress if available
     let mut progress = if ctx.has_heartbeat_details() {
         if let Some(details) = ctx.get_heartbeat_details() {
-            serde_json::from_slice::<MigrationProgress>(details)
-                .unwrap_or(MigrationProgress {
-                    records_migrated: 0,
-                    total_records: 100, // Simulated
-                    last_record_id: "start".to_string(),
-                })
+            serde_json::from_slice::<MigrationProgress>(details).unwrap_or(MigrationProgress {
+                records_migrated: 0,
+                total_records: 100, // Simulated
+                last_record_id: "start".to_string(),
+            })
         } else {
             MigrationProgress {
                 records_migrated: 0,
@@ -218,27 +226,34 @@ pub async fn migrate_data_activity(
         // Check for cancellation
         if ctx.is_cancelled() {
             info!("Migration cancelled, saving progress");
-            let details = serde_json::to_vec(&progress)
-                .map_err(|e| ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e)))?;
+            let details = serde_json::to_vec(&progress).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e))
+            })?;
             ctx.record_heartbeat(Some(&details));
-            return Err(ActivityError::ExecutionFailed(
-                format!("Migration cancelled after {} records", progress.records_migrated)
-            ));
+            return Err(ActivityError::ExecutionFailed(format!(
+                "Migration cancelled after {} records",
+                progress.records_migrated
+            )));
         }
 
         // Check worker stop signal
         if let Some(stop_rx) = ctx.get_worker_stop_channel() {
             if *stop_rx.borrow() {
                 info!("Worker stopping, saving migration progress");
-                let details = serde_json::to_vec(&progress)
-                    .map_err(|e| ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e)))?;
+                let details = serde_json::to_vec(&progress).map_err(|e| {
+                    ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e))
+                })?;
                 ctx.record_heartbeat(Some(&details));
-                return Err(ActivityError::ExecutionFailed("Worker shutting down".to_string()));
+                return Err(ActivityError::ExecutionFailed(
+                    "Worker shutting down".to_string(),
+                ));
             }
         }
 
         // Process a batch
-        let batch_count = input.batch_size.min(total_records - progress.records_migrated);
+        let batch_count = input
+            .batch_size
+            .min(total_records - progress.records_migrated);
         info!(
             "Migrating batch of {} records ({} of {})",
             batch_count,
@@ -255,10 +270,14 @@ pub async fn migrate_data_activity(
 
         // Record heartbeat every 20 records
         if progress.records_migrated % 20 == 0 {
-            let details = serde_json::to_vec(&progress)
-                .map_err(|e| ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e)))?;
+            let details = serde_json::to_vec(&progress).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to serialize progress: {}", e))
+            })?;
             ctx.record_heartbeat(Some(&details));
-            info!("Recorded heartbeat: {} records migrated", progress.records_migrated);
+            info!(
+                "Recorded heartbeat: {} records migrated",
+                progress.records_migrated
+            );
         }
     }
 
@@ -266,8 +285,7 @@ pub async fn migrate_data_activity(
 
     info!(
         "Data migration completed: {} records in {:?}",
-        progress.records_migrated,
-        duration
+        progress.records_migrated, duration
     );
 
     Ok(MigrationResult {
@@ -295,7 +313,7 @@ pub struct DeadlineAwareResult {
 }
 
 /// Activity that respects deadlines
-/// 
+///
 /// This activity checks its deadline and stops gracefully when
 /// running out of time, reporting partial results.
 pub async fn deadline_aware_activity(
@@ -304,16 +322,18 @@ pub async fn deadline_aware_activity(
 ) -> Result<DeadlineAwareResult, ActivityError> {
     info!(
         "Starting deadline-aware task: {} (estimated {}s)",
-        input.task_name,
-        input.estimated_duration_secs
+        input.task_name, input.estimated_duration_secs
     );
 
     // Check initial deadline
     if let Some(remaining) = ctx.get_remaining_time() {
         info!("Initial time remaining: {:?}", remaining);
-        
+
         if remaining < Duration::from_secs(input.estimated_duration_secs) {
-            warn!("Warning: remaining time ({:?}) is less than estimated duration", remaining);
+            warn!(
+                "Warning: remaining time ({:?}) is less than estimated duration",
+                remaining
+            );
         }
     } else {
         info!("No deadline set for this activity");
@@ -327,7 +347,10 @@ pub async fn deadline_aware_activity(
         // Check deadline before each item
         if let Some(remaining) = ctx.get_remaining_time() {
             if remaining < Duration::from_millis(200) {
-                info!("Approaching deadline with {}ms remaining, stopping gracefully", remaining.as_millis());
+                info!(
+                    "Approaching deadline with {}ms remaining, stopping gracefully",
+                    remaining.as_millis()
+                );
                 stopped_by_deadline = true;
                 break;
             }
@@ -353,9 +376,7 @@ pub async fn deadline_aware_activity(
 
     info!(
         "Task {} finished: {} items processed, completed: {}",
-        input.task_name,
-        items_processed,
-        completed
+        input.task_name, items_processed, completed
     );
 
     Ok(DeadlineAwareResult {

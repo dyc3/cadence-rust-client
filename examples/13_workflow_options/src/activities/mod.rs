@@ -70,7 +70,7 @@ pub async fn generate_report_activity(
         "Generating {} report for {} to {}",
         request.report_type, request.date_range.start_date, request.date_range.end_date
     );
-    
+
     // Simulate variable report generation time based on date range
     let duration_ms = match request.report_type.as_str() {
         "summary" => 500,
@@ -78,17 +78,17 @@ pub async fn generate_report_activity(
         "audit" => 5000,
         _ => 1000,
     };
-    
+
     // Record heartbeat
     ctx.record_heartbeat(None);
-    
+
     tokio::time::sleep(Duration::from_millis(duration_ms)).await;
-    
+
     // Generate report ID
     let report_id = Uuid::new_v4().to_string();
-    
+
     info!("Report {} generated successfully", report_id);
-    
+
     Ok(ReportResult {
         report_id: report_id.clone(),
         generated_at: chrono::Utc::now().to_rfc3339(),
@@ -102,17 +102,20 @@ pub async fn scheduled_cleanup_activity(
     _ctx: &ActivityContext,
     input: ScheduledTaskInput,
 ) -> Result<TaskExecutionResult, ActivityError> {
-    info!("Executing scheduled task: {} at {}", input.task_name, input.scheduled_time);
-    
+    info!(
+        "Executing scheduled task: {} at {}",
+        input.task_name, input.scheduled_time
+    );
+
     let started_at = chrono::Utc::now().timestamp();
-    
+
     // Simulate cleanup work
     tokio::time::sleep(Duration::from_millis(300)).await;
-    
+
     let completed_at = chrono::Utc::now().timestamp();
-    
+
     info!("Scheduled task {} completed", input.task_name);
-    
+
     Ok(TaskExecutionResult {
         execution_id: Uuid::new_v4().to_string(),
         task_name: input.task_name,
@@ -128,21 +131,21 @@ pub async fn archive_data_activity(
     archive_date: String,
 ) -> Result<TaskExecutionResult, ActivityError> {
     info!("Archiving data for date: {}", archive_date);
-    
+
     let started_at = chrono::Utc::now().timestamp();
-    
+
     // Record heartbeat
     ctx.record_heartbeat(None);
-    
+
     // Simulate archival work
     tokio::time::sleep(Duration::from_millis(800)).await;
-    
+
     ctx.record_heartbeat(None);
-    
+
     let completed_at = chrono::Utc::now().timestamp();
-    
+
     info!("Data archival for {} completed", archive_date);
-    
+
     Ok(TaskExecutionResult {
         execution_id: Uuid::new_v4().to_string(),
         task_name: format!("archive_{}", archive_date),
@@ -158,13 +161,13 @@ pub async fn validate_input_activity(
     input_data: String,
 ) -> Result<bool, ActivityError> {
     info!("Validating input data");
-    
+
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     // Simple validation
     let valid = !input_data.is_empty() && input_data.len() < 10000;
-    
+
     info!("Validation result: {}", valid);
-    
+
     Ok(valid)
 }

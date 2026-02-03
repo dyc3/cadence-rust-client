@@ -22,11 +22,8 @@
 //! cargo test -p workflow_patterns
 //! ```
 
-use workflow_patterns::{
-    activities::*,
-    workflows::*,
-};
 use examples_common::tracing_setup::init_tracing;
+use workflow_patterns::{activities::*, workflows::*};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -83,8 +80,14 @@ async fn demonstrate_saga_pattern() -> anyhow::Result<()> {
     println!("Order ID: {}", order_input.order_id);
     println!("Customer: {}", order_input.customer_id);
     println!("Items: {:?}", order_input.items);
-    println!("Total: {} {}", order_input.total_amount, order_input.currency);
-    println!("Shipping to: {}, {}\n", order_input.shipping_address.city, order_input.shipping_address.country);
+    println!(
+        "Total: {} {}",
+        order_input.total_amount, order_input.currency
+    );
+    println!(
+        "Shipping to: {}, {}\n",
+        order_input.shipping_address.city, order_input.shipping_address.country
+    );
 
     // Simulate successful order processing
     println!("Order saga workflow steps:");
@@ -94,7 +97,9 @@ async fn demonstrate_saga_pattern() -> anyhow::Result<()> {
     println!("  4. Send notification\n");
 
     println!("If any step fails:");
-    println!("  - Shipment creation failure → Cancel shipment + Release inventory + Refund payment");
+    println!(
+        "  - Shipment creation failure → Cancel shipment + Release inventory + Refund payment"
+    );
     println!("  - Inventory reservation failure → Release inventory + Refund payment");
     println!("  - Payment failure → Just fail (nothing to compensate)\n");
 
@@ -134,7 +139,10 @@ async fn demonstrate_fanout_pattern() -> anyhow::Result<()> {
     println!();
 
     println!("Parallel processing workflow:");
-    println!("  FAN-OUT: Create {} parallel processing tasks", batch_input.records.len());
+    println!(
+        "  FAN-OUT: Create {} parallel processing tasks",
+        batch_input.records.len()
+    );
     println!("  FAN-IN:  Wait for all tasks to complete and aggregate results\n");
 
     println!("Benefits:");
@@ -183,14 +191,14 @@ async fn demonstrate_circuit_breaker() -> anyhow::Result<()> {
 // mod tests {
 //     use super::*;
 //     use cadence_testsuite::TestWorkflowEnvironment;
-// 
+//
 //     #[tokio::test]
 //     async fn test_saga_pattern() {
 //         println!("\nTesting Saga Pattern...\n");
-// 
+//
 //         // In a real implementation, this would use TestWorkflowEnvironment
 //         // to test the full saga workflow with mocked activities
-//         
+//
 //         let order_input = OrderSagaInput {
 //             order_id: "TEST-ORDER-001".to_string(),
 //             customer_id: "TEST-CUST-001".to_string(),
@@ -208,17 +216,17 @@ async fn demonstrate_circuit_breaker() -> anyhow::Result<()> {
 //                 postal_code: "12345".to_string(),
 //             },
 //         };
-// 
+//
 //         // Verify the input structure
 //         assert_eq!(order_input.order_id, "TEST-ORDER-001");
 //         assert_eq!(order_input.items.len(), 1);
 //         assert!(order_input.total_amount > 0.0);
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_fanout_pattern() {
 //         println!("\nTesting Fan-out/Fan-in Pattern...\n");
-// 
+//
 //         let batch_input = DataProcessingInput {
 //             batch_id: "TEST-BATCH-001".to_string(),
 //             records: (1..=10)
@@ -228,51 +236,51 @@ async fn demonstrate_circuit_breaker() -> anyhow::Result<()> {
 //                 })
 //                 .collect(),
 //         };
-// 
+//
 //         assert_eq!(batch_input.records.len(), 10);
 //         assert_eq!(batch_input.batch_id, "TEST-BATCH-001");
 //     }
-// 
+//
 //     #[test]
 //     fn test_circuit_breaker_states() {
 //         println!("\nTesting Circuit Breaker States...\n");
-// 
+//
 //         // Test circuit breaker operation structure
 //         let operation = CircuitBreakerOperation {
 //             operation_type: "test_operation".to_string(),
 //             input: None,
 //             fallback: Some("fallback".to_string()),
 //         };
-// 
+//
 //         assert_eq!(operation.operation_type, "test_operation");
 //         assert!(operation.fallback.is_some());
 //     }
-// 
+//
 //     #[test]
 //     fn test_order_status_enum() {
 //         use workflow_patterns::workflows::OrderStatus;
-// 
+//
 //         let statuses = vec![
 //             OrderStatus::Pending,
 //             OrderStatus::Confirmed,
 //             OrderStatus::Failed,
 //             OrderStatus::Cancelled,
 //         ];
-// 
+//
 //         assert_eq!(statuses.len(), 4);
 //     }
-// 
+//
 //     #[test]
 //     fn test_payment_status() {
 //         use workflow_patterns::activities::PaymentStatus;
-// 
+//
 //         let statuses = vec![
 //             PaymentStatus::Pending,
 //             PaymentStatus::Completed,
 //             PaymentStatus::Failed,
 //             PaymentStatus::Refunded,
 //         ];
-// 
+//
 //         assert_eq!(statuses.len(), 4);
 //     }
 // }

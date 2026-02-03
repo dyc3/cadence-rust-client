@@ -39,10 +39,9 @@ use cadence_proto::shared::{
     HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution, WorkflowType,
 };
 use cadence_proto::workflow_service::{
-    DescribeDomainRequest, GetWorkflowExecutionHistoryRequest,
-    ListOpenWorkflowExecutionsRequest, QueryWorkflowRequest, RegisterDomainRequest,
-    SignalWorkflowExecutionRequest, StartTimeFilter, StartWorkflowExecutionRequest,
-    WorkflowQuery, WorkflowService,
+    DescribeDomainRequest, GetWorkflowExecutionHistoryRequest, ListOpenWorkflowExecutionsRequest,
+    QueryWorkflowRequest, RegisterDomainRequest, SignalWorkflowExecutionRequest, StartTimeFilter,
+    StartWorkflowExecutionRequest, WorkflowQuery, WorkflowService,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -90,13 +89,13 @@ async fn register_domain_and_wait(
         visibility_archival_status: None,
         visibility_archival_uri: None,
     };
-    
+
     client.register_domain(register_request).await?;
-    
+
     // Wait for domain to propagate in the cache (needs more time for distributed system)
     // Increased to 1500ms to handle cache propagation when running multiple tests
     tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
-    
+
     Ok(())
 }
 
@@ -138,30 +137,39 @@ fn create_test_workflow_request(domain: &str, workflow_id: &str) -> StartWorkflo
 #[tokio::test]
 #[ignore]
 async fn test_grpc_connection() {
-    println!("Testing gRPC connection to Cadence server at {}", CADENCE_GRPC_ENDPOINT);
-    
+    println!(
+        "Testing gRPC connection to Cadence server at {}",
+        CADENCE_GRPC_ENDPOINT
+    );
+
     // Try to connect to the server
     let client = create_grpc_client(DEFAULT_DOMAIN)
         .await
         .expect("Failed to connect to Cadence gRPC server. Is it running on port 7833?");
-    
+
     println!("✓ Successfully connected to Cadence gRPC server");
-    
+
     // Try a simple operation - describe the system domain
     let request = DescribeDomainRequest {
         name: Some("cadence-system".to_string()),
         uuid: None,
     };
-    
+
     let response = client
         .describe_domain(request)
         .await
         .expect("Failed to describe domain");
-    
+
     println!("✓ Successfully called describe_domain");
-    println!("  Domain: {:?}", response.domain_info.as_ref().map(|d| &d.name));
-    
-    assert!(response.domain_info.is_some(), "Domain info should be present");
+    println!(
+        "  Domain: {:?}",
+        response.domain_info.as_ref().map(|d| &d.name)
+    );
+
+    assert!(
+        response.domain_info.is_some(),
+        "Domain info should be present"
+    );
 }
 
 /// Test 2: Register and describe domain
@@ -172,33 +180,36 @@ async fn test_grpc_connection() {
 async fn test_register_and_describe_domain() {
     let domain_name = generate_test_domain_name();
     println!("Testing domain registration: {}", domain_name);
-    
+
     let client = create_grpc_client(&domain_name)
         .await
         .expect("Failed to connect to Cadence gRPC server");
-    
+
     // Register a new domain
     register_domain_and_wait(&client, &domain_name)
         .await
         .expect("Failed to register domain");
-    
+
     println!("✓ Successfully registered domain: {}", domain_name);
-    
+
     // Describe the domain to verify it was created
     let describe_request = DescribeDomainRequest {
         name: Some(domain_name.clone()),
         uuid: None,
     };
-    
+
     let response = client
         .describe_domain(describe_request)
         .await
         .expect("Failed to describe domain");
-    
+
     println!("✓ Successfully described domain");
-    
+
     // Verify domain properties
-    assert!(response.domain_info.is_some(), "Domain info should be present");
+    assert!(
+        response.domain_info.is_some(),
+        "Domain info should be present"
+    );
     let domain_info = response.domain_info.unwrap();
     assert_eq!(domain_info.name, domain_name, "Domain name should match");
     assert_eq!(
@@ -206,7 +217,7 @@ async fn test_register_and_describe_domain() {
         "Test domain",
         "Domain description should match"
     );
-    
+
     println!("✓ Domain properties verified");
 }
 
@@ -218,33 +229,33 @@ async fn test_register_and_describe_domain() {
 async fn test_start_workflow_execution() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
-    
+
     println!("Testing workflow execution:");
     println!("  Domain: {}", domain_name);
     println!("  Workflow ID: {}", workflow_id);
-    
+
     let client = create_grpc_client(&domain_name)
         .await
         .expect("Failed to connect to Cadence gRPC server");
-    
+
     // Register domain first
     register_domain_and_wait(&client, &domain_name)
         .await
         .expect("Failed to register domain");
-    
+
     println!("✓ Domain registered");
-    
+
     // Start a workflow
     let start_request = create_test_workflow_request(&domain_name, &workflow_id);
-    
+
     let response = client
         .start_workflow_execution(start_request)
         .await
         .expect("Failed to start workflow execution");
-    
+
     println!("✓ Successfully started workflow");
     println!("  Run ID: {}", response.run_id);
-    
+
     // Verify we got a valid run_id
     assert!(!response.run_id.is_empty(), "Run ID should not be empty");
     assert!(
@@ -261,29 +272,29 @@ async fn test_start_workflow_execution() {
 async fn test_get_workflow_execution_history() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
-    
+
     println!("Testing workflow history:");
     println!("  Domain: {}", domain_name);
     println!("  Workflow ID: {}", workflow_id);
-    
+
     let client = create_grpc_client(&domain_name)
         .await
         .expect("Failed to connect to Cadence gRPC server");
-    
+
     // Register domain
     register_domain_and_wait(&client, &domain_name)
         .await
         .expect("Failed to register domain");
-    
+
     // Start a workflow
     let start_request = create_test_workflow_request(&domain_name, &workflow_id);
     let start_response = client
         .start_workflow_execution(start_request)
         .await
         .expect("Failed to start workflow execution");
-    
+
     println!("✓ Workflow started with run_id: {}", start_response.run_id);
-    
+
     // Get workflow execution history
     let history_request = GetWorkflowExecutionHistoryRequest {
         domain: domain_name.clone(),
@@ -297,43 +308,52 @@ async fn test_get_workflow_execution_history() {
         history_event_filter_type: Some(HistoryEventFilterType::AllEvent),
         skip_archival: false,
     };
-    
+
     let history_response = client
         .get_workflow_execution_history(history_request)
         .await
         .expect("Failed to get workflow execution history");
-    
+
     println!("✓ Successfully retrieved workflow history");
-    
+
     // Verify history contains events
-    assert!(history_response.history.is_some(), "History should be present");
+    assert!(
+        history_response.history.is_some(),
+        "History should be present"
+    );
     let history = history_response.history.unwrap();
-    
+
     println!("  Event count: {}", history.events.len());
-    
+
     // Verify history contains events
     assert!(!history.events.is_empty(), "History should contain events");
-    
+
     // Print event types
     println!("  Events:");
     for event in &history.events {
         println!("    - Event {}: {:?}", event.event_id, event.event_type);
     }
-    
+
     // Verify we have at least WorkflowExecutionStarted and DecisionTaskScheduled events
     let has_workflow_started = history
         .events
         .iter()
         .any(|e| e.event_type == cadence_proto::shared::EventType::WorkflowExecutionStarted);
-    
+
     let has_decision_scheduled = history
         .events
         .iter()
         .any(|e| e.event_type == cadence_proto::shared::EventType::DecisionTaskScheduled);
-    
-    assert!(has_workflow_started, "History should contain WorkflowExecutionStarted event");
-    assert!(has_decision_scheduled, "History should contain DecisionTaskScheduled event");
-    
+
+    assert!(
+        has_workflow_started,
+        "History should contain WorkflowExecutionStarted event"
+    );
+    assert!(
+        has_decision_scheduled,
+        "History should contain DecisionTaskScheduled event"
+    );
+
     println!("✓ History events verified");
 }
 
@@ -345,29 +365,29 @@ async fn test_get_workflow_execution_history() {
 async fn test_signal_workflow_execution() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
-    
+
     println!("Testing workflow signal:");
     println!("  Domain: {}", domain_name);
     println!("  Workflow ID: {}", workflow_id);
-    
+
     let client = create_grpc_client(&domain_name)
         .await
         .expect("Failed to connect to Cadence gRPC server");
-    
+
     // Register domain
     register_domain_and_wait(&client, &domain_name)
         .await
         .expect("Failed to register domain");
-    
+
     // Start a workflow
     let start_request = create_test_workflow_request(&domain_name, &workflow_id);
     let start_response = client
         .start_workflow_execution(start_request)
         .await
         .expect("Failed to start workflow execution");
-    
+
     println!("✓ Workflow started");
-    
+
     // Send a signal to the workflow
     let signal_request = SignalWorkflowExecutionRequest {
         domain: domain_name.clone(),
@@ -381,12 +401,12 @@ async fn test_signal_workflow_execution() {
         request_id: Uuid::new_v4().to_string(),
         control: None,
     };
-    
+
     client
         .signal_workflow_execution(signal_request)
         .await
         .expect("Failed to signal workflow execution");
-    
+
     println!("✓ Successfully sent signal to workflow");
 }
 
@@ -399,29 +419,29 @@ async fn test_signal_workflow_execution() {
 async fn test_query_workflow() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
-    
+
     println!("Testing workflow query:");
     println!("  Domain: {}", domain_name);
     println!("  Workflow ID: {}", workflow_id);
-    
+
     let client = create_grpc_client(&domain_name)
         .await
         .expect("Failed to connect to Cadence gRPC server");
-    
+
     // Register domain
     register_domain_and_wait(&client, &domain_name)
         .await
         .expect("Failed to register domain");
-    
+
     // Start a workflow
     let start_request = create_test_workflow_request(&domain_name, &workflow_id);
     let start_response = client
         .start_workflow_execution(start_request)
         .await
         .expect("Failed to start workflow execution");
-    
+
     println!("✓ Workflow started");
-    
+
     // Query the workflow (use __stack_trace which is a built-in query)
     let query_request = QueryWorkflowRequest {
         domain: domain_name.clone(),
@@ -434,13 +454,16 @@ async fn test_query_workflow() {
             query_args: None,
         }),
     };
-    
+
     // Note: This will likely fail because we don't have a worker running to handle the query
     // But we can verify the gRPC call itself works
     match client.query_workflow(query_request).await {
         Ok(response) => {
             println!("✓ Query succeeded (unexpected - no worker running)");
-            println!("  Query result present: {}", response.query_result.is_some());
+            println!(
+                "  Query result present: {}",
+                response.query_result.is_some()
+            );
         }
         Err(e) => {
             println!("✓ Query failed as expected (no worker to handle query)");
@@ -458,29 +481,29 @@ async fn test_query_workflow() {
 async fn test_list_open_workflow_executions() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
-    
+
     println!("Testing workflow listing:");
     println!("  Domain: {}", domain_name);
     println!("  Workflow ID: {}", workflow_id);
-    
+
     let client = create_grpc_client(&domain_name)
         .await
         .expect("Failed to connect to Cadence gRPC server");
-    
+
     // Register domain
     register_domain_and_wait(&client, &domain_name)
         .await
         .expect("Failed to register domain");
-    
+
     // Start a workflow
     let start_request = create_test_workflow_request(&domain_name, &workflow_id);
     let start_response = client
         .start_workflow_execution(start_request)
         .await
         .expect("Failed to start workflow execution");
-    
+
     println!("✓ Workflow started");
-    
+
     // List open workflow executions
     // Use a time range that covers recent workflows (last hour)
     let now = std::time::SystemTime::now()
@@ -488,7 +511,7 @@ async fn test_list_open_workflow_executions() {
         .unwrap()
         .as_nanos() as i64;
     let one_hour_ago = now - (3600 * 1_000_000_000);
-    
+
     let list_request = ListOpenWorkflowExecutionsRequest {
         domain: domain_name.clone(),
         maximum_page_size: 100,
@@ -501,22 +524,22 @@ async fn test_list_open_workflow_executions() {
         type_filter: None,
         status_filter: None,
     };
-    
+
     let list_response = client
         .list_open_workflow_executions(list_request)
         .await
         .expect("Failed to list open workflow executions");
-    
+
     println!("✓ Successfully listed open workflows");
     println!("  Count: {}", list_response.executions.len());
-    
+
     // Verify our workflow is in the list
     let found = list_response.executions.iter().any(|exec| {
         exec.execution.as_ref().map_or(false, |e| {
             e.workflow_id == workflow_id && e.run_id == start_response.run_id
         })
     });
-    
+
     if found {
         println!("✓ Started workflow found in list");
     } else {

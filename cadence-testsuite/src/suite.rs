@@ -9,21 +9,32 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use cadence_activity::{ActivityContext, ActivityInfo, WorkflowExecution as ActivityWorkflowExecution};
-use cadence_core::{ActivityOptions, ChildWorkflowOptions, WorkflowExecution, WorkflowInfo, WorkflowType};
+use cadence_activity::{
+    ActivityContext, ActivityInfo, WorkflowExecution as ActivityWorkflowExecution,
+};
+use cadence_core::{
+    ActivityOptions, ChildWorkflowOptions, WorkflowExecution, WorkflowInfo, WorkflowType,
+};
 use cadence_workflow::context::WorkflowError;
 use serde::{Deserialize, Serialize};
 
 /// Type alias for boxed workflow functions
 type WorkflowFn = Box<
-    dyn Fn(TestWorkflowContext, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<(TestWorkflowContext, Vec<u8>), WorkflowError>> + Send>>
-        + Send
+    dyn Fn(
+            TestWorkflowContext,
+            Vec<u8>,
+        ) -> Pin<
+            Box<dyn Future<Output = Result<(TestWorkflowContext, Vec<u8>), WorkflowError>> + Send>,
+        > + Send
         + Sync,
 >;
 
 /// Type alias for boxed activity functions (wrapped in Arc for cloning)
 type ActivityFn = Arc<
-    dyn Fn(&ActivityContext, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>>
+    dyn Fn(
+            &ActivityContext,
+            Vec<u8>,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>>
         + Send
         + Sync,
 >;
@@ -96,7 +107,14 @@ impl TestWorkflowEnvironment {
     {
         #[allow(clippy::type_complexity)]
         let boxed = Box::new(
-            move |ctx: TestWorkflowContext, input_bytes: Vec<u8>| -> Pin<Box<dyn Future<Output = Result<(TestWorkflowContext, Vec<u8>), WorkflowError>> + Send>> {
+            move |ctx: TestWorkflowContext,
+                  input_bytes: Vec<u8>|
+                  -> Pin<
+                Box<
+                    dyn Future<Output = Result<(TestWorkflowContext, Vec<u8>), WorkflowError>>
+                        + Send,
+                >,
+            > {
                 let input: I = match serde_json::from_slice(&input_bytes) {
                     Ok(i) => i,
                     Err(e) => {
@@ -119,7 +137,20 @@ impl TestWorkflowEnvironment {
                     Ok((ctx, output_bytes))
                 })
             },
-        ) as Box<dyn Fn(TestWorkflowContext, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<(TestWorkflowContext, Vec<u8>), WorkflowError>> + Send>> + Send + Sync>;
+        )
+            as Box<
+                dyn Fn(
+                        TestWorkflowContext,
+                        Vec<u8>,
+                    ) -> Pin<
+                        Box<
+                            dyn Future<
+                                    Output = Result<(TestWorkflowContext, Vec<u8>), WorkflowError>,
+                                > + Send,
+                        >,
+                    > + Send
+                    + Sync,
+            >;
 
         self.registered_workflows.insert(name.to_string(), boxed);
     }
@@ -142,30 +173,27 @@ impl TestWorkflowEnvironment {
         I: for<'de> Deserialize<'de> + Send + 'static,
         O: Serialize + Send + 'static,
     {
-        let arc = Arc::new(
-            move |ctx: &ActivityContext, input_bytes: Vec<u8>| {
-                let input: I = match serde_json::from_slice(&input_bytes) {
-                    Ok(i) => i,
-                    Err(e) => {
-                        return Box::pin(async move {
-                            Err(ActivityError::Generic(format!(
-                                "Input deserialization failed: {}",
-                                e
-                            )))
-                        })
-                            as Pin<Box<dyn Future<Output = _> + Send>>
-                    }
-                };
+        let arc = Arc::new(move |ctx: &ActivityContext, input_bytes: Vec<u8>| {
+            let input: I = match serde_json::from_slice(&input_bytes) {
+                Ok(i) => i,
+                Err(e) => {
+                    return Box::pin(async move {
+                        Err(ActivityError::Generic(format!(
+                            "Input deserialization failed: {}",
+                            e
+                        )))
+                    }) as Pin<Box<dyn Future<Output = _> + Send>>
+                }
+            };
 
-                let result = activity(ctx, input);
-                Box::pin(async move {
-                    let output = result.await?;
-                    serde_json::to_vec(&output).map_err(|e| {
-                        ActivityError::Generic(format!("Output serialization failed: {}", e))
-                    })
-                }) as Pin<Box<dyn Future<Output = _> + Send>>
-            },
-        );
+            let result = activity(ctx, input);
+            Box::pin(async move {
+                let output = result.await?;
+                serde_json::to_vec(&output).map_err(|e| {
+                    ActivityError::Generic(format!("Output serialization failed: {}", e))
+                })
+            }) as Pin<Box<dyn Future<Output = _> + Send>>
+        });
 
         self.registered_activities.insert(name.to_string(), arc);
     }
@@ -197,9 +225,10 @@ impl TestWorkflowEnvironment {
             .map_err(|e| WorkflowError::Generic(format!("Input serialization failed: {}", e)))?;
 
         // Look up workflow
-        let workflow = self.registered_workflows.get(name).ok_or_else(|| {
-            WorkflowError::Generic(format!("Workflow '{}' not registered", name))
-        })?;
+        let workflow = self
+            .registered_workflows
+            .get(name)
+            .ok_or_else(|| WorkflowError::Generic(format!("Workflow '{}' not registered", name)))?;
 
         // Create test context
         let activities = self.registered_activities.clone();
@@ -254,9 +283,10 @@ impl TestWorkflowEnvironment {
         let input_bytes = serde_json::to_vec(&input)
             .map_err(|e| ActivityError::Generic(format!("Input serialization: {}", e)))?;
 
-        let activity = self.registered_activities.get(name).ok_or_else(|| {
-            ActivityError::Generic(format!("Activity '{}' not registered", name))
-        })?;
+        let activity = self
+            .registered_activities
+            .get(name)
+            .ok_or_else(|| ActivityError::Generic(format!("Activity '{}' not registered", name)))?;
 
         // Create ActivityInfo
         let activity_info = ActivityInfo {
@@ -352,7 +382,9 @@ impl TestWorkflowContext {
     pub fn workflow_info(&self) -> WorkflowInfo {
         WorkflowInfo {
             workflow_execution: WorkflowExecution::new(&self.workflow_id, &self.run_id),
-            workflow_type: WorkflowType { name: self.workflow_type.clone() },
+            workflow_type: WorkflowType {
+                name: self.workflow_type.clone(),
+            },
             task_list: self.task_list.clone(),
             start_time: chrono::Utc::now(),
             execution_start_to_close_timeout: Duration::from_secs(60),
@@ -489,7 +521,8 @@ impl TestWorkflowContext {
     where
         F: Fn(Vec<u8>) -> Vec<u8> + Send + Sync + 'static,
     {
-        self.queries.insert(query_type.to_string(), Box::new(handler));
+        self.queries
+            .insert(query_type.to_string(), Box::new(handler));
     }
 
     /// Upsert search attributes
@@ -687,7 +720,10 @@ impl WorkflowReplayer {
     }
 
     /// Replay workflow history
-    pub async fn replay_workflow_history(&self, _history: WorkflowHistory) -> Result<(), ReplayError> {
+    pub async fn replay_workflow_history(
+        &self,
+        _history: WorkflowHistory,
+    ) -> Result<(), ReplayError> {
         // TODO: Implement history replay
         Ok(())
     }
@@ -789,9 +825,10 @@ mod tests {
     async fn test_register_and_execute_activity() {
         let mut env = TestWorkflowEnvironment::new();
 
-        env.register_activity("test_activity", |_ctx, input: i32| async move {
-            Ok(input * 2)
-        });
+        env.register_activity(
+            "test_activity",
+            |_ctx, input: i32| async move { Ok(input * 2) },
+        );
 
         let result: Result<i32, _> = env.execute_activity("test_activity", 21).await;
         assert_eq!(result.unwrap(), 42);
@@ -821,7 +858,11 @@ mod tests {
 
         env.register_workflow("calc_workflow", |mut ctx, input: i32| async move {
             let result = ctx
-                .execute_activity("double", Some(serde_json::to_vec(&input).unwrap()), ActivityOptions::default())
+                .execute_activity(
+                    "double",
+                    Some(serde_json::to_vec(&input).unwrap()),
+                    ActivityOptions::default(),
+                )
                 .await?;
             let output: i32 = serde_json::from_slice(&result).unwrap();
             Ok((ctx, output))

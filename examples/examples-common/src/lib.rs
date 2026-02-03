@@ -9,6 +9,6 @@ pub mod test_helpers;
 pub mod tracing_setup;
 pub mod types;
 
-pub use test_helpers::*;
 pub use assertions::*;
+pub use test_helpers::*;
 pub use tracing_setup::*;

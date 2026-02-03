@@ -1,7 +1,7 @@
 //! Workflow implementations for workflow replay example.
 
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use tracing::info;
 
 /// A simple workflow for replay demonstration

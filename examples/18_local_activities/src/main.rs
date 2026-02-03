@@ -147,7 +147,7 @@ fn demonstrate_performance_considerations() {
 // mod tests {
 //     use super::*;
 //     use cadence_testsuite::TestWorkflowEnvironment;
-// 
+//
 //     fn create_test_input() -> PipelineInput {
 //         PipelineInput {
 //             raw_data: serde_json::json!({
@@ -159,101 +159,101 @@ fn demonstrate_performance_considerations() {
 //             transform_type: "add_timestamp".to_string(),
 //         }
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_local_activity_pipeline() {
 //         let mut env = TestWorkflowEnvironment::new();
-// 
+//
 //         // Register local activities
 //         env.register_activity("validate_data", validate_data_activity);
 //         env.register_activity("enrich_data", enrich_data_activity);
 //         env.register_activity("make_decision", make_decision_activity);
 //         env.register_activity("transform_data", transform_data_activity);
-// 
+//
 //         // Register workflow
 //         env.register_workflow("pipeline", local_activity_pipeline_workflow);
-// 
+//
 //         let input = create_test_input();
 //         let result = env.execute_workflow("pipeline", input).await;
 //         assert!(result.is_ok());
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_mixed_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
-// 
+//
 //         env.register_activity("validate_data", validate_data_activity);
 //         env.register_workflow("mixed", mixed_local_and_regular_workflow);
-// 
+//
 //         let input = MixedWorkflowInput {
 //             data: serde_json::json!({"test": "data"}),
 //             use_local_validation: true,
 //         };
-// 
+//
 //         let result = env.execute_workflow("mixed", input).await;
 //         assert!(result.is_ok());
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_validate_activity() {
 //         let env = TestWorkflowEnvironment::new();
-//         
+//
 //         let input = ValidateInput {
 //             data: serde_json::json!({"valid": true}),
 //             schema: "test".to_string(),
 //         };
-// 
+//
 //         let result = env.execute_activity("validate_data", input).await;
 //         assert!(result.is_ok());
-//         
+//
 //         let output: ValidateOutput = serde_json::from_slice(&result.unwrap()).unwrap();
 //         assert!(output.valid);
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_transform_activity() {
 //         let env = TestWorkflowEnvironment::new();
-//         
+//
 //         let input = TransformInput {
 //             data: serde_json::Value::String("hello".to_string()),
 //             transform_type: "uppercase".to_string(),
 //         };
-// 
+//
 //         let result = env.execute_activity("transform_data", input).await;
 //         assert!(result.is_ok());
-//         
+//
 //         let output: TransformOutput = serde_json::from_slice(&result.unwrap()).unwrap();
 //         assert_eq!(output.transformed_data, "HELLO");
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_enrich_activity() {
 //         let env = TestWorkflowEnvironment::new();
-//         
+//
 //         let input = EnrichInput {
 //             record: serde_json::json!({"id": 1}),
 //             enrichment_fields: vec!["uuid".to_string(), "version".to_string()],
 //         };
-// 
+//
 //         let result = env.execute_activity("enrich_data", input).await;
 //         assert!(result.is_ok());
-//         
+//
 //         let output: EnrichOutput = serde_json::from_slice(&result.unwrap()).unwrap();
 //         assert_eq!(output.fields_added.len(), 2);
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_decision_activity() {
 //         let env = TestWorkflowEnvironment::new();
-//         
+//
 //         let input = DecisionInput {
 //             context: serde_json::json!({}),
 //             decision_type: "approve".to_string(),
 //         };
-// 
+//
 //         let result = env.execute_activity("make_decision", input).await;
 //         assert!(result.is_ok());
-//         
+//
 //         let output: DecisionOutput = serde_json::from_slice(&result.unwrap()).unwrap();
 //         assert_eq!(output.decision, "APPROVED");
 //         assert!(output.confidence > 0.9);

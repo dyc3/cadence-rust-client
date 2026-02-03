@@ -3,8 +3,8 @@
 //! This module defines the service interface for communicating with the
 //! Cadence server. It includes request/response types for all operations.
 
-use serde::{Deserialize, Serialize};
 use crate::shared::*;
+use serde::{Deserialize, Serialize};
 
 /// Start workflow execution request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -72,7 +72,7 @@ pub struct SignalWithStartWorkflowExecutionRequest {
     pub request_id: String,
     pub workflow_id_reuse_policy: Option<WorkflowIdReusePolicy>,
     pub signal_name: String,
-    pub signal_input: Option<Vec<u8>>,  
+    pub signal_input: Option<Vec<u8>>,
     pub retry_policy: Option<RetryPolicy>,
     pub cron_schedule: Option<String>,
     pub memo: Option<Memo>,
@@ -684,10 +684,7 @@ pub trait WorkflowService: Send + Sync {
     ) -> Result<ListClosedWorkflowExecutionsResponse, Self::Error>;
 
     // Domain management
-    async fn register_domain(
-        &self,
-        request: RegisterDomainRequest,
-    ) -> Result<(), Self::Error>;
+    async fn register_domain(&self, request: RegisterDomainRequest) -> Result<(), Self::Error>;
 
     async fn describe_domain(
         &self,

@@ -9,8 +9,8 @@
 use cadence_activity::ActivityContext;
 use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
 use std::time::Duration;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Order item
@@ -74,14 +74,14 @@ pub async fn validate_order_activity(
     input: OrderInput,
 ) -> Result<ValidationResult, ActivityError> {
     info!("Validating order for customer: {}", input.customer_id);
-    
+
     let mut errors = Vec::new();
-    
+
     // Check if order has items
     if input.items.is_empty() {
         errors.push("Order must have at least one item".to_string());
     }
-    
+
     // Validate each item
     for item in &input.items {
         if item.quantity == 0 {
@@ -91,19 +91,19 @@ pub async fn validate_order_activity(
             errors.push(format!("Item {} has negative price", item.product_id));
         }
     }
-    
+
     // Simulate validation delay
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     let is_valid = errors.is_empty();
     let order_id = Uuid::new_v4().to_string();
-    
+
     if is_valid {
         info!("Order {} validated successfully", order_id);
     } else {
         warn!("Order validation failed: {:?}", errors);
     }
-    
+
     Ok(ValidationResult {
         is_valid,
         order_id,
@@ -117,20 +117,21 @@ pub async fn calculate_total_activity(
     (order_id, items): (String, Vec<OrderItem>),
 ) -> Result<CalculationResult, ActivityError> {
     info!("Calculating total for order: {}", order_id);
-    
-    let subtotal: f64 = items.iter()
+
+    let subtotal: f64 = items
+        .iter()
         .map(|item| item.quantity as f64 * item.unit_price)
         .sum();
-    
+
     // Calculate tax (8%)
     let tax = subtotal * 0.08;
     let total = subtotal + tax;
-    
+
     info!(
         "Order {}: subtotal=${:.2}, tax=${:.2}, total=${:.2}",
         order_id, subtotal, tax, total
     );
-    
+
     Ok(CalculationResult {
         subtotal,
         tax,
@@ -144,20 +145,23 @@ pub async fn process_payment_activity(
     (order_id, amount): (String, f64),
 ) -> Result<PaymentResult, ActivityError> {
     info!("Processing payment for order {}: ${:.2}", order_id, amount);
-    
+
     // Get activity info for retry tracking
     let info = ctx.get_info();
     if info.attempt > 1 {
         info!("Payment attempt {} for order {}", info.attempt, order_id);
     }
-    
+
     // Simulate payment processing
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     let payment_id = Uuid::new_v4().to_string();
-    
-    info!("Payment {} processed successfully for order {}", payment_id, order_id);
-    
+
+    info!(
+        "Payment {} processed successfully for order {}",
+        payment_id, order_id
+    );
+
     Ok(PaymentResult {
         payment_id,
         status: PaymentStatus::Success,
@@ -174,14 +178,17 @@ pub async fn send_confirmation_activity(
         "Sending confirmation for order {} (payment: {})",
         order_id, payment_id
     );
-    
+
     // Simulate sending email/notification
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     let confirmation_id = Uuid::new_v4().to_string();
-    
-    info!("Confirmation {} sent for order {}", confirmation_id, order_id);
-    
+
+    info!(
+        "Confirmation {} sent for order {}",
+        confirmation_id, order_id
+    );
+
     Ok(ConfirmationResult {
         confirmation_id,
         sent: true,

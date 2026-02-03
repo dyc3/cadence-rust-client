@@ -8,23 +8,26 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
-use tracing::{info, debug};
+use cadence_workflow::WorkflowContext;
 use std::time::Duration;
+use tracing::{debug, info};
 
 /// Process large dataset with batching and parallelization
 pub async fn high_throughput_workflow(
     ctx: &mut WorkflowContext,
     items: Vec<String>,
 ) -> Result<BatchResult, WorkflowError> {
-    info!("Starting high-throughput workflow with {} items", items.len());
-    
+    info!(
+        "Starting high-throughput workflow with {} items",
+        items.len()
+    );
+
     let batch_input = BatchInput {
         items,
         batch_size: 100,
     };
-    
+
     let result = ctx
         .execute_activity(
             "batch_process",
@@ -36,15 +39,15 @@ pub async fn high_throughput_workflow(
             },
         )
         .await?;
-    
+
     let batch_result: BatchResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-    
+
     info!(
         "Workflow complete: {} items processed in {}ms",
         batch_result.processed_count, batch_result.total_duration_ms
     );
-    
+
     Ok(batch_result)
 }
 
@@ -53,19 +56,22 @@ pub async fn parallel_processing_workflow(
     ctx: &mut WorkflowContext,
     datasets: Vec<Vec<u8>>,
 ) -> Result<Vec<TransformOutput>, WorkflowError> {
-    info!("Starting parallel processing for {} datasets", datasets.len());
-    
+    info!(
+        "Starting parallel processing for {} datasets",
+        datasets.len()
+    );
+
     let mut futures = Vec::new();
-    
+
     // Spawn parallel activity executions
     for (idx, data) in datasets.into_iter().enumerate() {
         let transform_input = TransformInput {
             data,
             compression_level: 50,
         };
-        
+
         debug!("Spawning transform activity for dataset {}", idx);
-        
+
         let activity_result = ctx
             .execute_activity(
                 "data_transform",
@@ -73,14 +79,17 @@ pub async fn parallel_processing_workflow(
                 ActivityOptions::default(),
             )
             .await?;
-        
+
         let output: TransformOutput = serde_json::from_slice(&activity_result)
             .map_err(|e| WorkflowError::Generic(format!("Failed to parse transform: {}", e)))?;
-        
+
         futures.push(output);
     }
-    
-    info!("Parallel processing complete: {} datasets transformed", futures.len());
+
+    info!(
+        "Parallel processing complete: {} datasets transformed",
+        futures.len()
+    );
     Ok(futures)
 }
 
@@ -90,13 +99,13 @@ pub async fn cache_optimized_workflow(
     keys: Vec<String>,
 ) -> Result<(usize, usize), WorkflowError> {
     info!("Starting cache-optimized workflow with {} keys", keys.len());
-    
+
     // Step 1: Warm up cache
     let warmup_input = CacheWarmupInput {
         keys: keys.clone(),
         preload_size: 1000,
     };
-    
+
     let warmup_result = ctx
         .execute_activity(
             "cache_warmup",
@@ -104,16 +113,16 @@ pub async fn cache_optimized_workflow(
             ActivityOptions::default(),
         )
         .await?;
-    
+
     let warmed_count: usize = serde_json::from_slice(&warmup_result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse warmup: {}", e)))?;
-    
+
     // Step 2: Process with warmed cache
     let batch_input = BatchInput {
         items: keys,
         batch_size: 500,
     };
-    
+
     let batch_result = ctx
         .execute_activity(
             "batch_process",
@@ -121,15 +130,15 @@ pub async fn cache_optimized_workflow(
             ActivityOptions::default(),
         )
         .await?;
-    
+
     let processed: BatchResult = serde_json::from_slice(&batch_result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse batch: {}", e)))?;
-    
+
     info!(
         "Cache workflow complete: {} warmed, {} processed",
         warmed_count, processed.processed_count
     );
-    
+
     Ok((warmed_count, processed.processed_count))
 }
 
@@ -139,7 +148,7 @@ pub async fn ingestion_pipeline_workflow(
     records: Vec<String>,
 ) -> Result<usize, WorkflowError> {
     info!("Starting ingestion pipeline with {} records", records.len());
-    
+
     let result = ctx
         .execute_activity(
             "high_throughput_ingest",
@@ -159,10 +168,10 @@ pub async fn ingestion_pipeline_workflow(
             },
         )
         .await?;
-    
+
     let ingested: usize = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-    
+
     info!("Ingestion pipeline complete: {} records ingested", ingested);
     Ok(ingested)
 }

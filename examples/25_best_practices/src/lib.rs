@@ -17,13 +17,13 @@
 //! - Versioning strategies
 
 pub mod activities;
-pub mod workflows;
+pub mod config;
 pub mod types;
 pub mod utils;
-pub mod config;
+pub mod workflows;
 
 pub use activities::*;
-pub use workflows::*;
+pub use config::*;
 pub use types::*;
 pub use utils::*;
-pub use config::*;
+pub use workflows::*;

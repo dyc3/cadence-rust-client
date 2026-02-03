@@ -5,8 +5,8 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
@@ -60,11 +60,15 @@ pub async fn data_processing_workflow(
             )
             .await?;
 
-        let compute_output: ComputeOutput = serde_json::from_slice(&result)
-            .map_err(|e| WorkflowError::Generic(format!("Failed to parse compute result: {}", e)))?;
+        let compute_output: ComputeOutput = serde_json::from_slice(&result).map_err(|e| {
+            WorkflowError::Generic(format!("Failed to parse compute result: {}", e))
+        })?;
 
         compute_results.push(compute_output.result);
-        info!("Compute operation '{}' result: {}", operation, compute_output.result);
+        info!(
+            "Compute operation '{}' result: {}",
+            operation, compute_output.result
+        );
     }
 
     // Execute data processing activity
@@ -114,7 +118,10 @@ pub async fn simple_compute_workflow(
     ctx: &mut WorkflowContext,
     input: SimpleComputeInput,
 ) -> Result<SimpleComputeOutput, WorkflowError> {
-    info!("Starting simple_compute_workflow with {} values", input.values.len());
+    info!(
+        "Starting simple_compute_workflow with {} values",
+        input.values.len()
+    );
 
     let operations = vec!["sum", "avg", "min", "max"];
     let mut results = Vec::new();

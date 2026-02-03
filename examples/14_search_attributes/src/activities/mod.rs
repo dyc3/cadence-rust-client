@@ -69,26 +69,29 @@ pub async fn validate_order_activity(
     _ctx: &ActivityContext,
     order: OrderInfo,
 ) -> Result<InventoryResult, ActivityError> {
-    info!("Validating order {} for customer {}", order.order_id, order.customer_id);
-    
+    info!(
+        "Validating order {} for customer {}",
+        order.order_id, order.customer_id
+    );
+
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Simulate inventory check
     let mut unavailable = Vec::new();
-    
+
     for item in &order.items {
         // Simulate some items being unavailable
         if item.product_id.starts_with("OUT") {
             unavailable.push(item.product_id.clone());
         }
     }
-    
+
     info!(
         "Order {} validation: {} items unavailable",
         order.order_id,
         unavailable.len()
     );
-    
+
     Ok(InventoryResult {
         all_available: unavailable.is_empty(),
         unavailable_items: unavailable,
@@ -101,16 +104,16 @@ pub async fn process_order_activity(
     order: OrderInfo,
 ) -> Result<OrderProcessingResult, ActivityError> {
     let start_time = std::time::Instant::now();
-    
+
     info!(
         "Processing order {} with {} items",
         order.order_id,
         order.items.len()
     );
-    
+
     // Record heartbeat
     ctx.record_heartbeat(None);
-    
+
     // Simulate processing time based on priority
     let processing_time = match order.priority {
         OrderPriority::Critical => 100,
@@ -118,15 +121,18 @@ pub async fn process_order_activity(
         OrderPriority::Normal => 500,
         OrderPriority::Low => 1000,
     };
-    
+
     tokio::time::sleep(Duration::from_millis(processing_time)).await;
-    
+
     ctx.record_heartbeat(None);
-    
+
     let processing_time_ms = start_time.elapsed().as_millis() as u64;
-    
-    info!("Order {} processed in {}ms", order.order_id, processing_time_ms);
-    
+
+    info!(
+        "Order {} processed in {}ms",
+        order.order_id, processing_time_ms
+    );
+
     Ok(OrderProcessingResult {
         order_id: order.order_id,
         status: OrderStatus::Processing,
@@ -141,11 +147,11 @@ pub async fn ship_order_activity(
     order_id: String,
 ) -> Result<OrderProcessingResult, ActivityError> {
     info!("Shipping order {}", order_id);
-    
+
     tokio::time::sleep(Duration::from_millis(300)).await;
-    
+
     info!("Order {} shipped", order_id);
-    
+
     Ok(OrderProcessingResult {
         order_id,
         status: OrderStatus::Shipped,
@@ -160,11 +166,11 @@ pub async fn cancel_order_activity(
     (order_id, reason): (String, String),
 ) -> Result<OrderProcessingResult, ActivityError> {
     info!("Cancelling order {}: {}", order_id, reason);
-    
+
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     info!("Order {} cancelled", order_id);
-    
+
     Ok(OrderProcessingResult {
         order_id,
         status: OrderStatus::Cancelled,
@@ -179,10 +185,10 @@ pub async fn update_order_status_activity(
     (order_id, status): (String, OrderStatus),
 ) -> Result<bool, ActivityError> {
     info!("Updating order {} status to {:?}", order_id, status);
-    
+
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     info!("Order {} status updated", order_id);
-    
+
     Ok(true)
 }

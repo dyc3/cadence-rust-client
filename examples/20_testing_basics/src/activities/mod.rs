@@ -70,7 +70,7 @@ pub async fn process_payment(
     if input.amount < 0.0 {
         warn!("Invalid payment amount: {}", input.amount);
         return Err(ActivityError::ExecutionFailed(
-            "Invalid payment amount".to_string()
+            "Invalid payment amount".to_string(),
         ));
     }
 
@@ -94,23 +94,27 @@ pub async fn check_inventory(
     ctx.record_heartbeat(None);
 
     // Simple logic: product IDs ending in even numbers have inventory
-    let available = input.product_id.chars().last()
+    let available = input
+        .product_id
+        .chars()
+        .last()
         .and_then(|c| c.to_digit(10))
         .map(|d| d % 2 == 0)
         .unwrap_or(false);
 
     Ok(CheckInventoryOutput {
         available,
-        warehouse_id: if available { "WH-001".to_string() } else { String::new() },
+        warehouse_id: if available {
+            "WH-001".to_string()
+        } else {
+            String::new()
+        },
         reserved_quantity: if available { input.quantity } else { 0 },
     })
 }
 
 /// Send email activity
-pub async fn send_email(
-    ctx: &ActivityContext,
-    input: SendEmailInput,
-) -> Result<(), ActivityError> {
+pub async fn send_email(ctx: &ActivityContext, input: SendEmailInput) -> Result<(), ActivityError> {
     info!("Sending email to {}: {}", input.recipient, input.subject);
 
     tokio::time::sleep(Duration::from_millis(25)).await;

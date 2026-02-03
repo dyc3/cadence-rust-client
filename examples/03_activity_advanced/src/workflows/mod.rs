@@ -2,8 +2,8 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::info;
 
@@ -47,8 +47,7 @@ pub async fn data_migration_workflow(
 ) -> Result<MigrationResult, WorkflowError> {
     info!(
         "Starting data migration workflow: {} -> {}",
-        input.source_table,
-        input.destination_table
+        input.source_table, input.destination_table
     );
 
     let activity_options = ActivityOptions {
@@ -81,7 +80,10 @@ pub async fn deadline_aware_workflow(
     ctx: &mut WorkflowContext,
     input: DeadlineAwareInput,
 ) -> Result<DeadlineAwareResult, WorkflowError> {
-    info!("Starting deadline-aware workflow for task: {}", input.task_name);
+    info!(
+        "Starting deadline-aware workflow for task: {}",
+        input.task_name
+    );
 
     // Set a tight deadline to demonstrate deadline handling
     let activity_options = ActivityOptions {
@@ -111,7 +113,7 @@ pub async fn deadline_aware_workflow(
 }
 
 /// Workflow that demonstrates retry with heartbeat recovery
-/// 
+///
 /// This workflow handles the case where an activity fails partway through
 /// and needs to resume from where it left off.
 pub async fn resilient_processing_workflow(

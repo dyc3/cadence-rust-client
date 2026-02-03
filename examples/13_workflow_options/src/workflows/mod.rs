@@ -1,11 +1,9 @@
 //! Workflow implementations for workflow options example.
 
-use crate::activities::{
-    ReportRequest, ReportResult, ScheduledTaskInput, TaskExecutionResult,
-};
+use crate::activities::{ReportRequest, ReportResult, ScheduledTaskInput, TaskExecutionResult};
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::info;
 
@@ -18,7 +16,7 @@ pub async fn timeout_configured_workflow(
         "Starting timeout-configured workflow for {} report",
         request.report_type
     );
-    
+
     // Activity with specific timeout configuration
     let activity_options = ActivityOptions {
         task_list: ctx.workflow_info().task_list.clone(),
@@ -31,7 +29,7 @@ pub async fn timeout_configured_workflow(
         schedule_to_close_timeout: Duration::from_secs(300),
         ..Default::default()
     };
-    
+
     let result = ctx
         .execute_activity(
             "generate_report",
@@ -39,12 +37,15 @@ pub async fn timeout_configured_workflow(
             activity_options,
         )
         .await?;
-    
+
     let report: ReportResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse report: {}", e)))?;
-    
-    info!("Timeout-configured workflow completed: report {}", report.report_id);
-    
+
+    info!(
+        "Timeout-configured workflow completed: report {}",
+        report.report_id
+    );
+
     Ok(report)
 }
 
@@ -57,7 +58,7 @@ pub async fn scheduled_report_workflow(
         "Starting scheduled report workflow for {} report",
         request.report_type
     );
-    
+
     // Validate input first
     let validation = ctx
         .execute_activity(
@@ -66,14 +67,14 @@ pub async fn scheduled_report_workflow(
             ActivityOptions::default(),
         )
         .await?;
-    
+
     let is_valid: bool = serde_json::from_slice(&validation)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse validation: {}", e)))?;
-    
+
     if !is_valid {
         return Err(WorkflowError::Generic("Invalid report request".to_string()));
     }
-    
+
     // Generate report with appropriate timeout
     let timeout = match request.report_type.as_str() {
         "summary" => Duration::from_secs(10),
@@ -81,13 +82,13 @@ pub async fn scheduled_report_workflow(
         "audit" => Duration::from_secs(300),
         _ => Duration::from_secs(60),
     };
-    
+
     let activity_options = ActivityOptions {
         task_list: ctx.workflow_info().task_list.clone(),
         start_to_close_timeout: timeout,
         ..Default::default()
     };
-    
+
     let result = ctx
         .execute_activity(
             "generate_report",
@@ -95,20 +96,20 @@ pub async fn scheduled_report_workflow(
             activity_options,
         )
         .await?;
-    
+
     let report: ReportResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse report: {}", e)))?;
-    
+
     let started_at = chrono::Utc::now().timestamp();
-    
+
     // Log completion
     info!(
         "Scheduled report workflow completed: {} with {} records",
         report.report_id, report.record_count
     );
-    
+
     let completed_at = chrono::Utc::now().timestamp();
-    
+
     Ok(TaskExecutionResult {
         execution_id: report.report_id,
         task_name: format!("report_{}", request.report_type),
@@ -124,9 +125,9 @@ pub async fn workflow_with_memo(
     request: ReportRequest,
 ) -> Result<ReportResult, WorkflowError> {
     let workflow_info = ctx.workflow_info();
-    
+
     info!("Starting workflow with memo for {}", request.report_type);
-    
+
     // Access memo data if available
     if let Some(memo) = &workflow_info.memo {
         info!("Workflow memo contains {} fields", memo.len());
@@ -134,14 +135,14 @@ pub async fn workflow_with_memo(
             info!("Memo field: {} = {:?}", key, value);
         }
     }
-    
+
     // Generate report
     let activity_options = ActivityOptions {
         task_list: workflow_info.task_list.clone(),
         start_to_close_timeout: Duration::from_secs(60),
         ..Default::default()
     };
-    
+
     let result = ctx
         .execute_activity(
             "generate_report",
@@ -149,12 +150,12 @@ pub async fn workflow_with_memo(
             activity_options,
         )
         .await?;
-    
+
     let report: ReportResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse report: {}", e)))?;
-    
+
     info!("Workflow with memo completed");
-    
+
     Ok(report)
 }
 
@@ -164,19 +165,19 @@ pub async fn id_reuse_policy_workflow(
     request: ReportRequest,
 ) -> Result<ReportResult, WorkflowError> {
     let workflow_info = ctx.workflow_info();
-    
+
     info!(
         "Starting workflow with ID: {}",
         workflow_info.workflow_execution.workflow_id,
     );
-    
+
     // Generate report
     let activity_options = ActivityOptions {
         task_list: workflow_info.task_list.clone(),
         start_to_close_timeout: Duration::from_secs(60),
         ..Default::default()
     };
-    
+
     let result = ctx
         .execute_activity(
             "generate_report",
@@ -184,12 +185,12 @@ pub async fn id_reuse_policy_workflow(
             activity_options,
         )
         .await?;
-    
+
     let report: ReportResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse report: {}", e)))?;
-    
+
     info!("ID reuse policy workflow completed");
-    
+
     Ok(report)
 }
 
@@ -202,9 +203,9 @@ pub async fn cron_scheduled_workflow(
         "Starting cron scheduled workflow for task '{}' at {}",
         input.task_name, input.scheduled_time
     );
-    
+
     let started_at = chrono::Utc::now().timestamp();
-    
+
     // Execute scheduled cleanup
     let result = ctx
         .execute_activity(
@@ -213,17 +214,17 @@ pub async fn cron_scheduled_workflow(
             ActivityOptions::default(),
         )
         .await?;
-    
+
     let task_result: TaskExecutionResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-    
+
     info!(
         "Cron scheduled workflow completed: task '{}' finished at {}",
         task_result.task_name, task_result.completed_at
     );
-    
+
     let completed_at = chrono::Utc::now().timestamp();
-    
+
     Ok(TaskExecutionResult {
         execution_id: task_result.execution_id,
         task_name: input.task_name,
@@ -238,10 +239,13 @@ pub async fn archival_configured_workflow(
     ctx: &mut WorkflowContext,
     archive_date: String,
 ) -> Result<TaskExecutionResult, WorkflowError> {
-    info!("Starting archival configured workflow for date: {}", archive_date);
-    
+    info!(
+        "Starting archival configured workflow for date: {}",
+        archive_date
+    );
+
     let started_at = chrono::Utc::now().timestamp();
-    
+
     // Archive data with configured options
     let result = ctx
         .execute_activity(
@@ -254,17 +258,17 @@ pub async fn archival_configured_workflow(
             },
         )
         .await?;
-    
+
     let archival_result: TaskExecutionResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-    
+
     info!(
         "Archival workflow completed: {} archived at {}",
         archival_result.task_name, archival_result.completed_at
     );
-    
+
     let completed_at = chrono::Utc::now().timestamp();
-    
+
     Ok(TaskExecutionResult {
         execution_id: archival_result.execution_id,
         task_name: format!("archival_{}", archive_date),

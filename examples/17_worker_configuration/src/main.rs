@@ -16,9 +16,9 @@
 //! cargo run -p worker_configuration
 //! ```
 
-use worker_configuration::*;
-use examples_common::tracing_setup::init_tracing;
 use cadence_worker::registry::WorkflowRegistry;
+use examples_common::tracing_setup::init_tracing;
+use worker_configuration::*;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -77,7 +77,7 @@ fn demonstrate_registry() {
     println!("\n--- Registry Demonstration ---\n");
 
     let registry = WorkflowRegistry::new();
-    
+
     println!("Registering workflows and activities...");
     register_workflows_and_activities(&registry);
 
@@ -90,7 +90,7 @@ fn demonstrate_registry() {
     // for wf in &workflows {
     //     println!("    - {}", wf.name);
     // }
-    
+
     println!("  Activities: <requires trait wrappers>");
     // for act in &activities {
     //     println!("    - {}", act.name);
@@ -131,79 +131,79 @@ fn demonstrate_worker_setup() {
 // mod tests {
 //     use super::*;
 //     use cadence_testsuite::TestWorkflowEnvironment;
-// 
+//
 //     #[test]
 //     fn test_high_performance_options() {
 //         let opts = create_high_performance_options();
-//         
+//
 //         assert_eq!(opts.max_concurrent_activity_execution_size, 2000);
 //         assert_eq!(opts.max_concurrent_decision_task_pollers, 4);
 //         assert!(!opts.disable_sticky_execution);
 //     }
-// 
+//
 //     #[test]
 //     fn test_development_options() {
 //         let opts = create_development_options();
-//         
+//
 //         assert_eq!(opts.max_concurrent_activity_execution_size, 100);
 //         assert!(opts.disable_sticky_execution);
 //     }
-// 
+//
 //     #[test]
 //     fn test_limited_resources_options() {
 //         let opts = create_limited_resources_options();
-//         
+//
 //         assert_eq!(opts.max_concurrent_activity_execution_size, 50);
 //         assert_eq!(opts.worker_activities_per_second, 10.0);
 //     }
-// 
+//
 //     #[test]
 //     fn test_registry_registration() {
 //         let registry = WorkflowRegistry::new();
 //         register_workflows_and_activities(&registry);
-// 
+//
 //         let workflows = registry.get_registered_workflows();
 //         let activities = registry.get_registered_activities();
-// 
+//
 //         assert_eq!(workflows.len(), 2);
 //         assert_eq!(activities.len(), 2);
-// 
+//
 //         assert!(registry.get_workflow("data_processing").is_some());
 //         assert!(registry.get_activity("compute").is_some());
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_data_processing_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
-// 
+//
 //         env.register_activity("compute", compute_activity);
 //         env.register_activity("process_data", process_data_activity);
 //         env.register_workflow("data_processing", data_processing_workflow);
-// 
+//
 //         let input = DataProcessingWorkflowInput {
 //             dataset_id: "dataset-001".to_string(),
 //             compute_operations: vec!["sum".to_string(), "avg".to_string()],
 //             batch_size: 100,
 //         };
-// 
+//
 //         let result = env.execute_workflow("data_processing", input).await;
 //         assert!(result.is_ok());
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_simple_compute_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
-// 
+//
 //         env.register_activity("compute", compute_activity);
 //         env.register_workflow("simple_compute", simple_compute_workflow);
-// 
+//
 //         let input = SimpleComputeInput {
 //             values: vec![1.0, 2.0, 3.0, 4.0, 5.0],
 //         };
-// 
+//
 //         let result = env.execute_workflow("simple_compute", input).await;
 //         assert!(result.is_ok());
-//         
+//
 //         let output = result.unwrap();
 //         assert_eq!(output.sum, 15.0);
 //         assert_eq!(output.average, 3.0);

@@ -65,25 +65,30 @@ pub async fn process_batch_activity(
 ) -> Result<BatchProcessResult, ActivityError> {
     info!(
         "Processing batch {} (iteration {}): {} items",
-        input.batch_id, input.iteration, input.items.len()
+        input.batch_id,
+        input.iteration,
+        input.items.len()
     );
-    
+
     let mut processed = 0;
     let mut failed = 0;
-    
+
     for (idx, item) in input.items.iter().enumerate() {
         // Simulate processing
         tokio::time::sleep(Duration::from_millis(10)).await;
-        
+
         // Record heartbeat periodically
         if idx % 10 == 0 {
-            ctx.record_heartbeat(Some(&serde_json::to_vec(&serde_json::json!({
-                "progress": idx,
-                "total": input.items.len(),
-                "iteration": input.iteration,
-            })).unwrap()));
+            ctx.record_heartbeat(Some(
+                &serde_json::to_vec(&serde_json::json!({
+                    "progress": idx,
+                    "total": input.items.len(),
+                    "iteration": input.iteration,
+                }))
+                .unwrap(),
+            ));
         }
-        
+
         // Simulate occasional failures
         if item.item_id.contains("fail") {
             failed += 1;
@@ -91,12 +96,12 @@ pub async fn process_batch_activity(
             processed += 1;
         }
     }
-    
+
     info!(
         "Batch {} completed: {} processed, {} failed",
         input.batch_id, processed, failed
     );
-    
+
     Ok(BatchProcessResult {
         batch_id: input.batch_id,
         processed_count: processed,
@@ -114,15 +119,17 @@ pub async fn fetch_data_activity(
         "Fetching data (cursor: {:?}, batch_size: {})",
         input.cursor, input.batch_size
     );
-    
+
     // Simulate data fetch delay
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     // Generate mock data
-    let base_id = input.cursor.as_ref()
+    let base_id = input
+        .cursor
+        .as_ref()
         .and_then(|c| c.parse::<u64>().ok())
         .unwrap_or(0);
-    
+
     let mut items = Vec::new();
     for i in 0..input.batch_size {
         let item_id = format!("item_{}", base_id + i as u64);
@@ -134,7 +141,7 @@ pub async fn fetch_data_activity(
             }),
         });
     }
-    
+
     // Determine if there's more data
     let has_more = items.len() >= input.batch_size;
     let next_cursor = if has_more {
@@ -142,14 +149,16 @@ pub async fn fetch_data_activity(
     } else {
         None
     };
-    
+
     let total_processed = base_id + items.len() as u64;
-    
+
     info!(
         "Fetched {} items, has_more: {}, total: {}",
-        items.len(), has_more, total_processed
+        items.len(),
+        has_more,
+        total_processed
     );
-    
+
     Ok(DataFetchResult {
         items,
         next_cursor,
@@ -167,16 +176,17 @@ pub async fn save_checkpoint_activity(
         "Saving checkpoint at iteration {} (total processed: {})",
         checkpoint.iteration, checkpoint.total_processed
     );
-    
+
     // Simulate checkpoint save
     tokio::time::sleep(Duration::from_millis(25)).await;
-    
-    let checkpoint_id = format!("checkpoint_{}_{}", 
-        checkpoint.iteration, 
+
+    let checkpoint_id = format!(
+        "checkpoint_{}_{}",
+        checkpoint.iteration,
         chrono::Utc::now().timestamp()
     );
-    
+
     info!("Checkpoint saved: {}", checkpoint_id);
-    
+
     Ok(checkpoint_id)
 }

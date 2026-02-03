@@ -4,12 +4,12 @@
 //! implementations, polling tasks from the Cadence server, and executing
 //! them.
 
-pub mod worker;
-pub mod registry;
-pub mod pollers;
+pub mod executor;
 pub mod handlers;
 pub mod heartbeat;
-pub mod executor;
+pub mod pollers;
+pub mod registry;
+pub mod worker;
 
-pub use worker::*;
 pub use registry::*;
+pub use worker::*;

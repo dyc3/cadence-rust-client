@@ -5,11 +5,11 @@
 
 use crate::activities::*;
 use cadence_core::{ActivityOptions, ChildWorkflowOptions};
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// Input for the parent workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,8 +91,10 @@ pub async fn parent_workflow(
 
         match child_result {
             Ok(result_bytes) => {
-                let result: ChildWorkflowResult = serde_json::from_slice(&result_bytes)
-                    .map_err(|e| WorkflowError::Generic(format!("Failed to parse child result: {}", e)))?;
+                let result: ChildWorkflowResult =
+                    serde_json::from_slice(&result_bytes).map_err(|e| {
+                        WorkflowError::Generic(format!("Failed to parse child result: {}", e))
+                    })?;
 
                 child_results.push(ChildResult {
                     child_id: result.child_id,
@@ -188,9 +190,7 @@ pub async fn child_processor_workflow(
 
     info!(
         "Child workflow {} completed: {} processed, success: {}",
-        input.child_id,
-        chunk_result.processed_count,
-        success
+        input.child_id, chunk_result.processed_count, success
     );
 
     Ok(ChildWorkflowResult {
@@ -276,9 +276,7 @@ pub async fn fan_out_workflow(
 
     info!(
         "Fan-out workflow {} completed: {} succeeded, {} failed",
-        input.parent_id,
-        completed,
-        failed
+        input.parent_id, completed, failed
     );
 
     Ok(FanOutResult {
@@ -401,9 +399,7 @@ pub async fn fan_in_workflow(
 
     info!(
         "Fan-in workflow {} completed: {} items from {} children",
-        input.aggregation_id,
-        aggregation.total_count,
-        aggregation.child_count
+        input.aggregation_id, aggregation.total_count, aggregation.child_count
     );
 
     Ok(FanInResult {

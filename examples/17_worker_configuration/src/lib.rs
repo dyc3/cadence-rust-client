@@ -15,9 +15,9 @@
 //! - **Sticky Execution**: Workflow caching for performance
 
 pub mod activities;
-pub mod workflows;
 pub mod worker_setup;
+pub mod workflows;
 
 pub use activities::*;
-pub use workflows::*;
 pub use worker_setup::*;
+pub use workflows::*;

@@ -3,11 +3,11 @@
 //! These workflows demonstrate local activity execution patterns.
 
 use crate::activities::*;
-use cadence_workflow::{WorkflowContext, LocalActivityOptions};
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::{LocalActivityOptions, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// Input for data processing pipeline
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,7 +28,7 @@ pub struct PipelineOutput {
 }
 
 /// A workflow that demonstrates local activity patterns
-/// 
+///
 /// Local activities are executed synchronously in the workflow thread,
 /// making them ideal for short, fast operations that don't need the
 /// full activity infrastructure (task queues, heartbeats, etc.).
@@ -94,7 +94,10 @@ pub async fn local_activity_pipeline_workflow(
     let enrichment: EnrichOutput = serde_json::from_slice(&enrichment_result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse enrichment: {}", e)))?;
 
-    info!("Data enriched with {} fields", enrichment.fields_added.len());
+    info!(
+        "Data enriched with {} fields",
+        enrichment.fields_added.len()
+    );
 
     // Step 3: Make processing decision using local activity
     let decision_input = DecisionInput {
@@ -113,7 +116,10 @@ pub async fn local_activity_pipeline_workflow(
     let decision: DecisionOutput = serde_json::from_slice(&decision_result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse decision: {}", e)))?;
 
-    info!("Processing decision: {} (confidence: {})", decision.decision, decision.confidence);
+    info!(
+        "Processing decision: {} (confidence: {})",
+        decision.decision, decision.confidence
+    );
 
     // Step 4: Transform data using local activity
     let transform_input = TransformInput {
@@ -132,7 +138,10 @@ pub async fn local_activity_pipeline_workflow(
     let transform: TransformOutput = serde_json::from_slice(&transform_result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse transform: {}", e)))?;
 
-    info!("Data transformation complete: {}", transform.transform_applied);
+    info!(
+        "Data transformation complete: {}",
+        transform.transform_applied
+    );
 
     info!("Local activity pipeline workflow completed successfully");
 
@@ -159,7 +168,7 @@ pub struct MixedWorkflowOutput {
 }
 
 /// A workflow that demonstrates mixing local and regular activities
-/// 
+///
 /// Use local activities for fast operations that complete quickly,
 /// and regular activities for operations that may take longer or
 /// need the full activity infrastructure.
@@ -209,7 +218,7 @@ pub async fn mixed_local_and_regular_workflow(
 }
 
 // Guidelines for choosing between Local Activities and Regular Activities
-// 
+//
 // Local Activities:
 // - Short execution time (< 5 seconds)
 // - No need for heartbeats

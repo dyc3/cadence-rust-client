@@ -2,10 +2,10 @@
 
 use crate::activities::{HelloInput, HelloOutput};
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
-use tracing::{info, warn};
+use cadence_workflow::WorkflowContext;
 use std::time::Duration;
+use tracing::{info, warn};
 
 /// A simple workflow that orchestrates a greeting activity
 pub async fn hello_workflow(
@@ -18,8 +18,7 @@ pub async fn hello_workflow(
     let workflow_info = ctx.workflow_info();
     info!(
         "Workflow ID: {}, Run ID: {}",
-        workflow_info.workflow_execution.workflow_id,
-        workflow_info.workflow_execution.run_id
+        workflow_info.workflow_execution.workflow_id, workflow_info.workflow_execution.run_id
     );
 
     // Execute the greeting activity

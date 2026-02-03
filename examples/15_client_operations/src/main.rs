@@ -16,10 +16,10 @@
 //! cargo run -p client_operations
 //! ```
 
-use client_operations::*;
-use examples_common::tracing_setup::init_tracing;
 use cadence_client::client::StartWorkflowOptions;
 use cadence_core::WorkflowIdReusePolicy;
+use client_operations::*;
+use examples_common::tracing_setup::init_tracing;
 use std::time::Duration;
 
 #[tokio::main]
@@ -76,9 +76,18 @@ fn demonstrate_start_options() {
     println!("Basic StartWorkflowOptions:");
     println!("  Workflow ID: {}", basic_options.id);
     println!("  Task List: {}", basic_options.task_list);
-    println!("  Execution Timeout: {:?}", basic_options.execution_start_to_close_timeout);
-    println!("  Task Timeout: {:?}", basic_options.task_start_to_close_timeout);
-    println!("  ID Reuse Policy: {:?}", basic_options.workflow_id_reuse_policy);
+    println!(
+        "  Execution Timeout: {:?}",
+        basic_options.execution_start_to_close_timeout
+    );
+    println!(
+        "  Task Timeout: {:?}",
+        basic_options.task_start_to_close_timeout
+    );
+    println!(
+        "  ID Reuse Policy: {:?}",
+        basic_options.workflow_id_reuse_policy
+    );
 
     // Create options with retry policy
     let retry_policy = cadence_core::RetryPolicy {
@@ -98,8 +107,20 @@ fn demonstrate_start_options() {
     };
 
     println!("\nWorkflow with Retry Policy:");
-    println!("  Max Attempts: {:?}", retry_options.retry_policy.as_ref().map(|r| r.maximum_attempts));
-    println!("  Initial Interval: {:?}", retry_options.retry_policy.as_ref().map(|r| r.initial_interval));
+    println!(
+        "  Max Attempts: {:?}",
+        retry_options
+            .retry_policy
+            .as_ref()
+            .map(|r| r.maximum_attempts)
+    );
+    println!(
+        "  Initial Interval: {:?}",
+        retry_options
+            .retry_policy
+            .as_ref()
+            .map(|r| r.initial_interval)
+    );
 
     // Create options for different reuse policies
     let policies = vec![
@@ -112,7 +133,9 @@ fn demonstrate_start_options() {
     println!("\nWorkflow ID Reuse Policies:");
     for policy in policies {
         let desc = match policy {
-            WorkflowIdReusePolicy::AllowDuplicateFailedOnly => "Allow only if previous failed/terminated",
+            WorkflowIdReusePolicy::AllowDuplicateFailedOnly => {
+                "Allow only if previous failed/terminated"
+            }
             WorkflowIdReusePolicy::AllowDuplicate => "Allow if not currently running",
             WorkflowIdReusePolicy::RejectDuplicate => "Never allow duplicate IDs",
             WorkflowIdReusePolicy::TerminateIfRunning => "Terminate existing and start new",
@@ -195,7 +218,10 @@ async fn demonstrate_query_patterns() {
     println!("\nExample Query Response:");
     println!("  Current Step: {}", query_response.current_step);
     println!("  Progress: {}%", query_response.progress_percent);
-    println!("  Data: {}", serde_json::to_string_pretty(&query_response.data).unwrap());
+    println!(
+        "  Data: {}",
+        serde_json::to_string_pretty(&query_response.data).unwrap()
+    );
 }
 
 fn demonstrate_lifecycle_patterns() {
@@ -206,21 +232,21 @@ fn demonstrate_lifecycle_patterns() {
     println!("     - start_workflow() - Synchronous, waits for result");
     println!("     - start_workflow_async() - Asynchronous, returns immediately");
     println!("     - signal_with_start() - Signal or start if not running");
-    
+
     println!("\n  2. Cancel - Request graceful termination");
     println!("     - Sends cancellation request");
     println!("     - Workflow can catch and clean up");
     println!("     - Preferred over terminate for graceful shutdown");
-    
+
     println!("\n  3. Terminate - Force immediate termination");
     println!("     - Immediately stops workflow");
     println!("     - No cleanup opportunity");
     println!("     - Use for stuck workflows");
-    
+
     println!("\n  4. Reset - Restart from specific point");
     println!("     - Useful for recovering from bad states");
     println!("     - Preserves workflow ID, new run ID");
-    
+
     println!("\n  5. Query - Inspect running workflow");
     println!("     - Read-only operation");
     println!("     - Doesn't affect workflow state");
@@ -230,32 +256,32 @@ fn demonstrate_lifecycle_patterns() {
 // mod tests {
 //     use super::*;
 //     use cadence_testsuite::TestWorkflowEnvironment;
-// 
+//
 //     #[tokio::test]
 //     async fn test_signal_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
 //         env.register_workflow("signal_workflow", signal_handling_workflow);
-// 
+//
 //         let input = SignalWorkflowInput {
 //             workflow_id: "test-001".to_string(),
 //             initial_value: 100,
 //         };
-// 
+//
 //         // Send some signals
 //         env.signal_workflow("increment", serde_json::to_vec(&10i32).unwrap());
 //         env.signal_workflow("multiply", serde_json::to_vec(&2i32).unwrap());
-// 
+//
 //         let result = env.execute_workflow("signal_workflow", input).await;
 //         // Note: This is a simplified test - real signal handling would require
 //         // more sophisticated test environment support
 //         assert!(result.is_ok() || result.is_err()); // Placeholder
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_queryable_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
 //         env.register_workflow("queryable_workflow", queryable_workflow);
-// 
+//
 //         let input = QueryableWorkflowInput {
 //             steps: vec![
 //                 "step1".to_string(),
@@ -263,16 +289,16 @@ fn demonstrate_lifecycle_patterns() {
 //                 "step3".to_string(),
 //             ],
 //         };
-// 
+//
 //         let result = env.execute_workflow("queryable_workflow", input).await;
 //         assert!(result.is_ok());
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_cancellable_workflow() {
 //         let mut env = TestWorkflowEnvironment::new();
 //         env.register_workflow("cancellable_workflow", cancellable_workflow);
-// 
+//
 //         let input = CancellableWorkflowInput {
 //             duration_seconds: 60,
 //             checkpoints: vec![
@@ -281,7 +307,7 @@ fn demonstrate_lifecycle_patterns() {
 //                 "checkpoint3".to_string(),
 //             ],
 //         };
-// 
+//
 //         let result = env.execute_workflow("cancellable_workflow", input).await;
 //         assert!(result.is_ok());
 //     }

@@ -57,26 +57,29 @@ pub async fn unreliable_payment_gateway_activity(
 ) -> Result<PaymentResult, ActivityError> {
     let info = ctx.get_info();
     let attempt = info.attempt as usize;
-    
+
     info!(
         "Processing payment {} (attempt {})",
         request.payment_id, attempt
     );
-    
+
     // Simulate work
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     // Simulate intermittent failures - succeeds on 3rd attempt
     let call_count = SERVICE_CALL_COUNT.fetch_add(1, Ordering::SeqCst);
     if call_count % 3 != 2 {
-        warn!("Payment gateway temporarily unavailable (attempt {})", attempt);
+        warn!(
+            "Payment gateway temporarily unavailable (attempt {})",
+            attempt
+        );
         return Err(ActivityError::ExecutionFailed(
-            "Service temporarily unavailable - will retry".to_string()
+            "Service temporarily unavailable - will retry".to_string(),
         ));
     }
-    
+
     info!("Payment {} processed successfully", request.payment_id);
-    
+
     Ok(PaymentResult {
         payment_id: request.payment_id.clone(),
         status: PaymentStatus::Success,
@@ -91,27 +94,28 @@ pub async fn validate_payment_activity(
     request: PaymentRequest,
 ) -> Result<RetryableOperationResult, ActivityError> {
     info!("Validating payment {}", request.payment_id);
-    
+
     // Simulate validation
     tokio::time::sleep(Duration::from_millis(30)).await;
-    
+
     // Validate amount
     if request.amount <= 0.0 {
         // This is a permanent error - invalid input, don't retry
         return Err(ActivityError::ExecutionFailed(
-            "Permanent error: Payment amount must be greater than zero".to_string()
+            "Permanent error: Payment amount must be greater than zero".to_string(),
         ));
     }
-    
+
     // Validate currency
     let valid_currencies = ["USD", "EUR", "GBP", "JPY"];
     if !valid_currencies.contains(&request.currency.as_str()) {
         // Permanent error - invalid currency
-        return Err(ActivityError::ExecutionFailed(
-            format!("Permanent error: Unsupported currency: {}", request.currency)
-        ));
+        return Err(ActivityError::ExecutionFailed(format!(
+            "Permanent error: Unsupported currency: {}",
+            request.currency
+        )));
     }
-    
+
     Ok(RetryableOperationResult {
         success: true,
         attempt_count: 1,
@@ -127,28 +131,32 @@ pub async fn configurable_retry_activity(
 ) -> Result<RetryableOperationResult, ActivityError> {
     let info = ctx.get_info();
     let attempt = info.attempt as usize;
-    
+
     info!(
         "Executing operation {} (attempt {}, configured to fail {} times)",
         operation_id, attempt, fail_count
     );
-    
+
     // Simulate work
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Fail until we reach the configured fail count
     if attempt <= fail_count {
         warn!(
             "Operation {} failed on attempt {} (configured to fail {} times)",
             operation_id, attempt, fail_count
         );
-        return Err(ActivityError::ExecutionFailed(
-            format!("Simulated failure on attempt {}", attempt)
-        ));
+        return Err(ActivityError::ExecutionFailed(format!(
+            "Simulated failure on attempt {}",
+            attempt
+        )));
     }
-    
-    info!("Operation {} succeeded on attempt {}", operation_id, attempt);
-    
+
+    info!(
+        "Operation {} succeeded on attempt {}",
+        operation_id, attempt
+    );
+
     Ok(RetryableOperationResult {
         success: true,
         attempt_count: attempt,
@@ -163,21 +171,21 @@ pub async fn timeout_prone_activity(
 ) -> Result<RetryableOperationResult, ActivityError> {
     let info = ctx.get_info();
     let attempt = info.attempt;
-    
+
     info!(
         "Running timeout-prone activity (attempt {}, duration {}ms)",
         attempt, duration_ms
     );
-    
+
     // Record heartbeat before potentially long operation
     ctx.record_heartbeat(None);
-    
+
     // Simulate variable duration work
     tokio::time::sleep(Duration::from_millis(duration_ms)).await;
-    
+
     // Record completion
     ctx.record_heartbeat(None);
-    
+
     Ok(RetryableOperationResult {
         success: true,
         attempt_count: attempt as usize,

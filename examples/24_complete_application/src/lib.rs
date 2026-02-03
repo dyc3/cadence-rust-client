@@ -23,9 +23,9 @@
 //! - Compensation handles failures
 
 pub mod activities;
-pub mod workflows;
 pub mod models;
+pub mod workflows;
 
 pub use activities::*;
-pub use workflows::*;
 pub use models::*;
+pub use workflows::*;

@@ -53,37 +53,36 @@ impl ActivityTaskHandler {
         &self,
         task: PollForActivityTaskResponse,
     ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
-        println!("[ActivityTaskHandler] Received activity task. ActivityId={:?}", task.activity_id);
-        
+        println!(
+            "[ActivityTaskHandler] Received activity task. ActivityId={:?}",
+            task.activity_id
+        );
+
         // Check if task has actual work (not an empty poll response)
         if task.task_token.is_empty() {
             println!("[ActivityTaskHandler] Empty task token, skipping.");
-            return Err(CadenceError::Other(
-                "Empty task token received".to_string(),
-            ));
+            return Err(CadenceError::Other("Empty task token received".to_string()));
         }
 
         // Extract activity name from task
         let activity_type = task
             .activity_type
             .as_ref()
-            .ok_or_else(|| {
-                CadenceError::Other("Activity type missing from task".to_string())
-            })?
+            .ok_or_else(|| CadenceError::Other("Activity type missing from task".to_string()))?
             .name
             .clone();
 
-        println!("[ActivityTaskHandler] Handling activity type: {}", activity_type);
+        println!(
+            "[ActivityTaskHandler] Handling activity type: {}",
+            activity_type
+        );
 
         // Look up activity in registry
         let activity = match self.registry.get_activity(&activity_type) {
             Some(a) => a,
             None => {
                 // Activity not registered - send failure response
-                tracing::warn!(
-                    "Activity '{}' not registered in registry",
-                    activity_type
-                );
+                tracing::warn!("Activity '{}' not registered in registry", activity_type);
                 let _ = self
                     .service
                     .respond_activity_task_failed(RespondActivityTaskFailedRequest {
@@ -105,7 +104,7 @@ impl ActivityTaskHandler {
         let heartbeat_details = Arc::new(Mutex::new(None));
         let cancelled = Arc::new(AtomicBool::new(false));
         let (server_cancel_tx, mut server_cancel_rx) = broadcast::channel(1);
-        
+
         // Handle server cancellation signal
         let cancelled_clone = cancelled.clone();
         tokio::spawn(async move {
@@ -149,32 +148,32 @@ impl ActivityTaskHandler {
 
         // Create activity context
         let mut context = cadence_activity::ActivityContext::new(activity_info, Some(runtime));
-        
+
         // TODO: Pass worker stop channel to context if available
 
         // Start heartbeat if needed
-        let heartbeat_timeout = Duration::from_secs(
-            task.heartbeat_timeout_seconds.unwrap_or(0) as u64
-        );
+        let heartbeat_timeout =
+            Duration::from_secs(task.heartbeat_timeout_seconds.unwrap_or(0) as u64);
         let (cancel_heartbeat_tx, cancel_heartbeat_rx) = oneshot::channel();
-        
+
         let _heartbeat_handle = if heartbeat_timeout > Duration::from_secs(0) {
-            Some(
-                self.heartbeat_manager.start_heartbeat(
-                    task.task_token.clone(), 
-                    heartbeat_timeout, 
-                    cancel_heartbeat_rx,
-                    Some(server_cancel_tx),
-                    heartbeat_details
-                ),
-            )
+            Some(self.heartbeat_manager.start_heartbeat(
+                task.task_token.clone(),
+                heartbeat_timeout,
+                cancel_heartbeat_rx,
+                Some(server_cancel_tx),
+                heartbeat_details,
+            ))
         } else {
             None
         };
 
         // Execute activity with panic recovery
         let input = task.input.clone();
-        println!("[ActivityTaskHandler] Executing activity: {}", activity_type);
+        println!(
+            "[ActivityTaskHandler] Executing activity: {}",
+            activity_type
+        );
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             activity.execute(&mut context, input)
         }));
@@ -184,13 +183,19 @@ impl ActivityTaskHandler {
 
         let execution_result = match result {
             Ok(Ok(output)) => {
-                 println!("[ActivityTaskHandler] Activity execution SUCCESS: {}", activity_type);
-                 Ok(output)
-            },
+                println!(
+                    "[ActivityTaskHandler] Activity execution SUCCESS: {}",
+                    activity_type
+                );
+                Ok(output)
+            }
             Ok(Err(e)) => {
-                 println!("[ActivityTaskHandler] Activity execution FAILED: {} - {:?}", activity_type, e);
-                 Err(e)
-            },
+                println!(
+                    "[ActivityTaskHandler] Activity execution FAILED: {} - {:?}",
+                    activity_type, e
+                );
+                Err(e)
+            }
             Err(panic_info) => {
                 let panic_msg = if let Some(s) = panic_info.downcast_ref::<String>() {
                     s.clone()
@@ -199,7 +204,10 @@ impl ActivityTaskHandler {
                 } else {
                     "Unknown panic".to_string()
                 };
-                println!("[ActivityTaskHandler] Activity PANICKED: {} - {}", activity_type, panic_msg);
+                println!(
+                    "[ActivityTaskHandler] Activity PANICKED: {} - {}",
+                    activity_type, panic_msg
+                );
                 Err(ActivityError::Panic(panic_msg))
             }
         };
@@ -207,7 +215,10 @@ impl ActivityTaskHandler {
         // Send response based on result
         match execution_result {
             Ok(output) => {
-                println!("[ActivityTaskHandler] Sending Complete response for {}", activity_type);
+                println!(
+                    "[ActivityTaskHandler] Sending Complete response for {}",
+                    activity_type
+                );
                 let response = self
                     .service
                     .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
@@ -222,12 +233,27 @@ impl ActivityTaskHandler {
             }
             Err(err) => {
                 let (reason, details) = match &err {
-                    ActivityError::ExecutionFailed(msg) => ("ExecutionFailed".to_string(), Some(msg.as_bytes().to_vec())),
-                    ActivityError::Panic(msg) => ("Panic".to_string(), Some(format!("Activity panicked: {}", msg).into_bytes())),
-                    ActivityError::Retryable(msg) => ("Retryable".to_string(), Some(msg.as_bytes().to_vec())),
-                    ActivityError::NonRetryable(msg) => ("NonRetryable".to_string(), Some(msg.as_bytes().to_vec())),
-                    ActivityError::Application(msg) => ("ApplicationError".to_string(), Some(msg.as_bytes().to_vec())),
-                    ActivityError::RetryableWithDelay(msg, _delay) => ("RetryableWithDelay".to_string(), Some(msg.as_bytes().to_vec())),
+                    ActivityError::ExecutionFailed(msg) => {
+                        ("ExecutionFailed".to_string(), Some(msg.as_bytes().to_vec()))
+                    }
+                    ActivityError::Panic(msg) => (
+                        "Panic".to_string(),
+                        Some(format!("Activity panicked: {}", msg).into_bytes()),
+                    ),
+                    ActivityError::Retryable(msg) => {
+                        ("Retryable".to_string(), Some(msg.as_bytes().to_vec()))
+                    }
+                    ActivityError::NonRetryable(msg) => {
+                        ("NonRetryable".to_string(), Some(msg.as_bytes().to_vec()))
+                    }
+                    ActivityError::Application(msg) => (
+                        "ApplicationError".to_string(),
+                        Some(msg.as_bytes().to_vec()),
+                    ),
+                    ActivityError::RetryableWithDelay(msg, _delay) => (
+                        "RetryableWithDelay".to_string(),
+                        Some(msg.as_bytes().to_vec()),
+                    ),
                     ActivityError::Cancelled => ("Cancelled".to_string(), None),
                     ActivityError::Timeout(t) => (format!("Timeout: {:?}", t), None),
                 };
@@ -243,7 +269,10 @@ impl ActivityTaskHandler {
                     .await?;
 
                 tracing::error!("Activity '{}' failed: {}", activity_type, err);
-                Err(CadenceError::Other(format!("Activity execution error: {}", err)))
+                Err(CadenceError::Other(format!(
+                    "Activity execution error: {}",
+                    err
+                )))
             }
         }
     }

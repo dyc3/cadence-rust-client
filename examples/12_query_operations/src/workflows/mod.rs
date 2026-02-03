@@ -1,14 +1,14 @@
 //! Workflow implementations for query operations example.
 
 use crate::activities::{
-    DataProcessingTask, ProcessingResult, BatchProcessingInput, BatchProcessingResult,
+    BatchProcessingInput, BatchProcessingResult, DataProcessingTask, ProcessingResult,
 };
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
+use cadence_workflow::WorkflowContext;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
-use serde::{Deserialize, Serialize};
 
 /// Current state of the workflow (queryable)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,10 +40,10 @@ pub async fn queryable_data_processing_workflow(
         "Starting queryable data processing workflow for task {}",
         task.task_id
     );
-    
+
     let workflow_id = ctx.workflow_info().workflow_execution.workflow_id.clone();
     let start_time = chrono::Utc::now().timestamp();
-    
+
     // Initialize workflow state for queries
     let mut state = WorkflowState {
         workflow_id: workflow_id.clone(),
@@ -53,7 +53,7 @@ pub async fn queryable_data_processing_workflow(
         start_time,
         status: "running".to_string(),
     };
-    
+
     // Stage 1: Data validation
     state.current_stage = "validation".to_string();
     let validation = ctx
@@ -63,15 +63,15 @@ pub async fn queryable_data_processing_workflow(
             ActivityOptions::default(),
         )
         .await?;
-    
+
     let is_valid: bool = serde_json::from_slice(&validation)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse validation: {}", e)))?;
-    
+
     if !is_valid {
         state.status = "failed_validation".to_string();
         return Err(WorkflowError::Generic("Data validation failed".to_string()));
     }
-    
+
     // Stage 2: Process data
     state.current_stage = "processing".to_string();
     let result = ctx
@@ -81,19 +81,19 @@ pub async fn queryable_data_processing_workflow(
             ActivityOptions::default(),
         )
         .await?;
-    
+
     let processing_result: ProcessingResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-    
+
     state.processed_records = processing_result.records_processed;
     state.current_stage = "completed".to_string();
     state.status = "completed".to_string();
-    
+
     info!(
         "Data processing workflow completed: {} records processed",
         processing_result.records_processed
     );
-    
+
     Ok(processing_result)
 }
 
@@ -113,20 +113,20 @@ pub async fn batch_processing_with_queries_workflow(
     batches: Vec<BatchProcessingInput>,
 ) -> Result<Vec<BatchProcessingResult>, WorkflowError> {
     let _workflow_id = ctx.workflow_info().workflow_execution.workflow_id.clone();
-    
+
     info!(
         "Starting batch processing workflow with {} batches",
         batches.len()
     );
-    
+
     let mut completed_batches = 0usize;
     let mut all_failed_items: Vec<String> = Vec::new();
     let mut results = Vec::new();
-    
+
     // Process each batch
     for (idx, batch) in batches.iter().enumerate() {
         info!("Processing batch {}/{}", idx + 1, batches.len());
-        
+
         let result = ctx
             .execute_activity(
                 "process_batch",
@@ -134,24 +134,24 @@ pub async fn batch_processing_with_queries_workflow(
                 ActivityOptions::default(),
             )
             .await?;
-        
+
         let batch_result: BatchProcessingResult = serde_json::from_slice(&result)
             .map_err(|e| WorkflowError::Generic(format!("Failed to parse batch result: {}", e)))?;
-        
+
         all_failed_items.extend(batch_result.failed_items.clone());
         completed_batches += 1;
         results.push(batch_result);
-        
+
         // Small delay between batches
         ctx.sleep(Duration::from_millis(10)).await;
     }
-    
+
     info!(
         "Batch processing workflow completed: {} batches, {} failed items",
         completed_batches,
         all_failed_items.len()
     );
-    
+
     Ok(results)
 }
 
@@ -168,16 +168,16 @@ pub async fn simple_status_query_workflow(
     task: DataProcessingTask,
 ) -> Result<ProcessingResult, WorkflowError> {
     info!("Starting simple status query workflow");
-    
+
     let mut _current_status = "starting".to_string();
-    
+
     // Update status and process
     _current_status = "validating".to_string();
-    
+
     ctx.sleep(Duration::from_millis(100)).await;
-    
+
     _current_status = "processing".to_string();
-    
+
     let result = ctx
         .execute_activity(
             "process_data",
@@ -185,13 +185,13 @@ pub async fn simple_status_query_workflow(
             ActivityOptions::default(),
         )
         .await?;
-    
+
     let processing_result: ProcessingResult = serde_json::from_slice(&result)
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse result: {}", e)))?;
-    
+
     _current_status = "completed".to_string();
-    
+
     info!("Simple status query workflow completed");
-    
+
     Ok(processing_result)
 }

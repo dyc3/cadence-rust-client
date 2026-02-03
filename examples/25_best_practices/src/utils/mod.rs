@@ -9,9 +9,9 @@
 
 use std::future::Future;
 use std::time::Duration;
-use tokio::time::sleep;
-use tracing::{info, warn, error, instrument};
 use thiserror::Error;
+use tokio::time::sleep;
+use tracing::{error, info, instrument, warn};
 
 /// Retry an async operation with exponential backoff
 #[instrument(skip(operation))]
@@ -28,7 +28,7 @@ where
 {
     let mut attempt = 1;
     let mut delay = initial_delay;
-    
+
     loop {
         match operation().await {
             Ok(result) => {
@@ -42,12 +42,12 @@ where
                     error!("Operation failed after {} attempts", max_attempts);
                     return Err(e);
                 }
-                
+
                 warn!(
                     "Operation failed on attempt {} (retrying in {:?}): {}",
                     attempt, delay, e
                 );
-                
+
                 sleep(delay).await;
                 delay = Duration::from_secs_f64(delay.as_secs_f64() * backoff_multiplier);
                 attempt += 1;
@@ -60,7 +60,10 @@ where
 #[derive(Debug, Clone)]
 pub enum CircuitState {
     Closed,
-    Open { opened_at: std::time::Instant, reset_timeout: Duration },
+    Open {
+        opened_at: std::time::Instant,
+        reset_timeout: Duration,
+    },
     HalfOpen,
 }
 
@@ -79,7 +82,7 @@ pub struct CircuitBreaker {
 pub enum CircuitError {
     #[error("Circuit breaker is open")]
     Open,
-    
+
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 }
@@ -94,7 +97,7 @@ impl CircuitBreaker {
             reset_timeout,
         }
     }
-    
+
     pub async fn call<T, E, F, Fut>(&mut self, operation: F) -> Result<T, CircuitError>
     where
         F: FnOnce() -> Fut,
@@ -102,7 +105,11 @@ impl CircuitBreaker {
         E: std::fmt::Display,
     {
         // Check if we should transition from Open to HalfOpen
-        if let CircuitState::Open { opened_at, reset_timeout } = self.state {
+        if let CircuitState::Open {
+            opened_at,
+            reset_timeout,
+        } = self.state
+        {
             if opened_at.elapsed() >= reset_timeout {
                 info!("Circuit breaker transitioning to HalfOpen");
                 self.state = CircuitState::HalfOpen;
@@ -111,7 +118,7 @@ impl CircuitBreaker {
                 return Err(CircuitError::Open);
             }
         }
-        
+
         match operation().await {
             Ok(result) => {
                 self.on_success();
@@ -123,7 +130,7 @@ impl CircuitBreaker {
             }
         }
     }
-    
+
     fn on_success(&mut self) {
         match self.state {
             CircuitState::HalfOpen => {
@@ -140,20 +147,24 @@ impl CircuitBreaker {
             }
         }
     }
-    
+
     fn on_failure(&mut self) {
         self.failure_count += 1;
-        
+
         if self.failure_count >= self.failure_threshold
-            && matches!(self.state, CircuitState::Closed | CircuitState::HalfOpen) {
-                warn!("Circuit breaker opened after {} failures", self.failure_count);
-                self.state = CircuitState::Open {
-                    opened_at: std::time::Instant::now(),
-                    reset_timeout: self.reset_timeout,
-                };
-            }
+            && matches!(self.state, CircuitState::Closed | CircuitState::HalfOpen)
+        {
+            warn!(
+                "Circuit breaker opened after {} failures",
+                self.failure_count
+            );
+            self.state = CircuitState::Open {
+                opened_at: std::time::Instant::now(),
+                reset_timeout: self.reset_timeout,
+            };
+        }
     }
-    
+
     pub fn state(&self) -> &CircuitState {
         &self.state
     }
@@ -169,29 +180,31 @@ impl LogEntry {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn field(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.fields.push((key.into(), value.into()));
         self
     }
-    
+
     pub fn info(self, message: impl AsRef<str>) {
-        let fields_str = self.fields
+        let fields_str = self
+            .fields
             .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
             .join(", ");
-        
+
         info!("{} | {}", message.as_ref(), fields_str);
     }
-    
+
     pub fn error(self, message: impl AsRef<str>) {
-        let fields_str = self.fields
+        let fields_str = self
+            .fields
             .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
             .join(", ");
-        
+
         error!("{} | {}", message.as_ref(), fields_str);
     }
 }
@@ -232,7 +245,10 @@ where
     match tokio::time::timeout(timeout, future).await {
         Ok(result) => Ok(result),
         Err(e) => {
-            warn!("Operation '{}' timed out after {:?}", operation_name, timeout);
+            warn!(
+                "Operation '{}' timed out after {:?}",
+                operation_name, timeout
+            );
             Err(e)
         }
     }

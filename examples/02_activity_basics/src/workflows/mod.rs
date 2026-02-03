@@ -2,16 +2,19 @@
 
 use crate::activities::*;
 use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
 use cadence_workflow::context::WorkflowError;
-use tracing::{info, error};
+use cadence_workflow::WorkflowContext;
+use tracing::{error, info};
 
 /// Process order workflow that chains multiple activities
 pub async fn process_order_workflow(
     ctx: &mut WorkflowContext,
     input: OrderInput,
 ) -> Result<OrderOutput, WorkflowError> {
-    info!("Starting process_order_workflow for customer: {}", input.customer_id);
+    info!(
+        "Starting process_order_workflow for customer: {}",
+        input.customer_id
+    );
 
     // Step 1: Validate the order
     let validation = ctx
@@ -43,8 +46,10 @@ pub async fn process_order_workflow(
         )
         .await?;
 
-    let calculation_result: CalculationResult = serde_json::from_slice(&calculation)
-        .map_err(|e| WorkflowError::Generic(format!("Failed to parse calculation result: {}", e)))?;
+    let calculation_result: CalculationResult =
+        serde_json::from_slice(&calculation).map_err(|e| {
+            WorkflowError::Generic(format!("Failed to parse calculation result: {}", e))
+        })?;
 
     // Step 3: Process payment
     let payment_input = (validation_result.order_id.clone(), calculation_result.total);
@@ -60,7 +65,10 @@ pub async fn process_order_workflow(
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse payment result: {}", e)))?;
 
     // Step 4: Send confirmation
-    let confirmation_input = (validation_result.order_id.clone(), payment_result.payment_id.clone());
+    let confirmation_input = (
+        validation_result.order_id.clone(),
+        payment_result.payment_id.clone(),
+    );
     let confirmation = ctx
         .execute_activity(
             "send_confirmation",
@@ -69,14 +77,14 @@ pub async fn process_order_workflow(
         )
         .await?;
 
-    let confirmation_result: ConfirmationResult = serde_json::from_slice(&confirmation)
-        .map_err(|e| WorkflowError::Generic(format!("Failed to parse confirmation result: {}", e)))?;
+    let confirmation_result: ConfirmationResult =
+        serde_json::from_slice(&confirmation).map_err(|e| {
+            WorkflowError::Generic(format!("Failed to parse confirmation result: {}", e))
+        })?;
 
     info!(
         "Order {} processed successfully. Payment: {}, Confirmation: {}",
-        validation_result.order_id,
-        payment_result.payment_id,
-        confirmation_result.confirmation_id
+        validation_result.order_id, payment_result.payment_id, confirmation_result.confirmation_id
     );
 
     Ok(OrderOutput {
