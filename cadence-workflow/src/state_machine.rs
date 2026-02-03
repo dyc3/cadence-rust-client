@@ -848,11 +848,18 @@ impl DecisionsHelper {
         }
     }
 
-    /// Add a decision
-    pub fn add_decision(&mut self, decision: Box<dyn DecisionStateMachine>) {
+    /// Add a decision. Returns true if added, false if duplicate.
+    pub fn add_decision(&mut self, decision: Box<dyn DecisionStateMachine>) -> bool {
         let id = decision.id().clone();
+
+        // Prevent duplicate decisions with same ID
+        if self.decisions.contains_key(&id) {
+            return false;
+        }
+
         self.ordered_decisions.push(id.clone());
         self.decisions.insert(id, decision);
+        true
     }
 
     /// Get all decisions that need to be sent
@@ -1071,6 +1078,96 @@ impl DecisionsHelper {
         if let Some(decision) = self.decisions.get_mut(&id) {
             decision.handle_initiation_failed_event();
         }
+    }
+
+    /// Add a decision from history replay (already initiated).
+    /// Used during replay to pre-populate state machines before workflow code runs.
+    /// This prevents duplicate schedule decisions during replay.
+    pub fn add_initiated_activity(&mut self, activity_id: String) {
+        let id = DecisionId::new(StateMachineDecisionType::Activity, activity_id.clone());
+        if self.decisions.contains_key(&id) {
+            return; // Already exists
+        }
+
+        // Create with minimal attributes (not needed for replay)
+        let attrs = ScheduleActivityTaskDecisionAttributes {
+            activity_id: activity_id.clone(),
+            activity_type: None,
+            task_list: None,
+            input: None,
+            schedule_to_close_timeout_seconds: None,
+            schedule_to_start_timeout_seconds: None,
+            start_to_close_timeout_seconds: None,
+            heartbeat_timeout_seconds: None,
+            retry_policy: None,
+            header: None,
+        };
+        let mut sm = ActivityDecisionStateMachine::new(activity_id, attrs);
+
+        // Transition to Initiated state (matching history)
+        sm.base.transition_to(DecisionState::DecisionSent);
+        sm.base.transition_to(DecisionState::Initiated);
+
+        self.ordered_decisions.push(id.clone());
+        self.decisions.insert(id, Box::new(sm));
+    }
+
+    /// Add a timer from history replay (already started).
+    pub fn add_initiated_timer(&mut self, timer_id: String) {
+        let id = DecisionId::new(StateMachineDecisionType::Timer, timer_id.clone());
+        if self.decisions.contains_key(&id) {
+            return; // Already exists
+        }
+
+        // Create with default attributes (not needed for replay)
+        let attrs = StartTimerDecisionAttributes {
+            timer_id: timer_id.clone(),
+            start_to_fire_timeout_seconds: 0,
+        };
+        let mut sm = TimerDecisionStateMachine::new(timer_id, attrs);
+
+        // Transition to Initiated state (matching history)
+        sm.base.transition_to(DecisionState::DecisionSent);
+        sm.base.transition_to(DecisionState::Initiated);
+
+        self.ordered_decisions.push(id.clone());
+        self.decisions.insert(id, Box::new(sm));
+    }
+
+    /// Add a child workflow from history replay (already initiated).
+    pub fn add_initiated_child_workflow(&mut self, workflow_id: String) {
+        let id = DecisionId::new(StateMachineDecisionType::ChildWorkflow, workflow_id.clone());
+        if self.decisions.contains_key(&id) {
+            return; // Already exists
+        }
+
+        // Create with minimal attributes (not needed for replay)
+        let attrs = StartChildWorkflowExecutionDecisionAttributes {
+            domain: String::new(),
+            workflow_id: workflow_id.clone(),
+            workflow_type: None,
+            task_list: None,
+            input: None,
+            execution_start_to_close_timeout_seconds: None,
+            task_start_to_close_timeout_seconds: None,
+            retry_policy: None,
+            cron_schedule: None,
+            header: None,
+            memo: None,
+            search_attributes: None,
+            workflow_id_reuse_policy: None,
+            parent_close_policy: None,
+            control: None,
+            decision_task_completed_event_id: 0,
+        };
+        let mut sm = ChildWorkflowDecisionStateMachine::new(workflow_id, attrs);
+
+        // Transition to Initiated state (matching history)
+        sm.base.transition_to(DecisionState::DecisionSent);
+        sm.base.transition_to(DecisionState::Initiated);
+
+        self.ordered_decisions.push(id.clone());
+        self.decisions.insert(id, Box::new(sm));
     }
 }
 

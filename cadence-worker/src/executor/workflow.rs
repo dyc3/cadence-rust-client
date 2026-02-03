@@ -45,22 +45,32 @@ impl CommandSink for ReplayCommandSink {
                         "[CommandSink] Scheduling Activity (stderr): {}",
                         cmd.activity_id
                     );
-                    let mut engine_lock = engine.lock().unwrap();
 
-                    if let Some(result) = engine_lock.get_activity_result(&cmd.activity_id) {
-                        // Convert EventResult (Result<Vec<u8>, ActivityError>) to Result<Vec<u8>, WorkflowError>
+                    // Check 1: Is the activity already completed?
+                    let already_completed = {
+                        let engine_lock = engine.lock().unwrap();
+                        engine_lock
+                            .get_activity_result(&cmd.activity_id)
+                            .map(|r| match r {
+                                Ok(data) => Ok(data.clone()),
+                                Err(e) => Err(e.to_string()),
+                            })
+                    };
+
+                    if let Some(result) = already_completed {
                         println!(
                             "[CommandSink] Activity {} completed/failed immediately (from history)",
                             cmd.activity_id
                         );
                         return match result {
-                            Ok(data) => Ok(data.clone()),
-                            Err(e) => Err(WorkflowError::ActivityFailed(e.to_string())),
+                            Ok(data) => Ok(data),
+                            Err(e) => Err(WorkflowError::ActivityFailed(e)),
                         };
                     }
 
+                    // Check 2: Try to add decision - if it already exists (from replay), add_decision returns false
                     let task_list_name = if cmd.options.task_list.is_empty() {
-                        default_task_list
+                        default_task_list.clone()
                     } else {
                         cmd.options.task_list.clone()
                     };
@@ -106,24 +116,62 @@ impl CommandSink for ReplayCommandSink {
                         header: None,
                     };
 
-                    let decision =
-                        Box::new(ActivityDecisionStateMachine::new(cmd.activity_id, attrs));
-                    engine_lock.decisions_helper.add_decision(decision);
+                    let decision = Box::new(ActivityDecisionStateMachine::new(
+                        cmd.activity_id.clone(),
+                        attrs,
+                    ));
+
+                    let added = {
+                        let mut engine_lock = engine.lock().unwrap();
+                        engine_lock.decisions_helper.add_decision(decision)
+                    };
+
+                    if !added {
+                        // Decision already exists (pre-created during replay)
+                        // Activity is in progress, block until completed
+                        println!(
+                            "[CommandSink] Activity {} already scheduled, blocking until completion",
+                            cmd.activity_id
+                        );
+                        return std::future::pending().await;
+                    }
+
+                    // New activity, will be included in pending decisions
                 }
                 WorkflowCommand::StartTimer(cmd) => {
-                    let mut engine_lock = engine.lock().unwrap();
+                    // Check if timer already fired
+                    let already_fired = {
+                        let engine_lock = engine.lock().unwrap();
+                        engine_lock.get_timer_result(&cmd.timer_id).is_some()
+                    };
 
-                    if let Some(_result) = engine_lock.get_timer_result(&cmd.timer_id) {
+                    if already_fired {
                         return Ok(Vec::new());
                     }
 
+                    // Try to add decision - if it already exists (from replay), add_decision returns false
                     let attrs = StartTimerDecisionAttributes {
                         timer_id: cmd.timer_id.clone(),
                         start_to_fire_timeout_seconds: cmd.duration.as_secs() as i64,
                     };
 
-                    let decision = Box::new(TimerDecisionStateMachine::new(cmd.timer_id, attrs));
-                    engine_lock.decisions_helper.add_decision(decision);
+                    let decision =
+                        Box::new(TimerDecisionStateMachine::new(cmd.timer_id.clone(), attrs));
+
+                    let added = {
+                        let mut engine_lock = engine.lock().unwrap();
+                        engine_lock.decisions_helper.add_decision(decision)
+                    };
+
+                    if !added {
+                        // Decision already exists (pre-created during replay)
+                        // Timer is in progress, block until fired
+                        println!(
+                            "[CommandSink] Timer {} already scheduled, blocking until fired",
+                            cmd.timer_id
+                        );
+                        return std::future::pending().await;
+                    }
                 }
                 WorkflowCommand::CancelTimer(cmd) => {
                     let mut engine_lock = engine.lock().unwrap();
@@ -134,15 +182,25 @@ impl CommandSink for ReplayCommandSink {
                     return Ok(Vec::new());
                 }
                 WorkflowCommand::StartChildWorkflow(cmd) => {
-                    let mut engine_lock = engine.lock().unwrap();
+                    // Check if child workflow already completed
+                    let already_completed = {
+                        let engine_lock = engine.lock().unwrap();
+                        engine_lock
+                            .get_child_workflow_result(&cmd.workflow_id)
+                            .map(|r| match r {
+                                Ok(data) => Ok(data.clone()),
+                                Err(e) => Err(e.to_string()),
+                            })
+                    };
 
-                    if let Some(result) = engine_lock.get_child_workflow_result(&cmd.workflow_id) {
+                    if let Some(result) = already_completed {
                         return match result {
-                            Ok(data) => Ok(data.clone()),
-                            Err(e) => Err(WorkflowError::ChildWorkflowFailed(e.to_string())),
+                            Ok(data) => Ok(data),
+                            Err(e) => Err(WorkflowError::ChildWorkflowFailed(e)),
                         };
                     }
 
+                    // Try to add decision - if it already exists (from replay), add_decision returns false
                     let attrs = StartChildWorkflowExecutionDecisionAttributes {
                         domain: cmd.options.domain.unwrap_or_default(),
                         workflow_id: cmd.workflow_id.clone(),
@@ -182,10 +240,24 @@ impl CommandSink for ReplayCommandSink {
                     };
 
                     let decision = Box::new(ChildWorkflowDecisionStateMachine::new(
-                        cmd.workflow_id,
+                        cmd.workflow_id.clone(),
                         attrs,
                     ));
-                    engine_lock.decisions_helper.add_decision(decision);
+
+                    let added = {
+                        let mut engine_lock = engine.lock().unwrap();
+                        engine_lock.decisions_helper.add_decision(decision)
+                    };
+
+                    if !added {
+                        // Decision already exists (pre-created during replay)
+                        // Child workflow is in progress, block until completed
+                        println!(
+                            "[CommandSink] Child workflow {} already initiated, blocking until completion",
+                            cmd.workflow_id
+                        );
+                        return std::future::pending().await;
+                    }
                 }
                 WorkflowCommand::ContinueAsNewWorkflow(cmd) => {
                     let mut engine_lock = engine.lock().unwrap();
@@ -229,6 +301,7 @@ impl CommandSink for ReplayCommandSink {
                     engine_lock
                         .decisions_helper
                         .continue_as_new_workflow_execution(attrs);
+                    drop(engine_lock);
                     return Ok(Vec::new());
                 }
                 WorkflowCommand::SignalExternalWorkflow(cmd) => {
@@ -258,6 +331,7 @@ impl CommandSink for ReplayCommandSink {
                     engine_lock
                         .decisions_helper
                         .signal_external_workflow_execution(cmd.signal_id, attrs);
+                    drop(engine_lock);
                     // Don't return pending yet, wait for completion?
                     // Cadence semantics: signal returns Future that completes when signal is *accepted* by external workflow (or at least sent).
                     // So we treat it like an activity/timer.
@@ -287,6 +361,7 @@ impl CommandSink for ReplayCommandSink {
                     engine_lock
                         .decisions_helper
                         .request_cancel_external_workflow_execution(cmd.cancellation_id, attrs);
+                    drop(engine_lock);
                 }
                 _ => unimplemented!("Command not supported"),
             }
@@ -362,7 +437,7 @@ impl WorkflowExecutor {
         };
 
         // Check cache for sticky execution
-        let (engine_arc, _from_cache) = if let Some(cached) = self.cache.get(&key) {
+        let (engine_arc, from_cache) = if let Some(cached) = self.cache.get(&key) {
             let execution = cached.execution.lock().unwrap();
             (execution.engine.clone(), true)
         } else {
@@ -370,9 +445,19 @@ impl WorkflowExecutor {
             (Arc::new(Mutex::new(engine)), false)
         };
 
+        println!(
+            "[WorkflowExecutor] Engine from cache: {}, last_processed_event_id: {}",
+            from_cache,
+            engine_arc.lock().unwrap().last_processed_event_id
+        );
+
         {
             let mut engine = engine_arc.lock().unwrap();
             engine.replay_history(&events)?;
+            println!(
+                "[WorkflowExecutor] After replay, last_processed_event_id: {}",
+                engine.last_processed_event_id
+            );
         }
 
         let sink = Arc::new(ReplayCommandSink {
@@ -512,7 +597,7 @@ impl WorkflowExecutor {
         };
 
         let last_event_id = {
-            let engine = engine_arc.lock().unwrap();
+            let _engine = engine_arc.lock().unwrap();
             // engine.last_event_id? We don't have that in ReplayEngine yet.
             // Use last event from history?
             if let Some(last) = events.last() {
@@ -529,8 +614,11 @@ impl WorkflowExecutor {
 
         self.cache.insert(key, cached);
 
-        let engine = engine_arc.lock().unwrap();
+        let mut engine = engine_arc.lock().unwrap();
         let decisions = engine.decisions_helper.get_pending_decisions();
+
+        // Mark decisions as sent to prevent them from being returned again
+        engine.decisions_helper.mark_decisions_sent();
 
         println!(
             "[WorkflowExecutor] Generated {} decisions for workflow={}",

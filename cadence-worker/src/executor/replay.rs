@@ -13,6 +13,7 @@ pub struct ReplayEngine {
     pub scheduled_event_id_to_decision_id: HashMap<i64, DecisionId>,
     pub signals: HashMap<String, Vec<Vec<u8>>>,
     pub cancel_requested: bool,
+    pub last_processed_event_id: i64,
 }
 
 impl ReplayEngine {
@@ -22,7 +23,11 @@ impl ReplayEngine {
 
     pub fn replay_history(&mut self, events: &[HistoryEvent]) -> Result<(), CadenceError> {
         for event in events {
-            self.process_event(event)?;
+            // Only process events we haven't seen before
+            if event.event_id > self.last_processed_event_id {
+                self.process_event(event)?;
+                self.last_processed_event_id = event.event_id;
+            }
         }
         Ok(())
     }
@@ -42,8 +47,12 @@ impl ReplayEngine {
                         "[ReplayEngine] Mapping ActivityScheduled: ID={} ActivityID={}",
                         event.event_id, activity_id
                     );
+
+                    // Pre-create state machine in Initiated state (for replay)
                     self.decisions_helper
-                        .handle_activity_scheduled(event.event_id, activity_id);
+                        .add_initiated_activity(activity_id.clone());
+
+                    // Also record in scheduled_event_id mapping
                     self.scheduled_event_id_to_decision_id.insert(
                         event.event_id,
                         DecisionId::new(StateMachineDecisionType::Activity, activity_id),
@@ -106,7 +115,10 @@ impl ReplayEngine {
                 if let Some(EventAttributes::TimerStartedEventAttributes(attrs)) = &event.attributes
                 {
                     let timer_id = &attrs.timer_id;
-                    self.decisions_helper.handle_timer_started(timer_id);
+
+                    // Pre-create state machine in Initiated state (for replay)
+                    self.decisions_helper.add_initiated_timer(timer_id.clone());
+
                     self.scheduled_event_id_to_decision_id.insert(
                         event.event_id,
                         DecisionId::new(StateMachineDecisionType::Timer, timer_id),
@@ -149,8 +161,11 @@ impl ReplayEngine {
                 )) = &event.attributes
                 {
                     let workflow_id = &attrs.workflow_id;
+
+                    // Pre-create state machine in Initiated state (for replay)
                     self.decisions_helper
-                        .handle_child_workflow_initiated(workflow_id);
+                        .add_initiated_child_workflow(workflow_id.clone());
+
                     self.scheduled_event_id_to_decision_id.insert(
                         event.event_id,
                         DecisionId::new(StateMachineDecisionType::ChildWorkflow, workflow_id),
@@ -449,5 +464,43 @@ impl ReplayEngine {
             }
         }
         None
+    }
+
+    /// Check if an activity has already been scheduled (from history replay).
+    /// This prevents duplicate schedule decisions during replay when an
+    /// activity is in-progress but not yet completed.
+    pub fn is_activity_scheduled(&self, activity_id: &str) -> bool {
+        for decision_id in self.scheduled_event_id_to_decision_id.values() {
+            if decision_id.decision_type == StateMachineDecisionType::Activity
+                && decision_id.id == activity_id
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if a timer has already been started (from history replay).
+    pub fn is_timer_scheduled(&self, timer_id: &str) -> bool {
+        for decision_id in self.scheduled_event_id_to_decision_id.values() {
+            if decision_id.decision_type == StateMachineDecisionType::Timer
+                && decision_id.id == timer_id
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if a child workflow has already been initiated (from history replay).
+    pub fn is_child_workflow_initiated(&self, workflow_id: &str) -> bool {
+        for decision_id in self.scheduled_event_id_to_decision_id.values() {
+            if decision_id.decision_type == StateMachineDecisionType::ChildWorkflow
+                && decision_id.id == workflow_id
+            {
+                return true;
+            }
+        }
+        false
     }
 }
