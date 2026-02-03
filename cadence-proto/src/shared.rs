@@ -74,6 +74,7 @@ pub struct HistoryEvent {
     pub event_type: EventType,
     pub version: i64,
     pub task_id: i64,
+    #[serde(flatten)]
     pub attributes: Option<EventAttributes>,
 }
 
@@ -146,11 +147,64 @@ pub enum EventAttributes {
     SignalExternalWorkflowExecutionInitiatedEventAttributes(
         Box<SignalExternalWorkflowExecutionInitiatedEventAttributes>,
     ),
+    StartChildWorkflowExecutionInitiatedEventAttributes(
+        Box<StartChildWorkflowExecutionInitiatedEventAttributes>,
+    ),
     ChildWorkflowExecutionStartedEventAttributes(Box<ChildWorkflowExecutionStartedEventAttributes>),
     ChildWorkflowExecutionCompletedEventAttributes(
         Box<ChildWorkflowExecutionCompletedEventAttributes>,
     ),
     ChildWorkflowExecutionFailedEventAttributes(Box<ChildWorkflowExecutionFailedEventAttributes>),
+    ChildWorkflowExecutionCanceledEventAttributes(
+        Box<ChildWorkflowExecutionCanceledEventAttributes>,
+    ),
+    ChildWorkflowExecutionTimedOutEventAttributes(
+        Box<ChildWorkflowExecutionTimedOutEventAttributes>,
+    ),
+    ChildWorkflowExecutionTerminatedEventAttributes(
+        Box<ChildWorkflowExecutionTerminatedEventAttributes>,
+    ),
+    SignalExternalWorkflowExecutionFailedEventAttributes(
+        Box<SignalExternalWorkflowExecutionFailedEventAttributes>,
+    ),
+    ExternalWorkflowExecutionSignaledEventAttributes(
+        Box<ExternalWorkflowExecutionSignaledEventAttributes>,
+    ),
+    RequestCancelExternalWorkflowExecutionInitiatedEventAttributes(
+        Box<RequestCancelExternalWorkflowExecutionInitiatedEventAttributes>,
+    ),
+    RequestCancelExternalWorkflowExecutionFailedEventAttributes(
+        Box<RequestCancelExternalWorkflowExecutionFailedEventAttributes>,
+    ),
+    ExternalWorkflowExecutionCancelRequestedEventAttributes(
+        Box<ExternalWorkflowExecutionCancelRequestedEventAttributes>,
+    ),
+    TimerCanceledEventAttributes(Box<TimerCanceledEventAttributes>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum DecisionTaskFailedCause {
+    UnhandledDecision = 0,
+    BadScheduleActivityAttributes = 1,
+    BadRequestCancelActivityAttributes = 2,
+    BadStartTimerAttributes = 3,
+    BadCancelTimerAttributes = 4,
+    BadRecordMarkerAttributes = 5,
+    BadCompleteWorkflowExecutionAttributes = 6,
+    BadFailWorkflowExecutionAttributes = 7,
+    BadCancelWorkflowExecutionAttributes = 8,
+    BadRequestCancelExternalWorkflowExecutionAttributes = 9,
+    BadContinueAsNewWorkflowExecutionAttributes = 10,
+    StartTimerDuplicateId = 11,
+    ResetStickyTasklist = 12,
+    WorkflowWorkerUnhandledFailure = 13,
+    BadSignalExternalWorkflowExecutionAttributes = 14,
+    BadStartChildWorkflowExecutionAttributes = 15,
+    ForceCloseDecision = 16,
+    FailoverCloseDecision = 17,
+    BadSignalWorkflowExecutionAttributes = 18,
+    BadRequestCancelWorkflowExecutionAttributes = 19,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -307,14 +361,21 @@ pub struct WorkflowExecutionSignaledEventAttributes {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SignalExternalWorkflowExecutionInitiatedEventAttributes {
+pub struct StartChildWorkflowExecutionInitiatedEventAttributes {
+    pub domain: String,
     pub workflow_id: String,
-    pub run_id: Option<String>,
-    pub signal_name: String,
+    pub workflow_type: Option<WorkflowType>,
+    pub task_list: Option<TaskList>,
     pub input: Option<Vec<u8>>,
+    pub execution_start_to_close_timeout_seconds: i32,
+    pub task_start_to_close_timeout_seconds: i32,
     pub decision_task_completed_event_id: i64,
+    pub workflow_id_reuse_policy: Option<WorkflowIdReusePolicy>,
+    pub retry_policy: Option<RetryPolicy>,
+    pub cron_schedule: Option<String>,
+    pub header: Option<Header>,
+    pub parent_close_policy: Option<ParentClosePolicy>,
     pub control: Option<String>,
-    pub child_workflow_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -589,4 +650,95 @@ pub type HistoryBranch = Vec<u8>;
 pub enum HistoryEventFilterType {
     AllEvent = 0,
     CloseEvent = 1,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimerCanceledEventAttributes {
+    pub timer_id: String,
+    pub started_event_id: i64,
+    pub decision_task_completed_event_id: i64,
+    pub identity: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SignalExternalWorkflowExecutionInitiatedEventAttributes {
+    pub workflow_id: String,
+    pub run_id: Option<String>,
+    pub signal_name: String,
+    pub input: Option<Vec<u8>>,
+    pub decision_task_completed_event_id: i64,
+    pub control: Option<String>,
+    pub child_workflow_only: bool,
+    pub domain: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SignalExternalWorkflowExecutionFailedEventAttributes {
+    pub cause: Option<String>, // SignalExternalWorkflowExecutionFailedCause
+    pub decision_task_completed_event_id: i64,
+    pub initiated_event_id: i64,
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub control: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExternalWorkflowExecutionSignaledEventAttributes {
+    pub initiated_event_id: i64,
+    pub domain: Option<String>,
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub control: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RequestCancelExternalWorkflowExecutionInitiatedEventAttributes {
+    pub decision_task_completed_event_id: i64,
+    pub domain: Option<String>,
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub control: Option<String>,
+    pub child_workflow_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RequestCancelExternalWorkflowExecutionFailedEventAttributes {
+    pub cause: Option<String>, // CancelExternalWorkflowExecutionFailedCause
+    pub decision_task_completed_event_id: i64,
+    pub initiated_event_id: i64,
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub control: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExternalWorkflowExecutionCancelRequestedEventAttributes {
+    pub initiated_event_id: i64,
+    pub domain: Option<String>,
+    pub workflow_execution: Option<WorkflowExecution>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChildWorkflowExecutionTimedOutEventAttributes {
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub workflow_type: Option<WorkflowType>,
+    pub timeout_type: TimeoutType,
+    pub initiated_event_id: i64,
+    pub started_event_id: i64,
+    pub domain: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChildWorkflowExecutionCanceledEventAttributes {
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub workflow_type: Option<WorkflowType>,
+    pub details: Option<Vec<u8>>,
+    pub initiated_event_id: i64,
+    pub started_event_id: i64,
+    pub domain: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChildWorkflowExecutionTerminatedEventAttributes {
+    pub workflow_execution: Option<WorkflowExecution>,
+    pub workflow_type: Option<WorkflowType>,
+    pub initiated_event_id: i64,
+    pub started_event_id: i64,
+    pub domain: Option<String>,
 }

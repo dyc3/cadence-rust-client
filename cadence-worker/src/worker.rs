@@ -3,8 +3,15 @@
 //! This module provides the worker for polling tasks from the Cadence server
 //! and executing workflow and activity implementations.
 
+use crate::executor::cache::WorkflowCache;
+use crate::executor::workflow::WorkflowExecutor;
+use crate::handlers::activity::ActivityTaskHandler;
+use crate::handlers::decision::DecisionTaskHandler;
+use crate::pollers::{ActivityTaskPoller, DecisionTaskPoller, PollerManager};
 use crate::registry::Registry;
-use std::sync::Arc;
+use cadence_core::CadenceError;
+use cadence_proto::workflow_service::WorkflowService;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Worker trait for hosting workflows and activities
@@ -30,6 +37,8 @@ pub enum WorkerError {
     InvalidConfiguration(String),
     #[error("Worker is shutting down")]
     ShuttingDown,
+    #[error("Cadence error: {0}")]
+    CadenceError(#[from] CadenceError),
 }
 
 /// Worker options for configuration
@@ -67,6 +76,8 @@ pub struct WorkerOptions {
     pub identity: String,
     /// Deadlock detection timeout
     pub deadlock_detection_timeout: Duration,
+    /// Max cached workflows
+    pub max_cached_workflows: usize,
 }
 
 impl Default for WorkerOptions {
@@ -92,6 +103,7 @@ impl Default for WorkerOptions {
                 std::process::id()
             ),
             deadlock_detection_timeout: Duration::from_secs(0), // Disabled by default
+            max_cached_workflows: 1000,
         }
     }
 }
@@ -109,6 +121,7 @@ impl std::fmt::Debug for WorkerOptions {
             )
             .field("disable_sticky_execution", &self.disable_sticky_execution)
             .field("identity", &self.identity)
+            .field("max_cached_workflows", &self.max_cached_workflows)
             .finish()
     }
 }
@@ -177,16 +190,12 @@ impl Default for AutoScalerOptions {
 
 /// Worker implementation
 pub struct CadenceWorker {
-    #[allow(dead_code)]
     domain: String,
-    #[allow(dead_code)]
     task_list: String,
-    #[allow(dead_code)]
     options: WorkerOptions,
-    #[allow(dead_code)]
     registry: Arc<dyn Registry>,
-    #[allow(dead_code)]
-    shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    poller_manager: Arc<Mutex<Option<PollerManager>>>,
 }
 
 impl CadenceWorker {
@@ -195,30 +204,160 @@ impl CadenceWorker {
         task_list: impl Into<String>,
         options: WorkerOptions,
         registry: Arc<dyn Registry>,
+        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
     ) -> Self {
         Self {
             domain: domain.into(),
             task_list: task_list.into(),
             options,
             registry,
-            shutdown_tx: None,
+            service,
+            poller_manager: Arc::new(Mutex::new(None)),
         }
     }
 }
 
 impl Worker for CadenceWorker {
     fn start(&self) -> Result<(), WorkerError> {
-        // TODO: Implement worker start
+        let mut manager_lock = self.poller_manager.lock().unwrap();
+        if manager_lock.is_some() {
+            return Err(WorkerError::AlreadyStarted);
+        }
+
+        let mut poller_manager = PollerManager::new();
+
+        // Create cache
+        let cache = Arc::new(WorkflowCache::new(self.options.max_cached_workflows));
+
+        // Create executor
+        let executor = Arc::new(WorkflowExecutor::new(
+            self.registry.clone(),
+            cache,
+            self.options.clone(),
+            self.task_list.clone(),
+        ));
+
+        // Create decision handler
+        let decision_handler = Arc::new(DecisionTaskHandler::new(
+            self.service.clone(),
+            executor,
+            self.options.identity.clone(),
+        ));
+
+        // Create activity handler
+        let activity_handler = Arc::new(ActivityTaskHandler::new(
+            self.service.clone(),
+            self.registry.clone(),
+            self.options.identity.clone(),
+        ));
+
+        // Create decision pollers
+        for i in 0..self.options.max_concurrent_decision_task_pollers {
+            let identity = format!("{}-decision-{}", self.options.identity, i);
+            let mut poller = DecisionTaskPoller::new(
+                self.service.clone(),
+                &self.domain,
+                &self.task_list,
+                &identity,
+                decision_handler.clone(),
+            );
+
+            if !self.options.disable_sticky_execution {
+                let sticky_task_list =
+                    format!("{}-{}-sticky", self.task_list, self.options.identity);
+                poller = poller.with_sticky_task_list(sticky_task_list);
+            }
+
+            poller_manager.add_decision_poller(Arc::new(poller));
+        }
+
+        // Create activity pollers
+        for i in 0..self.options.max_concurrent_activity_task_pollers {
+            let identity = format!("{}-activity-{}", self.options.identity, i);
+            let poller = ActivityTaskPoller::new(
+                self.service.clone(),
+                &self.domain,
+                &self.task_list,
+                &identity,
+                activity_handler.clone(),
+            );
+            poller_manager.add_activity_poller(Arc::new(poller));
+        }
+
+        // Start pollers
+        poller_manager.start();
+
+        *manager_lock = Some(poller_manager);
         Ok(())
     }
 
     fn run(&self) -> Result<(), WorkerError> {
-        // TODO: Implement blocking run
+        self.start()?;
+
+        // Create a runtime for the signal handler if we aren't in one,
+        // but typically this run() is called from main.
+        // We'll assume we are in a context where we can block on a future
+        // or we are just blocking the thread until a signal.
+
+        // Since we need to block this thread, and we want to wait for SIGINT,
+        // we can use a simple approach:
+
+        tracing::info!("Worker started. Press Ctrl+C to stop.");
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        // Spawn a thread to handle signals
+        std::thread::spawn(move || {
+            // This requires the signal-hook or similar crate which might not be in dependencies.
+            // Alternatively, if we are in a tokio runtime, we can spawn a task.
+            // But run() is not async.
+
+            // Let's rely on the user to stop via `stop()` if they are embedding this.
+            // But for a standalone worker, we need signal handling.
+
+            // For now, let's use a simple sleep loop with a check, but better than before.
+            // Or better: just block until we get a notification.
+
+            // If the user wants to use this in main:
+            // let worker = Worker::new(...);
+            // worker.run()?;
+
+            // We can use tokio's block_on to wait for a signal if tokio is available.
+            // Assuming tokio is a dependency (it is).
+
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+
+            rt.block_on(async {
+                match tokio::signal::ctrl_c().await {
+                    Ok(_) => {
+                        println!("Received Ctrl+C, shutting down worker...");
+                        let _ = tx.send(());
+                    }
+                    Err(err) => {
+                        eprintln!("Unable to listen for shutdown signal: {}", err);
+                        // don't kill, just exit signal listener
+                    }
+                }
+            });
+        });
+
+        // Block until signal received
+        let _ = rx.recv();
+
+        self.stop();
+
         Ok(())
     }
 
     fn stop(&self) {
-        // TODO: Implement graceful shutdown
+        let mut manager_lock = self.poller_manager.lock().unwrap();
+        if let Some(manager) = manager_lock.as_mut() {
+            futures::executor::block_on(manager.stop());
+        }
+        *manager_lock = None;
     }
 }
 

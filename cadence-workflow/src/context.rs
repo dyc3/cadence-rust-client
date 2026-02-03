@@ -5,16 +5,73 @@
 
 use cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use crate::commands::{WorkflowCommand, ScheduleActivityCommand, StartTimerCommand, StartChildWorkflowCommand};
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Poll;
+use futures::future::poll_fn;
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Type alias for query handlers
+pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
+
+/// Trait for handling workflow commands (implemented by worker)
+pub trait CommandSink: Send + Sync {
+    fn submit(&self, command: WorkflowCommand) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
+}
+
+/// No-op command sink for testing/initialization
+struct NoopCommandSink;
+impl CommandSink for NoopCommandSink {
+    fn submit(&self, _command: WorkflowCommand) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+        Box::pin(async { Err(WorkflowError::Generic("No command sink configured".into())) })
+    }
+}
 
 /// Workflow context for executing workflow logic
 pub struct WorkflowContext {
     workflow_info: WorkflowInfo,
-    // TODO: Add workflow state, decision state machine, etc.
+    command_sink: Arc<dyn CommandSink>,
+    sequence: AtomicU64,
+    signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+    query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl WorkflowContext {
     pub fn new(workflow_info: WorkflowInfo) -> Self {
-        Self { workflow_info }
+        Self { 
+            workflow_info,
+            command_sink: Arc::new(NoopCommandSink),
+            sequence: AtomicU64::new(0),
+            signals: Arc::new(Mutex::new(HashMap::new())),
+            query_handlers: Arc::new(Mutex::new(HashMap::new())),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+    
+    pub fn with_sink(
+        workflow_info: WorkflowInfo, 
+        sink: Arc<dyn CommandSink>, 
+        signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
+    ) -> Self {
+        Self {
+            workflow_info,
+            command_sink: sink,
+            sequence: AtomicU64::new(0),
+            signals,
+            query_handlers,
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+    
+    fn next_id(&self) -> String {
+        let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
+        format!("{}", seq)
     }
 
     /// Get workflow information
@@ -25,12 +82,20 @@ impl WorkflowContext {
     /// Execute an activity
     pub async fn execute_activity(
         &self,
-        _activity_type: &str,
-        _args: Option<Vec<u8>>,
-        _options: ActivityOptions,
+        activity_type: &str,
+        args: Option<Vec<u8>>,
+        options: ActivityOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
-        // TODO: Implement activity scheduling
-        unimplemented!("Activity execution not yet implemented")
+        let activity_id = self.next_id();
+        
+        let command = WorkflowCommand::ScheduleActivity(ScheduleActivityCommand {
+            activity_id,
+            activity_type: activity_type.to_string(),
+            args,
+            options,
+        });
+        
+        self.command_sink.submit(command).await
     }
 
     /// Execute a local activity (executed synchronously in workflow thread)
@@ -47,40 +112,71 @@ impl WorkflowContext {
     /// Execute a child workflow
     pub async fn execute_child_workflow(
         &self,
-        _workflow_type: &str,
-        _args: Option<Vec<u8>>,
-        _options: ChildWorkflowOptions,
+        workflow_type: &str,
+        args: Option<Vec<u8>>,
+        options: ChildWorkflowOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
-        // TODO: Implement child workflow execution
-        unimplemented!("Child workflow execution not yet implemented")
+        let workflow_id = if options.workflow_id.is_empty() {
+             self.next_id()
+        } else {
+             options.workflow_id.clone()
+        };
+
+        let command = WorkflowCommand::StartChildWorkflow(StartChildWorkflowCommand {
+            workflow_id,
+            workflow_type: workflow_type.to_string(),
+            args,
+            options,
+        });
+
+        self.command_sink.submit(command).await
     }
 
     /// Get a signal channel for receiving signals
     pub fn get_signal_channel(&self, signal_name: &str) -> SignalChannel {
-        // TODO: Implement signal channel
-        SignalChannel::new(signal_name)
+        SignalChannel::new(signal_name, self.signals.clone())
     }
 
     /// Signal an external workflow
     pub async fn signal_external_workflow(
         &self,
-        _workflow_id: &str,
-        _run_id: Option<&str>,
-        _signal_name: &str,
-        _args: Option<Vec<u8>>,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        signal_name: &str,
+        args: Option<Vec<u8>>,
     ) -> Result<(), WorkflowError> {
-        // TODO: Implement external workflow signaling
-        unimplemented!("External workflow signaling not yet implemented")
+        let signal_id = self.next_id();
+        let command = WorkflowCommand::SignalExternalWorkflow(crate::commands::SignalExternalWorkflowCommand {
+            signal_id,
+            domain: None, // TODO: support domain
+            workflow_id: workflow_id.to_string(),
+            run_id: run_id.map(|s| s.to_string()),
+            signal_name: signal_name.to_string(),
+            args,
+            child_workflow_only: false,
+        });
+        
+        let _ = self.command_sink.submit(command).await?;
+        Ok(())
     }
 
     /// Request cancellation of an external workflow
     pub async fn request_cancel_external_workflow(
         &self,
-        _workflow_id: &str,
-        _run_id: Option<&str>,
+        workflow_id: &str,
+        run_id: Option<&str>,
     ) -> Result<(), WorkflowError> {
-        // TODO: Implement external workflow cancellation
-        unimplemented!("External workflow cancellation not yet implemented")
+        let cancellation_id = self.next_id();
+        let command = WorkflowCommand::RequestCancelExternalWorkflow(crate::commands::RequestCancelExternalWorkflowCommand {
+            cancellation_id,
+            domain: None, // TODO: support domain
+            workflow_id: workflow_id.to_string(),
+            run_id: run_id.map(|s| s.to_string()),
+            child_workflow_only: false,
+        });
+        
+        let _ = self.command_sink.submit(command).await?;
+        Ok(())
     }
 
     /// Execute a side effect (non-deterministic operation)
@@ -109,11 +205,12 @@ impl WorkflowContext {
     }
 
     /// Set a query handler
-    pub fn set_query_handler<F>(&self, _query_type: &str, _handler: F)
+    pub fn set_query_handler<F>(&self, query_type: &str, handler: F)
     where
         F: Fn(Vec<u8>) -> Vec<u8> + Send + Sync + 'static,
     {
-        // TODO: Implement query handler registration
+        let mut handlers = self.query_handlers.lock().unwrap();
+        handlers.insert(query_type.to_string(), Box::new(handler));
     }
 
     /// Upsert search attributes
@@ -123,8 +220,12 @@ impl WorkflowContext {
 
     /// Sleep for a duration (workflow-aware)
     pub async fn sleep(&self, duration: Duration) {
-        // TODO: Implement workflow-aware sleep
-        tokio::time::sleep(duration).await;
+        let timer_id = self.next_id();
+        let command = WorkflowCommand::StartTimer(StartTimerCommand {
+            timer_id,
+            duration,
+        });
+        let _ = self.command_sink.submit(command).await;
     }
 
     /// Get current workflow time (deterministic)
@@ -140,7 +241,15 @@ impl WorkflowContext {
 
     /// Create a timer
     pub fn new_timer(&self, duration: Duration) -> TimerFuture {
-        Box::pin(tokio::time::sleep(duration))
+        let timer_id = self.next_id();
+        let command = WorkflowCommand::StartTimer(StartTimerCommand {
+            timer_id,
+            duration,
+        });
+        let future = self.command_sink.submit(command);
+        Box::pin(async move {
+            let _ = future.await;
+        })
     }
 
     /// Get logger
@@ -154,26 +263,36 @@ impl WorkflowContext {
     }
 
     /// Continue workflow as new
-    pub fn continue_as_new(
+    pub async fn continue_as_new(
         &self,
-        _workflow_type: &str,
-        _args: Option<Vec<u8>>,
-        _options: ContinueAsNewOptions,
+        workflow_type: &str,
+        args: Option<Vec<u8>>,
+        options: ContinueAsNewOptions,
     ) -> ! {
-        // TODO: Implement continue as new
-        panic!("Continue as new not yet implemented")
+        let command = WorkflowCommand::ContinueAsNewWorkflow(crate::commands::ContinueAsNewWorkflowCommand {
+            workflow_type: workflow_type.to_string(),
+            input: args,
+            options,
+        });
+
+        let _ = self.command_sink.submit(command).await;
+        
+        // Block forever
+        std::future::pending().await
     }
 
     /// Get a cancellation channel
     pub fn get_cancellation_channel(&self) -> CancellationChannel {
-        // TODO: Implement cancellation channel
-        CancellationChannel::new()
+        CancellationChannel::new(self.cancelled.clone())
     }
 
     /// Check if workflow is cancelled
     pub fn is_cancelled(&self) -> bool {
-        // TODO: Implement cancellation check
-        false
+        self.cancelled.load(Ordering::Relaxed)
+    }
+    
+    pub fn set_cancelled(&self, cancelled: bool) {
+        self.cancelled.store(cancelled, Ordering::Relaxed);
     }
 }
 
@@ -198,46 +317,59 @@ pub struct ContinueAsNewOptions {
 
 /// Signal channel for receiving signals
 pub struct SignalChannel {
-    #[allow(dead_code)]
     signal_name: String,
-    // TODO: Add receiver
+    signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
 }
 
 impl SignalChannel {
-    pub fn new(signal_name: &str) -> Self {
+    pub fn new(signal_name: &str, signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>) -> Self {
         Self {
             signal_name: signal_name.to_string(),
+            signals,
         }
     }
 
     pub async fn recv(&mut self) -> Option<Vec<u8>> {
-        // TODO: Implement signal receiving
-        None
+        poll_fn(|_cx| {
+            let mut signals = self.signals.lock().unwrap();
+            if let Some(list) = signals.get_mut(&self.signal_name) {
+                if !list.is_empty() {
+                    return Poll::Ready(Some(list.remove(0)));
+                }
+            }
+            Poll::Pending
+        }).await
     }
 
     pub fn try_recv(&mut self) -> Option<Vec<u8>> {
-        // TODO: Implement non-blocking signal receive
+        let mut signals = self.signals.lock().unwrap();
+        if let Some(list) = signals.get_mut(&self.signal_name) {
+            if !list.is_empty() {
+                return Some(list.remove(0));
+            }
+        }
         None
     }
 }
 
 /// Cancellation channel
-pub struct CancellationChannel;
-
-impl Default for CancellationChannel {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct CancellationChannel {
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl CancellationChannel {
-    pub fn new() -> Self {
-        Self
+    pub fn new(cancelled: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        Self { cancelled }
     }
 
     pub async fn recv(&mut self) {
-        // TODO: Implement cancellation waiting
-        std::future::pending().await
+        poll_fn(|_cx| {
+            if self.cancelled.load(Ordering::Relaxed) {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        }).await
     }
 }
 

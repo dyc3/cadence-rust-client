@@ -6,7 +6,9 @@
 pub mod context;
 pub mod future;
 pub mod state_machine;
+pub mod commands;
 
 pub use context::*;
 pub use future::*;
 pub use state_machine::*;
+pub use commands::*;

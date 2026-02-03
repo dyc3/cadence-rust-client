@@ -217,6 +217,20 @@ pub struct RespondDecisionTaskCompletedResponse {
     pub decision_task: Option<PollForDecisionTaskResponse>,
 }
 
+/// Respond decision task failed request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondDecisionTaskFailedRequest {
+    pub task_token: Vec<u8>,
+    pub cause: DecisionTaskFailedCause,
+    pub details: Option<Vec<u8>>,
+    pub identity: String,
+    pub binary_checksum: String,
+}
+
+/// Respond decision task failed response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RespondDecisionTaskFailedResponse {}
+
 /// Poll for activity task request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PollForActivityTaskRequest {
@@ -371,7 +385,7 @@ pub struct ResetPointInfo {
 pub struct PendingChildExecutionInfo {
     pub workflow_id: String,
     pub run_id: String,
-    pub workflow_typ_name: String,
+    pub workflow_type_name: String,
     pub initiated_id: i64,
 }
 
@@ -581,7 +595,7 @@ pub struct FailoverDomainResponse {}
 
 /// Workflow service trait - defines all service methods
 #[async_trait::async_trait]
-pub trait WorkflowService {
+pub trait WorkflowService: Send + Sync {
     type Error: std::error::Error;
 
     async fn start_workflow_execution(
@@ -623,6 +637,11 @@ pub trait WorkflowService {
         &self,
         request: RespondDecisionTaskCompletedRequest,
     ) -> Result<RespondDecisionTaskCompletedResponse, Self::Error>;
+
+    async fn respond_decision_task_failed(
+        &self,
+        request: RespondDecisionTaskFailedRequest,
+    ) -> Result<RespondDecisionTaskFailedResponse, Self::Error>;
 
     async fn poll_for_activity_task(
         &self,

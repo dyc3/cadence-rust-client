@@ -6,6 +6,10 @@
 
 pub mod worker;
 pub mod registry;
+pub mod pollers;
+pub mod handlers;
+pub mod heartbeat;
+pub mod executor;
 
 pub use worker::*;
 pub use registry::*;

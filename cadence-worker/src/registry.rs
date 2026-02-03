@@ -2,12 +2,20 @@
 //!
 //! This module provides the registry for registering workflows and activities.
 
+use cadence_activity::ActivityContext;
+use cadence_workflow::context::WorkflowContext;
 use dashmap::DashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 /// Workflow trait
 pub trait Workflow: Send + Sync {
-    fn execute(&self, ctx: &mut dyn WorkflowContext) -> Result<Vec<u8>, WorkflowError>;
+    fn execute(
+        &self,
+        ctx: WorkflowContext,
+        input: Option<Vec<u8>>,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
     fn clone_box(&self) -> Box<dyn Workflow>;
 }
 
@@ -19,7 +27,11 @@ impl Clone for Box<dyn Workflow> {
 
 /// Activity trait
 pub trait Activity: Send + Sync {
-    fn execute(&self, ctx: &mut dyn ActivityContext) -> Result<Vec<u8>, ActivityError>;
+    fn execute(
+        &self,
+        ctx: &mut ActivityContext,
+        input: Option<Vec<u8>>,
+    ) -> Result<Vec<u8>, ActivityError>;
     fn clone_box(&self) -> Box<dyn Activity>;
 }
 
@@ -27,18 +39,6 @@ impl Clone for Box<dyn Activity> {
     fn clone(&self) -> Self {
         self.clone_box()
     }
-}
-
-/// Workflow context trait
-pub trait WorkflowContext: Send + Sync {
-    fn workflow_id(&self) -> &str;
-    fn run_id(&self) -> &str;
-}
-
-/// Activity context trait
-pub trait ActivityContext: Send + Sync {
-    fn activity_id(&self) -> &str;
-    fn task_token(&self) -> &[u8];
 }
 
 /// Workflow error
@@ -77,6 +77,10 @@ pub enum ActivityError {
     Application(String),
     #[error("Retryable with delay: {0}ms")]
     RetryableWithDelay(String, u64),
+    #[error("Activity cancelled")]
+    Cancelled,
+    #[error("Activity timed out: {0:?}")]
+    Timeout(cadence_proto::shared::TimeoutType),
 }
 
 impl ActivityError {

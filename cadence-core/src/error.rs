@@ -301,6 +301,21 @@ pub enum CadenceError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Client error: {0}")]
+    ClientError(String),
+
+    #[error("Workflow execution failed: {0}, details: {1:?}")]
+    WorkflowExecutionFailed(String, Vec<u8>),
+
+    #[error("Workflow execution timed out")]
+    WorkflowExecutionTimedOut,
+
+    #[error("Workflow execution cancelled")]
+    WorkflowExecutionCancelled,
+
+    #[error("Workflow execution terminated")]
+    WorkflowExecutionTerminated,
+
     #[error("Other error: {0}")]
     Other(String),
 }

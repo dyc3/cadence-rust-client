@@ -123,6 +123,8 @@ pub struct ChildWorkflowOptions {
     pub domain: Option<String>,
     /// Workflow ID for child (auto-generated if not specified)
     pub workflow_id: String,
+    /// Task list to schedule child workflow on
+    pub task_list: Option<String>,
     /// Retry policy
     pub retry_policy: Option<RetryPolicy>,
     /// Cron schedule
@@ -148,6 +150,7 @@ impl Default for ChildWorkflowOptions {
         Self {
             domain: None,
             workflow_id: String::new(),
+            task_list: None,
             retry_policy: None,
             cron_schedule: None,
             execution_start_to_close_timeout: Duration::from_secs(0),

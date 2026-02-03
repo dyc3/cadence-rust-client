@@ -4,8 +4,11 @@
 //! to ensure deterministic workflow execution and proper event handling.
 
 use cadence_proto::shared::{
-    CancelTimerDecisionAttributes, Decision as ProtoDecision, DecisionAttributes,
-    DecisionType as ProtoDecisionType, ScheduleActivityTaskDecisionAttributes,
+    CancelTimerDecisionAttributes, CompleteWorkflowExecutionDecisionAttributes,
+    ContinueAsNewWorkflowExecutionDecisionAttributes, Decision as ProtoDecision,
+    DecisionAttributes, DecisionType as ProtoDecisionType, FailWorkflowExecutionDecisionAttributes,
+    RequestCancelExternalWorkflowExecutionDecisionAttributes,
+    ScheduleActivityTaskDecisionAttributes, SignalExternalWorkflowExecutionDecisionAttributes,
     StartChildWorkflowExecutionDecisionAttributes, StartTimerDecisionAttributes,
 };
 use std::collections::HashMap;
@@ -45,6 +48,9 @@ pub enum StateMachineDecisionType {
     ExternalWorkflowSignal,
     Marker,
     UpsertSearchAttributes,
+    CompleteWorkflow,
+    FailWorkflow,
+    ContinueAsNewWorkflow,
 }
 
 /// Decision ID for identifying decisions
@@ -479,6 +485,355 @@ impl DecisionStateMachine for ChildWorkflowDecisionStateMachine {
     }
 }
 
+/// Complete workflow decision state machine
+pub struct CompleteWorkflowDecisionStateMachine {
+    base: DecisionStateMachineBase,
+    attributes: CompleteWorkflowExecutionDecisionAttributes,
+}
+
+impl CompleteWorkflowDecisionStateMachine {
+    pub fn new(attributes: CompleteWorkflowExecutionDecisionAttributes) -> Self {
+        Self {
+            base: DecisionStateMachineBase::new(DecisionId::new(
+                StateMachineDecisionType::CompleteWorkflow,
+                "complete",
+            )),
+            attributes,
+        }
+    }
+}
+
+impl DecisionStateMachine for CompleteWorkflowDecisionStateMachine {
+    fn state(&self) -> DecisionState {
+        self.base.state
+    }
+    fn id(&self) -> &DecisionId {
+        &self.base.id
+    }
+    fn is_done(&self) -> bool {
+        self.base.state == DecisionState::Completed
+    }
+
+    fn get_decision(&self) -> Option<ProtoDecision> {
+        if self.base.state == DecisionState::Created {
+            Some(ProtoDecision {
+                decision_type: ProtoDecisionType::CompleteWorkflowExecution,
+                attributes: Some(
+                    DecisionAttributes::CompleteWorkflowExecutionDecisionAttributes(Box::new(
+                        self.attributes.clone(),
+                    )),
+                ),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&mut self) {}
+    fn handle_started_event(&mut self) {}
+    fn handle_cancel_initiated_event(&mut self) {}
+    fn handle_canceled_event(&mut self) {}
+    fn handle_cancel_failed_event(&mut self) {}
+    fn handle_completion_event(&mut self) {}
+    fn handle_initiation_failed_event(&mut self) {}
+    fn handle_initiated_event(&mut self) {}
+
+    fn handle_decision_sent(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base.transition_to(DecisionState::DecisionSent);
+        }
+    }
+}
+
+/// Fail workflow decision state machine
+pub struct FailWorkflowDecisionStateMachine {
+    base: DecisionStateMachineBase,
+    attributes: FailWorkflowExecutionDecisionAttributes,
+}
+
+impl FailWorkflowDecisionStateMachine {
+    pub fn new(attributes: FailWorkflowExecutionDecisionAttributes) -> Self {
+        Self {
+            base: DecisionStateMachineBase::new(DecisionId::new(
+                StateMachineDecisionType::FailWorkflow,
+                "fail",
+            )),
+            attributes,
+        }
+    }
+}
+
+impl DecisionStateMachine for FailWorkflowDecisionStateMachine {
+    fn state(&self) -> DecisionState {
+        self.base.state
+    }
+    fn id(&self) -> &DecisionId {
+        &self.base.id
+    }
+    fn is_done(&self) -> bool {
+        self.base.state == DecisionState::Completed
+    }
+
+    fn get_decision(&self) -> Option<ProtoDecision> {
+        if self.base.state == DecisionState::Created {
+            Some(ProtoDecision {
+                decision_type: ProtoDecisionType::FailWorkflowExecution,
+                attributes: Some(DecisionAttributes::FailWorkflowExecutionDecisionAttributes(
+                    Box::new(self.attributes.clone()),
+                )),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&mut self) {}
+    fn handle_started_event(&mut self) {}
+    fn handle_cancel_initiated_event(&mut self) {}
+    fn handle_canceled_event(&mut self) {}
+    fn handle_cancel_failed_event(&mut self) {}
+    fn handle_completion_event(&mut self) {}
+    fn handle_initiation_failed_event(&mut self) {}
+    fn handle_initiated_event(&mut self) {}
+
+    fn handle_decision_sent(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base.transition_to(DecisionState::DecisionSent);
+        }
+    }
+}
+
+/// Continue as new workflow decision state machine
+pub struct ContinueAsNewWorkflowDecisionStateMachine {
+    base: DecisionStateMachineBase,
+    attributes: ContinueAsNewWorkflowExecutionDecisionAttributes,
+}
+
+impl ContinueAsNewWorkflowDecisionStateMachine {
+    pub fn new(attributes: ContinueAsNewWorkflowExecutionDecisionAttributes) -> Self {
+        Self {
+            base: DecisionStateMachineBase::new(DecisionId::new(
+                StateMachineDecisionType::ContinueAsNewWorkflow,
+                "continue_as_new",
+            )),
+            attributes,
+        }
+    }
+}
+
+impl DecisionStateMachine for ContinueAsNewWorkflowDecisionStateMachine {
+    fn state(&self) -> DecisionState {
+        self.base.state
+    }
+    fn id(&self) -> &DecisionId {
+        &self.base.id
+    }
+    fn is_done(&self) -> bool {
+        self.base.state == DecisionState::Completed
+    }
+
+    fn get_decision(&self) -> Option<ProtoDecision> {
+        if self.base.state == DecisionState::Created {
+            Some(ProtoDecision {
+                decision_type: ProtoDecisionType::ContinueAsNewWorkflowExecution,
+                attributes: Some(
+                    DecisionAttributes::ContinueAsNewWorkflowExecutionDecisionAttributes(Box::new(
+                        self.attributes.clone(),
+                    )),
+                ),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&mut self) {}
+    fn handle_started_event(&mut self) {}
+    fn handle_cancel_initiated_event(&mut self) {}
+    fn handle_canceled_event(&mut self) {}
+    fn handle_cancel_failed_event(&mut self) {}
+    fn handle_completion_event(&mut self) {}
+    fn handle_initiation_failed_event(&mut self) {}
+    fn handle_initiated_event(&mut self) {}
+
+    fn handle_decision_sent(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base.transition_to(DecisionState::DecisionSent);
+        }
+    }
+}
+
+/// Signal external workflow decision state machine
+pub struct SignalExternalWorkflowDecisionStateMachine {
+    base: DecisionStateMachineBase,
+    attributes: SignalExternalWorkflowExecutionDecisionAttributes,
+}
+
+impl SignalExternalWorkflowDecisionStateMachine {
+    pub fn new(id: String, attributes: SignalExternalWorkflowExecutionDecisionAttributes) -> Self {
+        Self {
+            base: DecisionStateMachineBase::new(DecisionId::new(
+                StateMachineDecisionType::ExternalWorkflowSignal,
+                id,
+            )),
+            attributes,
+        }
+    }
+}
+
+impl DecisionStateMachine for SignalExternalWorkflowDecisionStateMachine {
+    fn state(&self) -> DecisionState {
+        self.base.state
+    }
+    fn id(&self) -> &DecisionId {
+        &self.base.id
+    }
+    fn is_done(&self) -> bool {
+        matches!(
+            self.base.state,
+            DecisionState::Completed | DecisionState::CanceledBeforeInitiated
+        )
+    }
+
+    fn get_decision(&self) -> Option<ProtoDecision> {
+        if self.base.state == DecisionState::Created {
+            Some(ProtoDecision {
+                decision_type: ProtoDecisionType::SignalExternalWorkflowExecution,
+                attributes: Some(
+                    DecisionAttributes::SignalExternalWorkflowExecutionDecisionAttributes(
+                        Box::new(self.attributes.clone()),
+                    ),
+                ),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base
+                .transition_to(DecisionState::CanceledBeforeInitiated);
+        }
+    }
+    fn handle_started_event(&mut self) {}
+    fn handle_cancel_initiated_event(&mut self) {}
+    fn handle_canceled_event(&mut self) {
+        // Not applicable for signal
+    }
+    fn handle_cancel_failed_event(&mut self) {}
+    fn handle_completion_event(&mut self) {
+        if matches!(
+            self.base.state,
+            DecisionState::Initiated | DecisionState::DecisionSent
+        ) {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+    fn handle_initiation_failed_event(&mut self) {
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+    fn handle_initiated_event(&mut self) {
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Initiated);
+        }
+    }
+
+    fn handle_decision_sent(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base.transition_to(DecisionState::DecisionSent);
+        }
+    }
+}
+
+/// Request cancel external workflow decision state machine
+pub struct RequestCancelExternalWorkflowDecisionStateMachine {
+    base: DecisionStateMachineBase,
+    attributes: RequestCancelExternalWorkflowExecutionDecisionAttributes,
+}
+
+impl RequestCancelExternalWorkflowDecisionStateMachine {
+    pub fn new(
+        id: String,
+        attributes: RequestCancelExternalWorkflowExecutionDecisionAttributes,
+    ) -> Self {
+        Self {
+            base: DecisionStateMachineBase::new(DecisionId::new(
+                StateMachineDecisionType::ExternalWorkflowCancellation,
+                id,
+            )),
+            attributes,
+        }
+    }
+}
+
+impl DecisionStateMachine for RequestCancelExternalWorkflowDecisionStateMachine {
+    fn state(&self) -> DecisionState {
+        self.base.state
+    }
+    fn id(&self) -> &DecisionId {
+        &self.base.id
+    }
+    fn is_done(&self) -> bool {
+        matches!(
+            self.base.state,
+            DecisionState::Completed | DecisionState::CanceledBeforeInitiated
+        )
+    }
+
+    fn get_decision(&self) -> Option<ProtoDecision> {
+        if self.base.state == DecisionState::Created {
+            Some(ProtoDecision {
+                decision_type: ProtoDecisionType::RequestCancelExternalWorkflowExecution,
+                attributes: Some(
+                    DecisionAttributes::RequestCancelExternalWorkflowExecutionDecisionAttributes(
+                        Box::new(self.attributes.clone()),
+                    ),
+                ),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base
+                .transition_to(DecisionState::CanceledBeforeInitiated);
+        }
+    }
+    fn handle_started_event(&mut self) {}
+    fn handle_cancel_initiated_event(&mut self) {}
+    fn handle_canceled_event(&mut self) {}
+    fn handle_cancel_failed_event(&mut self) {}
+    fn handle_completion_event(&mut self) {
+        if matches!(
+            self.base.state,
+            DecisionState::Initiated | DecisionState::DecisionSent
+        ) {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+    fn handle_initiation_failed_event(&mut self) {
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+    fn handle_initiated_event(&mut self) {
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Initiated);
+        }
+    }
+
+    fn handle_decision_sent(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base.transition_to(DecisionState::DecisionSent);
+        }
+    }
+}
+
 /// Decision helper for managing multiple decisions
 pub struct DecisionsHelper {
     decisions: HashMap<DecisionId, Box<dyn DecisionStateMachine>>,
@@ -539,13 +894,19 @@ impl DecisionsHelper {
     }
 
     /// Handle activity started event
-    pub fn handle_activity_started(&mut self, _scheduled_event_id: i64) {
-        // Find by scheduled_event_id - would need to track this mapping
+    pub fn handle_activity_started(&mut self, activity_id: &str) {
+        let id = DecisionId::new(StateMachineDecisionType::Activity, activity_id.to_string());
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_started_event();
+        }
     }
 
-    /// Handle activity completed event
-    pub fn handle_activity_completed(&mut self, _scheduled_event_id: i64) {
-        // Find by scheduled_event_id
+    /// Handle activity completed/failed event
+    pub fn handle_activity_closed(&mut self, activity_id: &str) {
+        let id = DecisionId::new(StateMachineDecisionType::Activity, activity_id.to_string());
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_completion_event();
+        }
     }
 
     /// Handle timer started event
@@ -561,6 +922,154 @@ impl DecisionsHelper {
         let id = DecisionId::new(StateMachineDecisionType::Timer, timer_id.to_string());
         if let Some(decision) = self.decisions.get_mut(&id) {
             decision.handle_completion_event();
+        }
+    }
+
+    /// Handle timer canceled event
+    pub fn handle_timer_canceled(&mut self, timer_id: &str) {
+        let id = DecisionId::new(StateMachineDecisionType::Timer, timer_id.to_string());
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_canceled_event();
+        }
+    }
+
+    /// Handle child workflow initiated event
+    pub fn handle_child_workflow_initiated(&mut self, workflow_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ChildWorkflow,
+            workflow_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_initiated_event();
+        }
+    }
+
+    /// Handle child workflow started event
+    pub fn handle_child_workflow_started(&mut self, workflow_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ChildWorkflow,
+            workflow_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_started_event();
+        }
+    }
+
+    /// Handle child workflow completed/failed/canceled/timed_out event
+    pub fn handle_child_workflow_closed(&mut self, workflow_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ChildWorkflow,
+            workflow_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_completion_event();
+        }
+    }
+
+    pub fn complete_workflow_execution(&mut self, result: Vec<u8>) {
+        let attrs = CompleteWorkflowExecutionDecisionAttributes {
+            result: Some(result),
+        };
+        let decision = Box::new(CompleteWorkflowDecisionStateMachine::new(attrs));
+        self.add_decision(decision);
+    }
+
+    pub fn fail_workflow_execution(&mut self, reason: String, details: String) {
+        let attrs = FailWorkflowExecutionDecisionAttributes {
+            reason: Some(reason),
+            details: Some(details.into_bytes()),
+        };
+        let decision = Box::new(FailWorkflowDecisionStateMachine::new(attrs));
+        self.add_decision(decision);
+    }
+
+    pub fn continue_as_new_workflow_execution(
+        &mut self,
+        attributes: ContinueAsNewWorkflowExecutionDecisionAttributes,
+    ) {
+        let decision = Box::new(ContinueAsNewWorkflowDecisionStateMachine::new(attributes));
+        self.add_decision(decision);
+    }
+
+    pub fn signal_external_workflow_execution(
+        &mut self,
+        id: String,
+        attributes: SignalExternalWorkflowExecutionDecisionAttributes,
+    ) {
+        let decision = Box::new(SignalExternalWorkflowDecisionStateMachine::new(
+            id, attributes,
+        ));
+        self.add_decision(decision);
+    }
+
+    pub fn request_cancel_external_workflow_execution(
+        &mut self,
+        id: String,
+        attributes: RequestCancelExternalWorkflowExecutionDecisionAttributes,
+    ) {
+        let decision = Box::new(RequestCancelExternalWorkflowDecisionStateMachine::new(
+            id, attributes,
+        ));
+        self.add_decision(decision);
+    }
+
+    pub fn handle_signal_external_workflow_initiated(&mut self, signal_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ExternalWorkflowSignal,
+            signal_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_initiated_event();
+        }
+    }
+
+    pub fn handle_signal_external_workflow_completed(&mut self, signal_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ExternalWorkflowSignal,
+            signal_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_completion_event();
+        }
+    }
+
+    pub fn handle_signal_external_workflow_failed(&mut self, signal_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ExternalWorkflowSignal,
+            signal_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_initiation_failed_event();
+        }
+    }
+
+    pub fn handle_request_cancel_external_workflow_initiated(&mut self, cancel_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ExternalWorkflowCancellation,
+            cancel_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_initiated_event();
+        }
+    }
+
+    pub fn handle_request_cancel_external_workflow_completed(&mut self, cancel_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ExternalWorkflowCancellation,
+            cancel_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_completion_event();
+        }
+    }
+
+    pub fn handle_request_cancel_external_workflow_failed(&mut self, cancel_id: &str) {
+        let id = DecisionId::new(
+            StateMachineDecisionType::ExternalWorkflowCancellation,
+            cancel_id.to_string(),
+        );
+        if let Some(decision) = self.decisions.get_mut(&id) {
+            decision.handle_initiation_failed_event();
         }
     }
 }

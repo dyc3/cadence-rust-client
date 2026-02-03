@@ -4,7 +4,7 @@
 //! various options and patterns.
 
 use cadence_worker::registry::{Registry, WorkflowRegistry};
-use cadence_worker::worker::{CadenceWorker, NonDeterministicWorkflowPolicy, WorkerOptions};
+use cadence_worker::worker::{NonDeterministicWorkflowPolicy, WorkerOptions};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
@@ -25,6 +25,7 @@ pub fn create_high_performance_options() -> WorkerOptions {
         worker_stop_timeout: Duration::from_secs(30),
         enable_session_worker: false,
         max_concurrent_session_execution_size: 1000,
+        max_cached_workflows: 1000,
         non_deterministic_workflow_policy: NonDeterministicWorkflowPolicy::FailWorkflow,
         identity: "high-performance-worker".to_string(),
         deadlock_detection_timeout: Duration::from_secs(60),
@@ -47,6 +48,7 @@ pub fn create_development_options() -> WorkerOptions {
         worker_stop_timeout: Duration::from_secs(5),
         enable_session_worker: false,
         max_concurrent_session_execution_size: 100,
+        max_cached_workflows: 100,
         non_deterministic_workflow_policy: NonDeterministicWorkflowPolicy::BlockWorkflow,
         identity: "dev-worker".to_string(),
         deadlock_detection_timeout: Duration::from_secs(30),
@@ -69,6 +71,7 @@ pub fn create_limited_resources_options() -> WorkerOptions {
         worker_stop_timeout: Duration::from_secs(10),
         enable_session_worker: false,
         max_concurrent_session_execution_size: 50,
+        max_cached_workflows: 50,
         non_deterministic_workflow_policy: NonDeterministicWorkflowPolicy::BlockWorkflow,
         identity: "resource-limited-worker".to_string(),
         deadlock_detection_timeout: Duration::from_secs(0),
@@ -76,20 +79,23 @@ pub fn create_limited_resources_options() -> WorkerOptions {
 }
 
 /// Example function to set up a worker with registry
-pub fn setup_worker(domain: &str, task_list: &str, options: WorkerOptions) -> CadenceWorker {
+pub fn setup_worker(domain: &str, task_list: &str, options: WorkerOptions) {
     info!(
         "Setting up worker for domain: {}, task_list: {}",
         domain, task_list
     );
 
     // Create a registry
-    let registry = Arc::new(WorkflowRegistry::new());
+    let _registry = Arc::new(WorkflowRegistry::new());
 
-    // Create the worker
-    let worker = CadenceWorker::new(domain, task_list, options, registry);
+    // In a real application, you would create a service client here:
+    // let service = Arc::new(GrpcWorkflowServiceClient::new(host, port));
+    // let worker = CadenceWorker::new(domain, task_list, options, registry, service);
 
-    info!("Worker setup complete");
-    worker
+    // For this example, we just print the configuration
+    print_worker_config(&options);
+
+    info!("Worker setup logic demonstration complete");
 }
 
 /// Example: Register workflows and activities with a registry

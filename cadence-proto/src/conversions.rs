@@ -476,7 +476,87 @@ fn pb_history_event_to_api(e: pb::HistoryEvent) -> api_types::HistoryEvent {
         event_type,
         version: e.version,
         task_id: e.task_id,
-        attributes: None, // TODO: Convert attributes when needed
+        attributes: e.attributes.and_then(pb_attributes_to_api_attributes),
+    }
+}
+
+/// Convert protobuf Attributes to API EventAttributes
+fn pb_attributes_to_api_attributes(
+    attr: pb::history_event::Attributes,
+) -> Option<api_types::EventAttributes> {
+    use api_types::EventAttributes as ApiAttr;
+    use pb::history_event::Attributes;
+
+    match attr {
+        Attributes::WorkflowExecutionStartedEventAttributes(a) => Some(
+            ApiAttr::WorkflowExecutionStartedEventAttributes(Box::new(a.into())),
+        ),
+        Attributes::DecisionTaskScheduledEventAttributes(a) => Some(
+            ApiAttr::DecisionTaskScheduledEventAttributes(Box::new(a.into())),
+        ),
+        // Add other conversions as needed
+        _ => None,
+    }
+}
+
+impl From<pb::WorkflowExecutionStartedEventAttributes>
+    for api_types::WorkflowExecutionStartedEventAttributes
+{
+    fn from(pb: pb::WorkflowExecutionStartedEventAttributes) -> Self {
+        api_types::WorkflowExecutionStartedEventAttributes {
+            workflow_type: pb.workflow_type.map(Into::into),
+            parent_workflow_execution: None, // Simplified
+            task_list: pb.task_list.map(Into::into),
+            input: payload_to_bytes(pb.input).unwrap_or_default(),
+            execution_start_to_close_timeout_seconds: duration_to_seconds(
+                pb.execution_start_to_close_timeout,
+            )
+            .unwrap_or(0),
+            task_start_to_close_timeout_seconds: duration_to_seconds(
+                pb.task_start_to_close_timeout,
+            )
+            .unwrap_or(0),
+            identity: pb.identity,
+            continued_execution_run_id: if pb.continued_execution_run_id.is_empty() {
+                None
+            } else {
+                Some(pb.continued_execution_run_id)
+            },
+            initiator: None,                 // Simplified
+            continued_failure_details: None, // Simplified
+            last_completion_result: payload_to_bytes(pb.last_completion_result),
+            original_execution_run_id: if pb.original_execution_run_id.is_empty() {
+                None
+            } else {
+                Some(pb.original_execution_run_id)
+            },
+            first_execution_run_id: if pb.first_execution_run_id.is_empty() {
+                None
+            } else {
+                Some(pb.first_execution_run_id)
+            },
+            retry_policy: None, // Simplified
+            attempt: pb.attempt,
+            expiration_timestamp: None, // Simplified
+            cron_schedule: Some(pb.cron_schedule).filter(|s| !s.is_empty()),
+            first_decision_task_backoff_seconds: duration_to_seconds(
+                pb.first_decision_task_backoff,
+            )
+            .unwrap_or(0),
+        }
+    }
+}
+
+impl From<pb::DecisionTaskScheduledEventAttributes>
+    for api_types::DecisionTaskScheduledEventAttributes
+{
+    fn from(pb: pb::DecisionTaskScheduledEventAttributes) -> Self {
+        api_types::DecisionTaskScheduledEventAttributes {
+            task_list: pb.task_list.map(Into::into),
+            start_to_close_timeout_seconds: duration_to_seconds(pb.start_to_close_timeout)
+                .unwrap_or(0),
+            attempt: pb.attempt,
+        }
     }
 }
 
@@ -644,6 +724,24 @@ impl From<pb::RespondDecisionTaskCompletedResponse> for api::RespondDecisionTask
         api::RespondDecisionTaskCompletedResponse {
             decision_task: resp.decision_task.map(Into::into),
         }
+    }
+}
+
+impl From<api::RespondDecisionTaskFailedRequest> for pb::RespondDecisionTaskFailedRequest {
+    fn from(req: api::RespondDecisionTaskFailedRequest) -> Self {
+        pb::RespondDecisionTaskFailedRequest {
+            task_token: req.task_token,
+            cause: req.cause as i32,
+            details: bytes_to_payload(req.details),
+            identity: req.identity,
+            binary_checksum: req.binary_checksum,
+        }
+    }
+}
+
+impl From<pb::RespondDecisionTaskFailedResponse> for api::RespondDecisionTaskFailedResponse {
+    fn from(_: pb::RespondDecisionTaskFailedResponse) -> Self {
+        api::RespondDecisionTaskFailedResponse {}
     }
 }
 
@@ -996,7 +1094,7 @@ fn pb_pending_child_to_api(child: pb::PendingChildExecutionInfo) -> api::Pending
     api::PendingChildExecutionInfo {
         workflow_id,
         run_id,
-        workflow_typ_name: child.workflow_type_name,
+        workflow_type_name: child.workflow_type_name,
         initiated_id: child.initiated_id,
     }
 }

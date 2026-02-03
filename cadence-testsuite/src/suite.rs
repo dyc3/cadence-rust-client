@@ -272,7 +272,7 @@ impl TestWorkflowEnvironment {
             heartbeat_details: None,
         };
 
-        let ctx = ActivityContext::new(activity_info);
+        let ctx = ActivityContext::new(activity_info, None);
 
         let result_bytes = activity(&ctx, input_bytes).await?;
 
@@ -391,7 +391,7 @@ impl TestWorkflowContext {
             heartbeat_details: None,
         };
 
-        let ctx = ActivityContext::new(activity_info);
+        let ctx = ActivityContext::new(activity_info, None);
         let input = args.unwrap_or_default();
 
         activity(&ctx, input)

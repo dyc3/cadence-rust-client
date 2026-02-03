@@ -6,22 +6,39 @@
 use cadence_core::RetryPolicy;
 use std::time::{Duration, Instant};
 
+/// Activity runtime trait for interacting with the worker
+pub trait ActivityRuntime: Send + Sync {
+    /// Record a heartbeat
+    fn record_heartbeat(&self, details: Option<Vec<u8>>);
+
+    /// Check if activity is cancelled
+    fn is_cancelled(&self) -> bool;
+}
+
 /// Activity context for executing activity logic
 pub struct ActivityContext {
     activity_info: ActivityInfo,
     deadline: Option<Instant>,
-    heartbeat_details: Option<Vec<u8>>,
     worker_stop_channel: Option<tokio::sync::watch::Receiver<bool>>,
+    runtime: Option<std::sync::Arc<dyn ActivityRuntime>>,
 }
 
 impl ActivityContext {
-    pub fn new(activity_info: ActivityInfo) -> Self {
+    pub fn new(
+        activity_info: ActivityInfo,
+        runtime: Option<std::sync::Arc<dyn ActivityRuntime>>,
+    ) -> Self {
         Self {
             deadline: activity_info.deadline,
-            heartbeat_details: activity_info.heartbeat_details.clone(),
             worker_stop_channel: None,
             activity_info,
+            runtime,
         }
+    }
+
+    /// Set the worker stop channel
+    pub fn set_worker_stop_channel(&mut self, channel: tokio::sync::watch::Receiver<bool>) {
+        self.worker_stop_channel = Some(channel);
     }
 
     /// Get activity information
@@ -30,19 +47,20 @@ impl ActivityContext {
     }
 
     /// Record a heartbeat with optional details
-    pub fn record_heartbeat(&self, _details: Option<&[u8]>) {
-        // TODO: Implement heartbeat recording
-        // This should send heartbeat to Cadence server
+    pub fn record_heartbeat(&self, details: Option<&[u8]>) {
+        if let Some(runtime) = &self.runtime {
+            runtime.record_heartbeat(details.map(|d| d.to_vec()));
+        }
     }
 
     /// Check if heartbeat details exist from previous attempts
     pub fn has_heartbeat_details(&self) -> bool {
-        self.heartbeat_details.is_some()
+        self.activity_info.heartbeat_details.is_some()
     }
 
     /// Get heartbeat details from previous attempts
     pub fn get_heartbeat_details(&self) -> Option<&[u8]> {
-        self.heartbeat_details.as_deref()
+        self.activity_info.heartbeat_details.as_deref()
     }
 
     /// Get the worker stop channel
@@ -53,7 +71,9 @@ impl ActivityContext {
 
     /// Check if the activity has been cancelled
     pub fn is_cancelled(&self) -> bool {
-        // TODO: Implement cancellation check
+        if let Some(runtime) = &self.runtime {
+            return runtime.is_cancelled();
+        }
         false
     }
 

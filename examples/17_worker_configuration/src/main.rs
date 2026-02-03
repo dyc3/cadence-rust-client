@@ -106,7 +106,7 @@ fn demonstrate_worker_setup() {
     println!("\n--- Worker Setup Demonstration ---\n");
 
     let options = create_development_options();
-    let _worker = setup_worker("example-domain", "example-task-list", options.clone());
+    setup_worker("example-domain", "example-task-list", options.clone());
 
     println!("Worker Setup Complete:");
     println!("  Domain: example-domain");

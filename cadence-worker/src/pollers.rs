@@ -3,12 +3,13 @@
 //! This module provides the pollers that continuously poll for new tasks
 //! from the Cadence server and dispatch them for processing.
 
+use crate::handlers::activity::ActivityTaskHandler;
+use crate::handlers::decision::DecisionTaskHandler;
 use cadence_core::CadenceError;
 use cadence_proto::workflow_service::*;
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
 use tokio::time::interval;
 
 /// Task poller trait
@@ -26,20 +27,22 @@ pub trait TaskPoller: Send + Sync {
 
 /// Decision task poller
 pub struct DecisionTaskPoller {
-    service: Arc<dyn WorkflowService<Error = CadenceError>>,
+    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
     domain: String,
     task_list: String,
     identity: String,
     binary_checksum: String,
     sticky_task_list: Option<String>,
+    handler: Arc<DecisionTaskHandler>,
 }
 
 impl DecisionTaskPoller {
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError>>,
+        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
         domain: impl Into<String>,
         task_list: impl Into<String>,
         identity: impl Into<String>,
+        handler: Arc<DecisionTaskHandler>,
     ) -> Self {
         Self {
             service,
@@ -48,6 +51,7 @@ impl DecisionTaskPoller {
             identity: identity.into(),
             binary_checksum: String::new(),
             sticky_task_list: None,
+            handler,
         }
     }
     
@@ -98,7 +102,12 @@ impl DecisionTaskPoller {
         };
         
         match self.service.poll_for_decision_task(request).await {
-            Ok(response) => Ok(Some(response)),
+            Ok(response) => {
+                if response.task_token.is_empty() {
+                    return Ok(None);
+                }
+                Ok(Some(response))
+            }
             Err(e) => {
                 // Log error and return None to continue polling
                 tracing::error!("Error polling decision task: {}", e);
@@ -117,37 +126,41 @@ impl TaskPoller for DecisionTaskPoller {
         self.poll_decision_task().await
     }
     
-    async fn process(&self, _task: Self::Task) -> Result<Self::Response, CadenceError> {
-        // TODO: Integrate with task handler
-        unimplemented!("Decision task processing not yet implemented")
+    async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError> {
+        self.handler.handle(task).await
     }
 }
 
 /// Activity task poller
 pub struct ActivityTaskPoller {
-    service: Arc<dyn WorkflowService<Error = CadenceError>>,
+    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
     domain: String,
     task_list: String,
     identity: String,
+    handler: Arc<ActivityTaskHandler>,
 }
 
 impl ActivityTaskPoller {
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError>>,
+        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
         domain: impl Into<String>,
         task_list: impl Into<String>,
         identity: impl Into<String>,
+        handler: Arc<ActivityTaskHandler>,
     ) -> Self {
         Self {
             service,
             domain: domain.into(),
             task_list: task_list.into(),
             identity: identity.into(),
+            handler,
         }
     }
     
     /// Poll for activity task
     async fn poll_activity_task(&self) -> Result<Option<PollForActivityTaskResponse>, CadenceError> {
+        println!("[ActivityTaskPoller] Polling task list: {}", self.task_list);
+        
         let request = PollForActivityTaskRequest {
             domain: self.domain.clone(),
             task_list: Some(cadence_proto::shared::TaskList {
@@ -159,8 +172,15 @@ impl ActivityTaskPoller {
         };
         
         match self.service.poll_for_activity_task(request).await {
-            Ok(response) => Ok(Some(response)),
+            Ok(response) => {
+                if response.task_token.is_empty() {
+                    return Ok(None);
+                }
+                println!("[ActivityTaskPoller] Received task on list {}: ActivityId={:?}", self.task_list, response.activity_id);
+                Ok(Some(response))
+            }
             Err(e) => {
+                println!("[ActivityTaskPoller] Error polling task list {}: {}", self.task_list, e);
                 tracing::error!("Error polling activity task: {}", e);
                 Ok(None)
             }
@@ -177,17 +197,18 @@ impl TaskPoller for ActivityTaskPoller {
         self.poll_activity_task().await
     }
     
-    async fn process(&self, _task: Self::Task) -> Result<Self::Response, CadenceError> {
-        // TODO: Integrate with task handler
-        unimplemented!("Activity task processing not yet implemented")
+    async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError> {
+        self.handler.handle(task).await
     }
 }
+
+use tokio::task::JoinHandle;
 
 /// Poller manager that runs multiple pollers
 pub struct PollerManager {
     decision_pollers: Vec<Arc<DecisionTaskPoller>>,
     activity_pollers: Vec<Arc<ActivityTaskPoller>>,
-    shutdown_tx: Option<mpsc::Sender<()>>,
+    join_handles: Vec<JoinHandle<()>>,
 }
 
 impl PollerManager {
@@ -195,7 +216,7 @@ impl PollerManager {
         Self {
             decision_pollers: Vec::new(),
             activity_pollers: Vec::new(),
-            shutdown_tx: None,
+            join_handles: Vec::new(),
         }
     }
     
@@ -210,14 +231,11 @@ impl PollerManager {
     }
     
     /// Start all pollers
-    pub async fn start(&mut self) {
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-        self.shutdown_tx = Some(shutdown_tx);
-        
+    pub fn start(&mut self) {
         // Start decision pollers
         for poller in &self.decision_pollers {
             let poller = Arc::clone(poller);
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 let mut poll_interval = interval(Duration::from_millis(100));
                 loop {
                     poll_interval.tick().await;
@@ -235,12 +253,13 @@ impl PollerManager {
                     }
                 }
             });
+            self.join_handles.push(handle);
         }
         
         // Start activity pollers
         for poller in &self.activity_pollers {
             let poller = Arc::clone(poller);
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 let mut poll_interval = interval(Duration::from_millis(100));
                 loop {
                     poll_interval.tick().await;
@@ -258,17 +277,16 @@ impl PollerManager {
                     }
                 }
             });
+            self.join_handles.push(handle);
         }
-        
-        // Wait for shutdown signal
-        let _ = shutdown_rx.recv().await;
     }
     
     /// Stop all pollers
-    pub async fn stop(&self) {
-        if let Some(tx) = &self.shutdown_tx {
-            let _ = tx.send(()).await;
+    pub async fn stop(&mut self) {
+        for handle in &self.join_handles {
+            handle.abort();
         }
+        self.join_handles.clear();
     }
 }
 

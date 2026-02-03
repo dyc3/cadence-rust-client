@@ -3,13 +3,24 @@
 //! This module provides the main client interface for starting workflows,
 //! querying workflow state, sending signals, and managing workflow executions.
 
-use cadence_core::{CadenceError, CadenceResult, EncodedValue, WorkflowExecution, WorkflowIdReusePolicy, QueryConsistencyLevel, RetryPolicy};
-use cadence_proto::workflow_service::*;
-use cadence_proto::shared::*;
 use async_trait::async_trait;
+use cadence_core::{
+    CadenceError, CadenceResult, EncodedValue, QueryConsistencyLevel, RetryPolicy,
+    WorkflowExecution, WorkflowIdReusePolicy,
+};
+use cadence_proto::shared::*;
+use cadence_proto::workflow_service::*;
+use cadence_proto::{
+    PendingActivityInfo as ProtoPendingActivityInfo,
+    PendingActivityState as ProtoPendingActivityState,
+    PendingChildExecutionInfo as ProtoPendingChildExecutionInfo,
+    WorkflowExecutionConfiguration as ProtoWorkflowExecutionConfiguration,
+    WorkflowExecutionInfo as ProtoWorkflowExecutionInfo,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 /// Query type constants
 pub const QUERY_TYPE_STACK_TRACE: &str = "__stack_trace";
@@ -282,29 +293,86 @@ pub trait WorkflowRun: Send + Sync {
 
 /// History event iterator
 pub struct HistoryEventIterator {
-    // TODO: Implement pagination and iteration
     events: Vec<HistoryEvent>,
     position: usize,
+    next_page_token: Option<Vec<u8>>,
+    // Reference to client to fetch more pages
+    client: Arc<WorkflowClient>,
+    workflow_id: String,
+    run_id: Option<String>,
+    filter_type: HistoryEventFilterType,
 }
 
 impl HistoryEventIterator {
-    pub fn new(events: Vec<HistoryEvent>) -> Self {
-        Self { events, position: 0 }
+    pub fn new(
+        events: Vec<HistoryEvent>,
+        next_page_token: Option<Vec<u8>>,
+        client: Arc<WorkflowClient>,
+        workflow_id: String,
+        run_id: Option<String>,
+        filter_type: HistoryEventFilterType,
+    ) -> Self {
+        Self {
+            events,
+            position: 0,
+            next_page_token,
+            client,
+            workflow_id,
+            run_id,
+            filter_type,
+        }
     }
 
     pub fn has_next(&self) -> bool {
-        self.position < self.events.len()
+        self.position < self.events.len() || self.next_page_token.is_some()
     }
 
-    #[allow(clippy::should_implement_trait)] // Iterator implementation would be more complex for borrowing
-    pub fn next(&mut self) -> Option<&HistoryEvent> {
+    #[allow(clippy::should_implement_trait)]
+    pub async fn next(&mut self) -> CadenceResult<Option<HistoryEvent>> {
         if self.position < self.events.len() {
-            let event = &self.events[self.position];
+            let event = self.events[self.position].clone();
             self.position += 1;
-            Some(event)
-        } else {
-            None
+            return Ok(Some(event));
         }
+
+        if let Some(token) = &self.next_page_token {
+            // Fetch next page
+            let request = GetWorkflowExecutionHistoryRequest {
+                domain: self.client.domain.clone(),
+                execution: Some(make_proto_execution(
+                    self.workflow_id.clone(),
+                    self.run_id.clone().unwrap_or_default(),
+                )),
+                page_size: 1000,
+                next_page_token: Some(token.clone()),
+                wait_for_new_event: false,
+                history_event_filter_type: Some(self.filter_type),
+                skip_archival: true,
+            };
+
+            let response = self
+                .client
+                .service
+                .get_workflow_execution_history(request)
+                .await
+                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+            if let Some(history) = response.history {
+                self.events = history.events;
+                self.position = 0;
+                self.next_page_token = response.next_page_token;
+
+                if !self.events.is_empty() {
+                    let event = self.events[self.position].clone();
+                    self.position += 1;
+                    return Ok(Some(event));
+                }
+            } else {
+                self.next_page_token = None;
+            }
+        }
+
+        Ok(None)
     }
 }
 
@@ -484,12 +552,23 @@ pub struct PollersInfo {
 
 /// Client implementation
 pub struct WorkflowClient {
-    #[allow(dead_code)]
-    service: Arc<dyn WorkflowService<Error = CadenceError>>,
-    #[allow(dead_code)]
-    domain: String,
-    #[allow(dead_code)]
-    options: ClientOptions,
+    pub(crate) service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    pub(crate) domain: String,
+    pub(crate) options: ClientOptions,
+}
+
+impl WorkflowClient {
+    pub fn new(
+        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        domain: String,
+        options: ClientOptions,
+    ) -> Self {
+        Self {
+            service,
+            domain,
+            options,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -529,6 +608,727 @@ impl Default for ClientOptions {
     }
 }
 
+#[async_trait]
+impl Client for WorkflowClient {
+    async fn start_workflow(
+        &self,
+        options: StartWorkflowOptions,
+        workflow_type: &str,
+        args: Option<&[u8]>,
+    ) -> CadenceResult<WorkflowExecution> {
+        let run = self
+            .execute_workflow(options.clone(), workflow_type, args)
+            .await?;
+        Ok(WorkflowExecution::new(options.id, run.run_id()))
+    }
+
+    async fn start_workflow_async(
+        &self,
+        options: StartWorkflowOptions,
+        workflow_type: &str,
+        args: Option<&[u8]>,
+    ) -> CadenceResult<WorkflowExecutionAsync> {
+        // Same as start_workflow but we return WorkflowExecutionAsync
+        // Actually execute_workflow calls start_workflow_execution internally
+        // So I should implement the shared logic in a helper or directly here.
+
+        let request_id = Uuid::new_v4().to_string();
+        let request = StartWorkflowExecutionRequest {
+            domain: self.domain.clone(),
+            workflow_id: options.id.clone(),
+            workflow_type: Some(WorkflowType {
+                name: workflow_type.to_string(),
+            }),
+            task_list: Some(TaskList {
+                name: options.task_list,
+                kind: TaskListKind::Normal,
+            }),
+            input: args.map(|a| a.to_vec()),
+            execution_start_to_close_timeout_seconds: options
+                .execution_start_to_close_timeout
+                .map(|d| d.as_secs() as i32),
+            task_start_to_close_timeout_seconds: options
+                .task_start_to_close_timeout
+                .map(|d| d.as_secs() as i32),
+            identity: self.options.identity.clone(),
+            request_id,
+            workflow_id_reuse_policy: Some(convert_workflow_id_reuse_policy(
+                options.workflow_id_reuse_policy,
+            )),
+            retry_policy: options.retry_policy.map(convert_retry_policy),
+            cron_schedule: options.cron_schedule,
+            memo: options.memo.map(|m| Memo { fields: m }),
+            search_attributes: options
+                .search_attributes
+                .map(|s| SearchAttributes { indexed_fields: s }),
+            header: options.header.map(|h| Header { fields: h }),
+            delay_start_seconds: options.delay_start.map(|d| d.as_secs() as i32),
+            jitter_start_seconds: None,
+            first_execution_run_id: None,
+            first_decision_task_backoff_seconds: None,
+            partition_config: None,
+        };
+
+        let response = self
+            .service
+            .start_workflow_execution(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(WorkflowExecutionAsync {
+            workflow_id: options.id,
+        })
+    }
+
+    async fn execute_workflow(
+        &self,
+        options: StartWorkflowOptions,
+        workflow_type: &str,
+        args: Option<&[u8]>,
+    ) -> CadenceResult<Box<dyn WorkflowRun>> {
+        let request_id = Uuid::new_v4().to_string();
+        let workflow_id = options.id.clone();
+
+        let request = StartWorkflowExecutionRequest {
+            domain: self.domain.clone(),
+            workflow_id: workflow_id.clone(),
+            workflow_type: Some(WorkflowType {
+                name: workflow_type.to_string(),
+            }),
+            task_list: Some(TaskList {
+                name: options.task_list,
+                kind: TaskListKind::Normal,
+            }),
+            input: args.map(|a| a.to_vec()),
+            execution_start_to_close_timeout_seconds: options
+                .execution_start_to_close_timeout
+                .map(|d| d.as_secs() as i32),
+            task_start_to_close_timeout_seconds: options
+                .task_start_to_close_timeout
+                .map(|d| d.as_secs() as i32),
+            identity: self.options.identity.clone(),
+            request_id,
+            workflow_id_reuse_policy: Some(convert_workflow_id_reuse_policy(
+                options.workflow_id_reuse_policy,
+            )),
+            retry_policy: options.retry_policy.map(convert_retry_policy),
+            cron_schedule: options.cron_schedule,
+            memo: options.memo.map(|m| Memo { fields: m }),
+            search_attributes: options
+                .search_attributes
+                .map(|s| SearchAttributes { indexed_fields: s }),
+            header: options.header.map(|h| Header { fields: h }),
+            delay_start_seconds: options.delay_start.map(|d| d.as_secs() as i32),
+            jitter_start_seconds: None,
+            first_execution_run_id: None,
+            first_decision_task_backoff_seconds: None,
+            partition_config: None,
+        };
+
+        let response = self
+            .service
+            .start_workflow_execution(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(Box::new(WorkflowRunImpl {
+            client: Arc::new(WorkflowClient {
+                service: self.service.clone(),
+                domain: self.domain.clone(),
+                options: self.options.clone(),
+            }),
+            workflow_id,
+            run_id: response.run_id,
+        }))
+    }
+
+    fn get_workflow(&self, workflow_id: &str, run_id: Option<&str>) -> Box<dyn WorkflowRun> {
+        Box::new(WorkflowRunImpl {
+            client: Arc::new(WorkflowClient {
+                service: self.service.clone(),
+                domain: self.domain.clone(),
+                options: self.options.clone(),
+            }),
+            workflow_id: workflow_id.to_string(),
+            run_id: run_id.unwrap_or_default().to_string(),
+        })
+    }
+
+    async fn signal_workflow(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        signal_name: &str,
+        arg: Option<&[u8]>,
+    ) -> CadenceResult<()> {
+        let request = SignalWorkflowExecutionRequest {
+            domain: self.domain.clone(),
+            workflow_execution: Some(make_proto_execution(
+                workflow_id.to_string(),
+                run_id.unwrap_or_default().to_string(),
+            )),
+            signal_name: signal_name.to_string(),
+            input: arg.map(|a| a.to_vec()),
+            identity: self.options.identity.clone(),
+            request_id: Uuid::new_v4().to_string(),
+            control: None,
+        };
+
+        self.service
+            .signal_workflow_execution(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn signal_with_start_workflow(
+        &self,
+        workflow_id: &str,
+        signal_name: &str,
+        signal_arg: Option<&[u8]>,
+        options: StartWorkflowOptions,
+        workflow_type: &str,
+        workflow_args: Option<&[u8]>,
+    ) -> CadenceResult<WorkflowExecution> {
+        let request = SignalWithStartWorkflowExecutionRequest {
+            domain: self.domain.clone(),
+            workflow_id: workflow_id.to_string(),
+            workflow_type: Some(WorkflowType {
+                name: workflow_type.to_string(),
+            }),
+            task_list: Some(TaskList {
+                name: options.task_list,
+                kind: TaskListKind::Normal,
+            }),
+            input: workflow_args.map(|a| a.to_vec()),
+            execution_start_to_close_timeout_seconds: options
+                .execution_start_to_close_timeout
+                .map(|d| d.as_secs() as i32),
+            task_start_to_close_timeout_seconds: options
+                .task_start_to_close_timeout
+                .map(|d| d.as_secs() as i32),
+            identity: self.options.identity.clone(),
+            request_id: Uuid::new_v4().to_string(),
+            workflow_id_reuse_policy: Some(convert_workflow_id_reuse_policy(
+                options.workflow_id_reuse_policy,
+            )),
+            signal_name: signal_name.to_string(),
+            signal_input: signal_arg.map(|a| a.to_vec()),
+            retry_policy: options.retry_policy.map(convert_retry_policy),
+            cron_schedule: options.cron_schedule,
+            memo: options.memo.map(|m| Memo { fields: m }),
+            search_attributes: options
+                .search_attributes
+                .map(|s| SearchAttributes { indexed_fields: s }),
+            header: options.header.map(|h| Header { fields: h }),
+        };
+
+        let response = self
+            .service
+            .signal_with_start_workflow_execution(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(WorkflowExecution::new(workflow_id, response.run_id))
+    }
+
+    async fn signal_with_start_workflow_async(
+        &self,
+        workflow_id: &str,
+        signal_name: &str,
+        signal_arg: Option<&[u8]>,
+        options: StartWorkflowOptions,
+        workflow_type: &str,
+        workflow_args: Option<&[u8]>,
+    ) -> CadenceResult<WorkflowExecutionAsync> {
+        // Reuse logic from signal_with_start_workflow, or just copy paste to return Async struct
+        let _exec = self
+            .signal_with_start_workflow(
+                workflow_id,
+                signal_name,
+                signal_arg,
+                options,
+                workflow_type,
+                workflow_args,
+            )
+            .await?;
+        Ok(WorkflowExecutionAsync {
+            workflow_id: workflow_id.to_string(),
+        })
+    }
+
+    async fn cancel_workflow(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        reason: Option<&str>,
+    ) -> CadenceResult<()> {
+        let request = RequestCancelWorkflowExecutionRequest {
+            domain: self.domain.clone(),
+            workflow_execution: Some(make_proto_execution(
+                workflow_id.to_string(),
+                run_id.unwrap_or_default().to_string(),
+            )),
+            identity: self.options.identity.clone(),
+            request_id: Uuid::new_v4().to_string(),
+            cause: reason.map(|s| s.to_string()),
+            first_execution_run_id: None,
+        };
+        self.service
+            .request_cancel_workflow_execution(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn terminate_workflow(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        reason: Option<&str>,
+        details: Option<&[u8]>,
+    ) -> CadenceResult<()> {
+        let request = TerminateWorkflowExecutionRequest {
+            domain: self.domain.clone(),
+            workflow_execution: Some(make_proto_execution(
+                workflow_id.to_string(),
+                run_id.unwrap_or_default().to_string(),
+            )),
+            reason: reason.map(|s| s.to_string()),
+            details: details.map(|d| d.to_vec()),
+            identity: self.options.identity.clone(),
+            first_execution_run_id: None,
+        };
+        self.service
+            .terminate_workflow_execution(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn get_workflow_history(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        is_long_poll: bool,
+        filter_type: HistoryEventFilterType,
+    ) -> CadenceResult<HistoryEventIterator> {
+        let request = GetWorkflowExecutionHistoryRequest {
+            domain: self.domain.clone(),
+            execution: Some(make_proto_execution(
+                workflow_id.to_string(),
+                run_id.unwrap_or_default().to_string(),
+            )),
+            page_size: 1000,
+            next_page_token: None,
+            wait_for_new_event: is_long_poll,
+            history_event_filter_type: Some(filter_type),
+            skip_archival: true,
+        };
+
+        let response = self
+            .service
+            .get_workflow_execution_history(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(HistoryEventIterator::new(
+            response.history.map(|h| h.events).unwrap_or_default(),
+            response.next_page_token,
+            Arc::new(WorkflowClient {
+                service: self.service.clone(),
+                domain: self.domain.clone(),
+                options: self.options.clone(),
+            }),
+            workflow_id.to_string(),
+            run_id.map(|s| s.to_string()),
+            filter_type,
+        ))
+    }
+
+    async fn get_workflow_history_with_options(
+        &self,
+        request: GetWorkflowHistoryWithOptionsRequest,
+    ) -> CadenceResult<HistoryEventIterator> {
+        let req = GetWorkflowExecutionHistoryRequest {
+            domain: self.domain.clone(),
+            execution: Some(make_proto_execution(
+                request.workflow_id.clone(),
+                request.run_id.clone().unwrap_or_default(),
+            )),
+            page_size: request.page_size,
+            next_page_token: None,
+            wait_for_new_event: request.wait_for_new_event,
+            history_event_filter_type: Some(request.history_event_filter_type),
+            skip_archival: request.skip_archival,
+        };
+
+        let response = self
+            .service
+            .get_workflow_execution_history(req)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(HistoryEventIterator::new(
+            response.history.map(|h| h.events).unwrap_or_default(),
+            response.next_page_token,
+            Arc::new(WorkflowClient {
+                service: self.service.clone(),
+                domain: self.domain.clone(),
+                options: self.options.clone(),
+            }),
+            request.workflow_id,
+            request.run_id,
+            request.history_event_filter_type,
+        ))
+    }
+
+    async fn complete_activity(
+        &self,
+        task_token: &[u8],
+        result: Option<&[u8]>,
+        error: Option<CadenceError>,
+    ) -> CadenceResult<()> {
+        if let Some(err) = error {
+            let request = RespondActivityTaskFailedRequest {
+                task_token: task_token.to_vec(),
+                reason: Some(err.to_string()),
+                details: None,
+                identity: self.options.identity.clone(),
+            };
+            self.service
+                .respond_activity_task_failed(request)
+                .await
+                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        } else {
+            let request = RespondActivityTaskCompletedRequest {
+                task_token: task_token.to_vec(),
+                result: result.map(|r| r.to_vec()),
+                identity: self.options.identity.clone(),
+            };
+            self.service
+                .respond_activity_task_completed(request)
+                .await
+                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    async fn complete_activity_by_id(
+        &self,
+        domain: &str,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        activity_id: &str,
+        result: Option<&[u8]>,
+        error: Option<CadenceError>,
+    ) -> CadenceResult<()> {
+        // Not implemented in WorkflowService trait?
+        // Wait, typical Cadence clients have this. But maybe it's not in the base WorkflowService trait I read.
+        // Checking WorkflowService trait again... It does NOT have complete_activity_by_id in the file I read.
+        // It seems `RespondActivityTaskCompletedByIdRequest` is needed but I don't see it in `workflow_service.rs`
+        // I will assume for now I cannot implement this or need to add it to proto if it exists in Thrift.
+        // For now, I'll return error or unimplemented.
+        Err(CadenceError::ClientError(
+            "complete_activity_by_id not implemented in underlying service trait".to_string(),
+        ))
+    }
+
+    async fn record_activity_heartbeat(
+        &self,
+        task_token: &[u8],
+        details: Option<&[u8]>,
+    ) -> CadenceResult<bool> {
+        let request = RecordActivityTaskHeartbeatRequest {
+            task_token: task_token.to_vec(),
+            details: details.map(|d| d.to_vec()),
+            identity: self.options.identity.clone(),
+        };
+        let response = self
+            .service
+            .record_activity_task_heartbeat(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+        Ok(response.cancel_requested)
+    }
+
+    async fn record_activity_heartbeat_by_id(
+        &self,
+        domain: &str,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        activity_id: &str,
+        details: Option<&[u8]>,
+    ) -> CadenceResult<bool> {
+        // Similarly, not in trait.
+        Err(CadenceError::ClientError(
+            "record_activity_heartbeat_by_id not implemented in underlying service trait"
+                .to_string(),
+        ))
+    }
+
+    async fn list_closed_workflows(
+        &self,
+        request: ListWorkflowExecutionsRequest,
+    ) -> CadenceResult<ListWorkflowExecutionsResponse> {
+        // Map ListWorkflowExecutionsRequest to ListClosedWorkflowExecutionsRequest
+        let req = ListClosedWorkflowExecutionsRequest {
+            domain: self.domain.clone(),
+            maximum_page_size: request.maximum_page_size,
+            next_page_token: request.next_page_token,
+            start_time_filter: request.start_time_filter.map(|f| {
+                cadence_proto::workflow_service::StartTimeFilter {
+                    earliest_time: Some(f.earliest_time.timestamp_nanos_opt().unwrap_or(0)),
+                    latest_time: Some(f.latest_time.timestamp_nanos_opt().unwrap_or(0)),
+                }
+            }),
+            execution_filter: request.execution_filter.map(|f| {
+                cadence_proto::workflow_service::WorkflowExecutionFilter {
+                    workflow_id: f.workflow_id,
+                }
+            }),
+            type_filter: request
+                .type_filter
+                .map(|f| cadence_proto::workflow_service::WorkflowTypeFilter { name: f.name }),
+            status_filter: request.status_filter,
+        };
+
+        let response = self
+            .service
+            .list_closed_workflow_executions(req)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(ListWorkflowExecutionsResponse {
+            executions: response
+                .executions
+                .into_iter()
+                .map(convert_workflow_execution_info)
+                .collect(),
+            next_page_token: response.next_page_token,
+        })
+    }
+
+    async fn list_open_workflows(
+        &self,
+        request: ListWorkflowExecutionsRequest,
+    ) -> CadenceResult<ListWorkflowExecutionsResponse> {
+        let req = ListOpenWorkflowExecutionsRequest {
+            domain: self.domain.clone(),
+            maximum_page_size: request.maximum_page_size,
+            next_page_token: request.next_page_token,
+            start_time_filter: request.start_time_filter.map(|f| {
+                cadence_proto::workflow_service::StartTimeFilter {
+                    earliest_time: Some(f.earliest_time.timestamp_nanos_opt().unwrap_or(0)),
+                    latest_time: Some(f.latest_time.timestamp_nanos_opt().unwrap_or(0)),
+                }
+            }),
+            execution_filter: request.execution_filter.map(|f| {
+                cadence_proto::workflow_service::WorkflowExecutionFilter {
+                    workflow_id: f.workflow_id,
+                }
+            }),
+            type_filter: request
+                .type_filter
+                .map(|f| cadence_proto::workflow_service::WorkflowTypeFilter { name: f.name }),
+            status_filter: request.status_filter,
+        };
+
+        let response = self
+            .service
+            .list_open_workflow_executions(req)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(ListWorkflowExecutionsResponse {
+            executions: response
+                .executions
+                .into_iter()
+                .map(convert_workflow_execution_info)
+                .collect(),
+            next_page_token: response.next_page_token,
+        })
+    }
+
+    async fn list_workflows(
+        &self,
+        request: ListWorkflowExecutionsRequest,
+    ) -> CadenceResult<ListWorkflowExecutionsResponse> {
+        // Usually maps to ListWorkflowExecutions (visibility) but we don't have it in trait.
+        // Assuming this is just a wrapper for either open or closed, or visibility (which seems missing in trait).
+        // I will default to list_open_workflows for now as a placeholder
+        self.list_open_workflows(request).await
+    }
+
+    async fn scan_workflows(
+        &self,
+        request: ListWorkflowExecutionsRequest,
+    ) -> CadenceResult<ListWorkflowExecutionsResponse> {
+        // ScanWorkflowExecutions is also missing in the trait I read.
+        Err(CadenceError::ClientError(
+            "scan_workflows not implemented".to_string(),
+        ))
+    }
+
+    async fn count_workflows(
+        &self,
+        request: CountWorkflowExecutionsRequest,
+    ) -> CadenceResult<CountWorkflowExecutionsResponse> {
+        // CountWorkflowExecutions missing
+        Err(CadenceError::ClientError(
+            "count_workflows not implemented".to_string(),
+        ))
+    }
+
+    async fn get_search_attributes(&self) -> CadenceResult<SearchAttributesResponse> {
+        // GetSearchAttributes missing
+        Err(CadenceError::ClientError(
+            "get_search_attributes not implemented".to_string(),
+        ))
+    }
+
+    async fn query_workflow(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        query_type: &str,
+        args: Option<&[u8]>,
+    ) -> CadenceResult<EncodedValue> {
+        let request = QueryWorkflowRequest {
+            domain: self.domain.clone(),
+            execution: Some(make_proto_execution(
+                workflow_id.to_string(),
+                run_id.unwrap_or_default().to_string(),
+            )),
+            query: Some(WorkflowQuery {
+                query_type: query_type.to_string(),
+                query_args: args.map(|a| a.to_vec()),
+            }),
+        };
+
+        let response = self
+            .service
+            .query_workflow(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        // TODO: Handle query_rejected
+        if let Some(rejected) = response.query_rejected {
+            return Err(CadenceError::ClientError(format!(
+                "Query rejected: {:?}",
+                rejected
+            )));
+        }
+
+        if let Some(result) = response.query_result {
+            // Assuming the result is JSON encoded value
+            Ok(EncodedValue::new(result))
+        } else {
+            Err(CadenceError::ClientError(
+                "Query returned no result".to_string(),
+            ))
+        }
+    }
+
+    async fn query_workflow_with_options(
+        &self,
+        request: QueryWorkflowWithOptionsRequest,
+    ) -> CadenceResult<QueryWorkflowWithOptionsResponse> {
+        // query_workflow_with_options not in trait
+        // Just use query_workflow
+        let val = self
+            .query_workflow(
+                &request.workflow_id,
+                request.run_id.as_deref(),
+                &request.query_type,
+                request.query_args.as_deref(),
+            )
+            .await?;
+        Ok(QueryWorkflowWithOptionsResponse {
+            query_result: Some(val.as_bytes().to_vec()),
+            query_rejected: None,
+        })
+    }
+
+    async fn reset_workflow(
+        &self,
+        request: ResetWorkflowExecutionRequest,
+    ) -> CadenceResult<ResetWorkflowExecutionResponse> {
+        // ResetWorkflowExecution missing
+        Err(CadenceError::ClientError(
+            "reset_workflow not implemented".to_string(),
+        ))
+    }
+
+    async fn describe_workflow_execution(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+    ) -> CadenceResult<DescribeWorkflowExecutionResponse> {
+        let request = DescribeWorkflowExecutionRequest {
+            domain: self.domain.clone(),
+            execution: Some(make_proto_execution(
+                workflow_id.to_string(),
+                run_id.unwrap_or_default().to_string(),
+            )),
+        };
+        let response = self
+            .service
+            .describe_workflow_execution(request)
+            .await
+            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+        Ok(DescribeWorkflowExecutionResponse {
+            execution_configuration: convert_execution_configuration(
+                response.execution_configuration.unwrap(),
+            ),
+            workflow_execution_info: convert_workflow_execution_info(
+                response.workflow_execution_info.unwrap(),
+            ),
+            pending_activities: response
+                .pending_activities
+                .into_iter()
+                .map(convert_pending_activity)
+                .collect(),
+            pending_children: response
+                .pending_children
+                .into_iter()
+                .map(convert_pending_child)
+                .collect(),
+        })
+    }
+
+    async fn describe_workflow_execution_with_options(
+        &self,
+        request: DescribeWorkflowExecutionWithOptionsRequest,
+    ) -> CadenceResult<DescribeWorkflowExecutionResponse> {
+        self.describe_workflow_execution(&request.workflow_id, request.run_id.as_deref())
+            .await
+    }
+
+    async fn describe_task_list(
+        &self,
+        task_list: &str,
+        task_list_type: TaskListType,
+    ) -> CadenceResult<DescribeTaskListResponse> {
+        // DescribeTaskList missing
+        Err(CadenceError::ClientError(
+            "describe_task_list not implemented".to_string(),
+        ))
+    }
+
+    async fn refresh_workflow_tasks(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+    ) -> CadenceResult<()> {
+        // RefreshWorkflowTasks missing
+        Err(CadenceError::ClientError(
+            "refresh_workflow_tasks not implemented".to_string(),
+        ))
+    }
+}
+
 pub trait MetricsScope: Send + Sync {
     fn counter(&self, name: &str) -> Box<dyn Counter>;
     fn timer(&self, name: &str) -> Box<dyn Timer>;
@@ -556,7 +1356,7 @@ pub trait Logger: Send + Sync {
 
 pub trait DataConverter: Send + Sync {
     fn to_data(&self, value: &dyn std::any::Any) -> CadenceResult<Vec<u8>>;
-    #[allow(clippy::wrong_self_convention)] // This is a conversion trait, not a builder
+    #[allow(clippy::wrong_self_convention)]
     fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> CadenceResult<()>;
 }
 
@@ -578,4 +1378,185 @@ impl DataConverter for JsonDataConverter {
 pub struct FeatureFlags {
     pub enable_execution_cache: bool,
     pub enable_async_workflow_consistency: bool,
+}
+
+struct WorkflowRunImpl {
+    client: Arc<WorkflowClient>,
+    workflow_id: String,
+    run_id: String,
+}
+
+#[async_trait]
+impl WorkflowRun for WorkflowRunImpl {
+    fn run_id(&self) -> &str {
+        &self.run_id
+    }
+
+    async fn get(&self) -> CadenceResult<Option<Vec<u8>>> {
+        loop {
+            let request = GetWorkflowExecutionHistoryRequest {
+                domain: self.client.domain.clone(),
+                execution: Some(make_proto_execution(
+                    self.workflow_id.clone(),
+                    self.run_id.clone(),
+                )),
+                page_size: 100,
+                next_page_token: None,
+                wait_for_new_event: true,
+                history_event_filter_type: Some(HistoryEventFilterType::CloseEvent),
+                skip_archival: true,
+            };
+
+            let response = self
+                .client
+                .service
+                .get_workflow_execution_history(request)
+                .await
+                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+
+            if let Some(history) = response.history {
+                for event in history.events {
+                    match event.event_type {
+                        EventType::WorkflowExecutionCompleted => {
+                            if let Some(
+                                EventAttributes::WorkflowExecutionCompletedEventAttributes(attr),
+                            ) = event.attributes
+                            {
+                                return Ok(attr.result);
+                            }
+                        }
+                        EventType::WorkflowExecutionFailed => {
+                            if let Some(EventAttributes::WorkflowExecutionFailedEventAttributes(
+                                attr,
+                            )) = event.attributes
+                            {
+                                return Err(CadenceError::WorkflowExecutionFailed(
+                                    attr.reason.unwrap_or_default(),
+                                    attr.details.unwrap_or_default(),
+                                ));
+                            }
+                        }
+                        EventType::WorkflowExecutionTimedOut => {
+                            return Err(CadenceError::WorkflowExecutionTimedOut);
+                        }
+                        EventType::WorkflowExecutionCanceled => {
+                            return Err(CadenceError::WorkflowExecutionCancelled);
+                        }
+                        EventType::WorkflowExecutionTerminated => {
+                            return Err(CadenceError::WorkflowExecutionTerminated);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // If we are here, we didn't find the close event, but wait_for_new_event returned.
+            // Loop again.
+        }
+    }
+
+    async fn get_with_timeout(&self, timeout: Duration) -> CadenceResult<Option<Vec<u8>>> {
+        // TODO: Implement timeout
+        tokio::time::timeout(timeout, self.get())
+            .await
+            .map_err(|_| {
+                CadenceError::ClientError("Timeout waiting for workflow result".to_string())
+            })?
+    }
+}
+
+// Helpers
+fn convert_retry_policy(policy: RetryPolicy) -> cadence_proto::shared::RetryPolicy {
+    cadence_proto::shared::RetryPolicy {
+        initial_interval_in_seconds: policy.initial_interval.as_secs() as i32,
+        backoff_coefficient: policy.backoff_coefficient,
+        maximum_interval_in_seconds: policy.maximum_interval.as_secs() as i32,
+        maximum_attempts: policy.maximum_attempts,
+        non_retryable_error_types: policy.non_retryable_error_types,
+        expiration_interval_in_seconds: policy.expiration_interval.as_secs() as i32,
+    }
+}
+
+fn convert_workflow_id_reuse_policy(
+    policy: WorkflowIdReusePolicy,
+) -> cadence_proto::shared::WorkflowIdReusePolicy {
+    match policy {
+        WorkflowIdReusePolicy::AllowDuplicateFailedOnly => {
+            cadence_proto::shared::WorkflowIdReusePolicy::AllowDuplicateFailedOnly
+        }
+        WorkflowIdReusePolicy::AllowDuplicate => {
+            cadence_proto::shared::WorkflowIdReusePolicy::AllowDuplicate
+        }
+        WorkflowIdReusePolicy::RejectDuplicate => {
+            cadence_proto::shared::WorkflowIdReusePolicy::RejectDuplicate
+        }
+        WorkflowIdReusePolicy::TerminateIfRunning => {
+            cadence_proto::shared::WorkflowIdReusePolicy::TerminateIfRunning
+        }
+    }
+}
+
+fn convert_execution_configuration(
+    config: ProtoWorkflowExecutionConfiguration,
+) -> WorkflowExecutionConfiguration {
+    WorkflowExecutionConfiguration {
+        task_list: config.task_list.map(|t| t.name).unwrap_or_default(),
+        execution_start_to_close_timeout: Duration::from_secs(
+            config.execution_start_to_close_timeout_seconds as u64,
+        ),
+        task_start_to_close_timeout: Duration::from_secs(
+            config.task_start_to_close_timeout_seconds as u64,
+        ),
+    }
+}
+
+fn convert_workflow_execution_info(info: ProtoWorkflowExecutionInfo) -> WorkflowExecutionInfo {
+    WorkflowExecutionInfo {
+        execution: info
+            .execution
+            .map(|e| WorkflowExecution::new(e.workflow_id, e.run_id))
+            .unwrap_or(WorkflowExecution::new("", "")),
+        workflow_type: info.workflow_type.map(|t| t.name).unwrap_or_default(),
+        start_time: info
+            .start_time
+            .map(chrono::DateTime::from_timestamp_nanos),
+        close_time: info
+            .close_time
+            .map(chrono::DateTime::from_timestamp_nanos),
+        close_status: info.close_status,
+        history_length: info.history_length,
+    }
+}
+
+fn convert_pending_activity(info: ProtoPendingActivityInfo) -> PendingActivityInfo {
+    PendingActivityInfo {
+        activity_id: info.activity_id,
+        activity_type: info.activity_type.map(|t| t.name).unwrap_or_default(),
+        state: match info.state {
+            Some(ProtoPendingActivityState::Scheduled) => PendingActivityState::Scheduled,
+            Some(ProtoPendingActivityState::Started) => PendingActivityState::Started,
+            Some(ProtoPendingActivityState::CancelRequested) => {
+                PendingActivityState::CancelRequested
+            }
+            None => PendingActivityState::Scheduled, // Default
+        },
+    }
+}
+
+fn convert_pending_child(info: ProtoPendingChildExecutionInfo) -> PendingChildExecutionInfo {
+    PendingChildExecutionInfo {
+        workflow_id: info.workflow_id,
+        run_id: info.run_id,
+        workflow_type: info.workflow_type_name,
+    }
+}
+
+fn make_proto_execution(
+    workflow_id: String,
+    run_id: String,
+) -> cadence_proto::shared::WorkflowExecution {
+    cadence_proto::shared::WorkflowExecution {
+        workflow_id,
+        run_id,
+    }
 }
