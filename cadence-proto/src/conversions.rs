@@ -494,6 +494,21 @@ fn pb_attributes_to_api_attributes(
         Attributes::DecisionTaskScheduledEventAttributes(a) => Some(
             ApiAttr::DecisionTaskScheduledEventAttributes(Box::new(a.into())),
         ),
+        Attributes::ActivityTaskScheduledEventAttributes(a) => Some(
+            ApiAttr::ActivityTaskScheduledEventAttributes(Box::new(a.into())),
+        ),
+        Attributes::ActivityTaskStartedEventAttributes(a) => Some(
+            ApiAttr::ActivityTaskStartedEventAttributes(Box::new(a.into())),
+        ),
+        Attributes::ActivityTaskCompletedEventAttributes(a) => Some(
+            ApiAttr::ActivityTaskCompletedEventAttributes(Box::new(a.into())),
+        ),
+        Attributes::ActivityTaskFailedEventAttributes(a) => Some(
+            ApiAttr::ActivityTaskFailedEventAttributes(Box::new(a.into())),
+        ),
+        Attributes::ActivityTaskTimedOutEventAttributes(a) => Some(
+            ApiAttr::ActivityTaskTimedOutEventAttributes(Box::new(a.into())),
+        ),
         // Add other conversions as needed
         _ => None,
     }
@@ -543,6 +558,85 @@ impl From<pb::WorkflowExecutionStartedEventAttributes>
                 pb.first_decision_task_backoff,
             )
             .unwrap_or(0),
+        }
+    }
+}
+
+impl From<pb::ActivityTaskScheduledEventAttributes>
+    for api_types::ActivityTaskScheduledEventAttributes
+{
+    fn from(pb: pb::ActivityTaskScheduledEventAttributes) -> Self {
+        api_types::ActivityTaskScheduledEventAttributes {
+            activity_id: pb.activity_id,
+            activity_type: pb.activity_type.map(Into::into),
+            task_list: pb.task_list.map(Into::into),
+            input: payload_to_bytes(pb.input),
+            schedule_to_close_timeout_seconds: duration_to_seconds(pb.schedule_to_close_timeout),
+            schedule_to_start_timeout_seconds: duration_to_seconds(pb.schedule_to_start_timeout),
+            start_to_close_timeout_seconds: duration_to_seconds(pb.start_to_close_timeout),
+            heartbeat_timeout_seconds: duration_to_seconds(pb.heartbeat_timeout),
+            decision_task_completed_event_id: pb.decision_task_completed_event_id,
+            retry_policy: None, // Simplified - can be expanded if needed
+        }
+    }
+}
+
+impl From<pb::ActivityTaskStartedEventAttributes>
+    for api_types::ActivityTaskStartedEventAttributes
+{
+    fn from(pb: pb::ActivityTaskStartedEventAttributes) -> Self {
+        api_types::ActivityTaskStartedEventAttributes {
+            scheduled_event_id: pb.scheduled_event_id,
+            identity: pb.identity,
+            request_id: pb.request_id,
+            attempt: pb.attempt,
+            last_failure_details: None, // Simplified - pb.last_failure is Failure type
+        }
+    }
+}
+
+impl From<pb::ActivityTaskCompletedEventAttributes>
+    for api_types::ActivityTaskCompletedEventAttributes
+{
+    fn from(pb: pb::ActivityTaskCompletedEventAttributes) -> Self {
+        api_types::ActivityTaskCompletedEventAttributes {
+            result: payload_to_bytes(pb.result),
+            scheduled_event_id: pb.scheduled_event_id,
+            started_event_id: pb.started_event_id,
+            identity: pb.identity,
+        }
+    }
+}
+impl From<pb::ActivityTaskFailedEventAttributes> for api_types::ActivityTaskFailedEventAttributes {
+    fn from(pb: pb::ActivityTaskFailedEventAttributes) -> Self {
+        api_types::ActivityTaskFailedEventAttributes {
+            reason: pb.failure.as_ref().map(|f| f.reason.clone()),
+            details: pb.failure.as_ref().map(|f| f.details.clone()),
+            scheduled_event_id: pb.scheduled_event_id,
+            started_event_id: pb.started_event_id,
+            identity: pb.identity,
+        }
+    }
+}
+impl From<pb::ActivityTaskTimedOutEventAttributes>
+    for api_types::ActivityTaskTimedOutEventAttributes
+{
+    fn from(pb: pb::ActivityTaskTimedOutEventAttributes) -> Self {
+        use api_types::TimeoutType;
+
+        let timeout_type = match pb.timeout_type {
+            1 => TimeoutType::StartToClose,
+            2 => TimeoutType::ScheduleToStart,
+            3 => TimeoutType::ScheduleToClose,
+            4 => TimeoutType::Heartbeat,
+            _ => TimeoutType::StartToClose, // Default fallback
+        };
+
+        api_types::ActivityTaskTimedOutEventAttributes {
+            details: None, // pb.details is Failure type, not Vec<u8>
+            scheduled_event_id: pb.scheduled_event_id,
+            started_event_id: pb.started_event_id,
+            timeout_type,
         }
     }
 }
