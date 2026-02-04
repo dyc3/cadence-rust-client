@@ -10,8 +10,10 @@ pub mod heartbeat;
 pub mod local_activity_queue;
 pub mod pollers;
 pub mod registry;
+pub mod replay_verifier;
 pub mod worker;
 
 pub use local_activity_queue::*;
 pub use registry::*;
+pub use replay_verifier::*;
 pub use worker::*;

@@ -146,6 +146,55 @@ pub struct PanicError {
     pub stack_trace: String,
 }
 
+/// Reason for non-determinism error
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum NonDeterminismReason {
+    #[error("missing replay decision")]
+    MissingReplayDecision,
+    #[error("extra replay decision")]
+    ExtraReplayDecision,
+    #[error("mismatch")]
+    Mismatch,
+}
+
+/// Error type for non-deterministic workflow execution
+#[derive(Debug, Clone, Error)]
+#[error("NonDeterministicError: reason={reason}, workflow_type={workflow_type}, workflow_id={workflow_id}")]
+pub struct NonDeterministicError {
+    pub reason: NonDeterminismReason,
+    pub workflow_type: String,
+    pub workflow_id: String,
+    pub run_id: String,
+    pub task_list: String,
+    pub domain_name: String,
+    pub history_event_text: Option<String>,
+    pub decision_text: Option<String>,
+}
+
+impl NonDeterministicError {
+    pub fn new(
+        reason: NonDeterminismReason,
+        workflow_type: impl Into<String>,
+        workflow_id: impl Into<String>,
+        run_id: impl Into<String>,
+        task_list: impl Into<String>,
+        domain_name: impl Into<String>,
+        history_event_text: Option<String>,
+        decision_text: Option<String>,
+    ) -> Self {
+        Self {
+            reason,
+            workflow_type: workflow_type.into(),
+            workflow_id: workflow_id.into(),
+            run_id: run_id.into(),
+            task_list: task_list.into(),
+            domain_name: domain_name.into(),
+            history_event_text,
+            decision_text,
+        }
+    }
+}
+
 impl PanicError {
     pub fn new(message: impl Into<String>, stack_trace: impl Into<String>) -> Self {
         Self {
@@ -287,6 +336,9 @@ pub enum CadenceError {
     ContinueAsNew(#[from] ContinueAsNewError),
 
     #[error(transparent)]
+    NonDeterministic(#[from] NonDeterministicError),
+
+    #[error(transparent)]
     Server(#[from] ServerError),
 
     #[error("Serialization error: {0}")]
@@ -379,6 +431,28 @@ pub mod factory {
             task_start_to_close_timeout_seconds,
         )
     }
+
+    pub fn non_deterministic_error(
+        reason: NonDeterminismReason,
+        workflow_type: impl Into<String>,
+        workflow_id: impl Into<String>,
+        run_id: impl Into<String>,
+        task_list: impl Into<String>,
+        domain_name: impl Into<String>,
+        history_event_text: Option<String>,
+        decision_text: Option<String>,
+    ) -> NonDeterministicError {
+        NonDeterministicError::new(
+            reason,
+            workflow_type,
+            workflow_id,
+            run_id,
+            task_list,
+            domain_name,
+            history_event_text,
+            decision_text,
+        )
+    }
 }
 
 /// Helper functions to check error types
@@ -422,4 +496,8 @@ pub fn is_workflow_execution_already_started_error(err: &CadenceError) -> bool {
         err,
         CadenceError::Server(ServerError::WorkflowExecutionAlreadyStarted { .. })
     )
+}
+
+pub fn is_non_deterministic_error(err: &CadenceError) -> bool {
+    matches!(err, CadenceError::NonDeterministic(_))
 }

@@ -2,10 +2,11 @@ use crate::executor::cache::{CachedWorkflow, WorkflowCache, WorkflowExecutionKey
 use crate::executor::replay::ReplayEngine;
 use crate::local_activity_queue::LocalActivityQueue;
 use crate::registry::Registry;
+use crate::replay_verifier::{match_replay_with_history, ReplayContext};
 use crate::WorkerOptions;
 use cadence_core::{CadenceError, WorkflowInfo};
 use cadence_proto::shared::{
-    ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision,
+    ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType, HistoryEvent,
     RequestCancelExternalWorkflowExecutionDecisionAttributes,
     ScheduleActivityTaskDecisionAttributes, SignalExternalWorkflowExecutionDecisionAttributes,
     StartChildWorkflowExecutionDecisionAttributes, StartTimerDecisionAttributes, TaskList,
@@ -1014,6 +1015,57 @@ impl WorkflowExecutor {
 
         let mut engine = engine_arc.lock().unwrap();
         let decisions = engine.decisions_helper.get_pending_decisions();
+
+        // Verify replay determinism if in replay mode
+        if engine.is_replay {
+            let replay_context = ReplayContext::new(
+                &workflow_type,
+                &workflow_id,
+                &run_id,
+                &self.task_list,
+                // Domain is not directly available in task, use empty string as default
+                // In production, this should come from the poll response or worker config
+                "",
+            );
+
+            // Find the last DecisionTaskStarted event ID to extract only new events
+            let last_decision_task_completed_id = events
+                .iter()
+                .rev()
+                .find(|e| e.event_type == EventType::DecisionTaskCompleted)
+                .map(|e| e.event_id)
+                .unwrap_or(0);
+
+            // Extract events that occurred since the last decision task
+            let new_history_events: Vec<HistoryEvent> = events
+                .iter()
+                .filter(|e| e.event_id > last_decision_task_completed_id)
+                .cloned()
+                .collect();
+
+            if let Err(non_deterministic_error) =
+                match_replay_with_history(&decisions, &new_history_events, &replay_context)
+            {
+                println!(
+                    "[WorkflowExecutor] Non-determinism detected for workflow={}: {:?}",
+                    workflow_id, non_deterministic_error
+                );
+
+                // For now, we log the error and continue
+                // In the future, this should apply NonDeterministicWorkflowPolicy:
+                // - BlockWorkflow: return error causing DecisionTaskFailed
+                // - FailWorkflow: generate FailWorkflowExecution decision
+
+                // TODO: Apply NonDeterministicWorkflowPolicy based on worker configuration
+                // For now, we'll fail the workflow execution
+                engine
+                    .decisions_helper
+                    .fail_workflow_execution(
+                        format!("Non-deterministic workflow execution: {}", non_deterministic_error),
+                        "".to_string(),
+                    );
+            }
+        }
 
         // Mark decisions as sent to prevent them from being returned again
         engine.decisions_helper.mark_decisions_sent();
