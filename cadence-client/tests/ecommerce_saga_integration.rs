@@ -303,7 +303,7 @@ impl Workflow for OrderProcessingSagaWorkflow {
 const CADENCE_GRPC_ENDPOINT: &str = "http://localhost:7833";
 
 async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, CadenceError> {
-    GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain).await
+    GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain, None).await
 }
 
 fn generate_test_domain_name() -> String {

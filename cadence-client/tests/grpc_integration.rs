@@ -54,7 +54,7 @@ const DEFAULT_DOMAIN: &str = "test-domain";
 
 /// Helper: Create a connected gRPC client
 async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, CadenceError> {
-    GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain).await
+    GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain, None).await
 }
 
 /// Helper: Generate unique domain name for testing
@@ -538,9 +538,9 @@ async fn test_list_open_workflow_executions() {
 
     // Verify our workflow is in the list
     let found = list_response.executions.iter().any(|exec| {
-        exec.execution.as_ref().is_some_and(|e| {
-            e.workflow_id == workflow_id && e.run_id == start_response.run_id
-        })
+        exec.execution
+            .as_ref()
+            .is_some_and(|e| e.workflow_id == workflow_id && e.run_id == start_response.run_id)
     });
 
     if found {

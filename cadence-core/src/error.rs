@@ -304,6 +304,12 @@ pub enum CadenceError {
     #[error("Client error: {0}")]
     ClientError(String),
 
+    #[error("Authentication error: {0}")]
+    Authentication(String),
+
+    #[error("Authorization failed: {0}")]
+    Unauthorized(String),
+
     #[error("Workflow execution failed: {0}, details: {1:?}")]
     WorkflowExecutionFailed(String, Vec<u8>),
 

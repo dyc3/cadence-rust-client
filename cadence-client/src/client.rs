@@ -3,6 +3,10 @@
 //! This module provides the main client interface for starting workflows,
 //! querying workflow state, sending signals, and managing workflow executions.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
 use async_trait::async_trait;
 use cadence_core::{
     CadenceError, CadenceResult, EncodedValue, QueryConsistencyLevel, RetryPolicy,
@@ -18,11 +22,9 @@ use cadence_proto::{
     WorkflowExecutionInfo as ProtoWorkflowExecutionInfo,
 };
 use serde_json;
-
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
+
+use crate::auth::BoxedAuthProvider;
 
 /// Query type constants
 pub const QUERY_TYPE_STACK_TRACE: &str = "__stack_trace";
@@ -561,6 +563,7 @@ pub struct WorkflowClient {
 }
 
 impl WorkflowClient {
+    /// Create a new WorkflowClient from an existing service
     pub fn new(
         service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
         domain: String,
@@ -572,14 +575,50 @@ impl WorkflowClient {
             options,
         }
     }
+
+    /// Connect to a Cadence server and create a new WorkflowClient
+    ///
+    /// # Arguments
+    /// * `endpoint` - The gRPC endpoint URL (e.g., "http://localhost:7833")
+    /// * `domain` - The Cadence domain to use
+    /// * `options` - Client configuration options including optional auth provider
+    pub async fn connect(
+        endpoint: impl Into<String>,
+        domain: impl Into<String>,
+        options: ClientOptions,
+    ) -> CadenceResult<Self> {
+        let domain_str = domain.into();
+        let service = Arc::new(
+            crate::grpc::GrpcWorkflowServiceClient::connect(
+                endpoint,
+                domain_str.clone(),
+                options.auth_provider.clone(),
+            )
+            .await?,
+        );
+
+        Ok(Self {
+            service,
+            domain: domain_str,
+            options,
+        })
+    }
 }
 
+/// Client configuration options
 #[derive(Clone)]
 pub struct ClientOptions {
+    /// Client identity string
     pub identity: String,
+    /// Optional authentication provider for JWT/OAuth
+    pub auth_provider: Option<BoxedAuthProvider>,
+    /// Metrics scope for telemetry
     pub metrics_scope: Option<Arc<dyn MetricsScope>>,
+    /// Logger for client operations
     pub logger: Option<Arc<dyn Logger>>,
+    /// Feature flags for experimental features
     pub feature_flags: FeatureFlags,
+    /// Data converter for serialization
     pub data_converter: Arc<dyn DataConverter>,
 }
 
@@ -603,6 +642,7 @@ impl Default for ClientOptions {
                 std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_string()),
                 std::process::id()
             ),
+            auth_provider: None,
             metrics_scope: None,
             logger: None,
             feature_flags: FeatureFlags::default(),

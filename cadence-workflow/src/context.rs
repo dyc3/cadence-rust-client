@@ -94,10 +94,7 @@ impl WorkflowContextBuilder {
         self
     }
 
-    pub fn change_versions(
-        mut self,
-        change_versions: Arc<Mutex<HashMap<String, i32>>>,
-    ) -> Self {
+    pub fn change_versions(mut self, change_versions: Arc<Mutex<HashMap<String, i32>>>) -> Self {
         self.change_versions = change_versions;
         self
     }
@@ -125,7 +122,6 @@ impl WorkflowContextBuilder {
         )
     }
 }
-
 
 /// Trait for handling workflow commands (implemented by worker)
 pub trait CommandSink: Send + Sync {

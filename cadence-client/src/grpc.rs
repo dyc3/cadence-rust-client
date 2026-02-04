@@ -11,7 +11,9 @@ use cadence_proto::generated::worker_api_client::WorkerApiClient;
 use cadence_proto::generated::workflow_api_client::WorkflowApiClient;
 use cadence_proto::workflow_service::*;
 use tonic::transport::Channel;
-use tonic::{metadata::MetadataValue, Status};
+use tonic::{metadata::MetadataValue, Request, Status};
+
+use crate::auth::{AuthInterceptor, BoxedAuthProvider};
 
 /// Library version sent to Cadence server in headers
 const LIBRARY_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -62,8 +64,10 @@ fn add_cadence_headers(mut req: tonic::Request<()>) -> Result<tonic::Request<()>
     Ok(req)
 }
 
-type InterceptedChannel = tonic::service::interceptor::InterceptedService<
-    Channel,
+// Chained interceptors: Auth -> Headers -> Channel
+// AuthInterceptor is innermost (called first), then headers interceptor
+pub type InterceptedChannel = tonic::service::interceptor::InterceptedService<
+    tonic::service::interceptor::InterceptedService<Channel, AuthInterceptor>,
     fn(tonic::Request<()>) -> Result<tonic::Request<()>, Status>,
 >;
 
@@ -79,9 +83,15 @@ pub struct GrpcWorkflowServiceClient {
 
 impl GrpcWorkflowServiceClient {
     /// Create a new gRPC client by connecting to the specified endpoint
+    ///
+    /// # Arguments
+    /// * `endpoint` - The gRPC endpoint URL (e.g., "http://localhost:7833")
+    /// * `domain` - The Cadence domain to use
+    /// * `auth_provider` - Optional authentication provider for JWT/OAuth
     pub async fn connect(
         endpoint: impl Into<String>,
         domain: impl Into<String>,
+        auth_provider: Option<BoxedAuthProvider>,
     ) -> Result<Self, CadenceError> {
         let endpoint = endpoint.into();
 
@@ -91,14 +101,21 @@ impl GrpcWorkflowServiceClient {
             .await
             .map_err(|e| CadenceError::Transport(e.to_string()))?;
 
-        // Cast function to fn pointer for use as interceptor
-        let interceptor =
-            add_cadence_headers as fn(tonic::Request<()>) -> Result<tonic::Request<()>, Status>;
+        // Layer 1: Auth interceptor (innermost)
+        let auth_interceptor = AuthInterceptor::new(auth_provider);
+        let channel_with_auth =
+            tonic::service::interceptor::InterceptedService::new(channel, auth_interceptor);
 
-        let workflow_client = WorkflowApiClient::with_interceptor(channel.clone(), interceptor);
-        let worker_client = WorkerApiClient::with_interceptor(channel.clone(), interceptor);
-        let visibility_client = VisibilityApiClient::with_interceptor(channel.clone(), interceptor);
-        let domain_client = DomainApiClient::with_interceptor(channel, interceptor);
+        // Layer 2: Cadence headers (outermost)
+        let header_fn = add_cadence_headers as fn(Request<()>) -> Result<Request<()>, Status>;
+        let channel_with_headers =
+            tonic::service::interceptor::InterceptedService::new(channel_with_auth, header_fn);
+
+        // Create API clients with chained interceptors
+        let workflow_client = WorkflowApiClient::new(channel_with_headers.clone());
+        let worker_client = WorkerApiClient::new(channel_with_headers.clone());
+        let visibility_client = VisibilityApiClient::new(channel_with_headers.clone());
+        let domain_client = DomainApiClient::new(channel_with_headers);
 
         Ok(Self {
             workflow_client,
