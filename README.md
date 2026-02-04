@@ -232,28 +232,6 @@ match result {
 }
 ```
 
-## Development
-
-### Building
-
-```bash
-cargo build
-```
-
-### Running Tests
-
-```bash
-cargo test
-```
-
-### Checking
-
-```bash
-cargo check
-cargo clippy
-cargo fmt
-```
-
 ## Architecture Highlights
 
 ### Deterministic Execution
@@ -281,19 +259,6 @@ Workers use long-polling to receive tasks:
 - Activity task pollers poll the activity task list
 - Supports both normal and sticky task lists
 - Rate limiting prevents overwhelming the server
-
-## Migration from Go Client
-
-Key differences from the Go client:
-
-| Go | Rust |
-|----|------|
-| `interface{}` for arguments | `Vec<u8>` with serialization |
-| `context.Context` | No explicit context (managed internally) |
-| Reflection-based registration | Trait-based registration |
-| Goroutines | Tokio tasks |
-| `error` return | `Result<T, CadenceError>` |
-| Panic recovery | Panic recovery with `PanicError` |
 
 ## License
 
