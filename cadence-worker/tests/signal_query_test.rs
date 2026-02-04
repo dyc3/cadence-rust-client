@@ -15,6 +15,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+#[derive(Clone)]
 struct ClosureWorkflow<F>(F)
 where
     F: Fn(
@@ -42,10 +43,6 @@ where
         input: Option<Vec<u8>>,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         (self.0)(ctx, input)
-    }
-
-    fn clone_box(&self) -> Box<dyn Workflow> {
-        Box::new(ClosureWorkflow(self.0.clone()))
     }
 }
 

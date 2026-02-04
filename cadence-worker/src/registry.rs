@@ -6,41 +6,32 @@ use cadence_activity::ActivityContext;
 use cadence_workflow::context::WorkflowContext;
 pub use cadence_workflow::WorkflowError;
 use dashmap::DashMap;
+use dyn_clone::DynClone;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 /// Workflow trait
-pub trait Workflow: Send + Sync {
+pub trait Workflow: Send + Sync + DynClone {
     fn execute(
         &self,
         ctx: WorkflowContext,
         input: Option<Vec<u8>>,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
-    fn clone_box(&self) -> Box<dyn Workflow>;
 }
 
-impl Clone for Box<dyn Workflow> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
+dyn_clone::clone_trait_object!(Workflow);
 
 /// Activity trait
-pub trait Activity: Send + Sync {
+pub trait Activity: Send + Sync + DynClone {
     fn execute(
         &self,
         ctx: &mut ActivityContext,
         input: Option<Vec<u8>>,
     ) -> Result<Vec<u8>, ActivityError>;
-    fn clone_box(&self) -> Box<dyn Activity>;
 }
 
-impl Clone for Box<dyn Activity> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
+dyn_clone::clone_trait_object!(Activity);
 
 /// Activity error
 #[derive(Debug, Clone, thiserror::Error)]

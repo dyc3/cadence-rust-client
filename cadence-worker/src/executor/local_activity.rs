@@ -262,6 +262,7 @@ mod tests {
     use tokio::sync::oneshot;
 
     // Test activity that returns success
+    #[derive(Clone)]
     struct SuccessActivity;
     impl Activity for SuccessActivity {
         fn execute(
@@ -271,13 +272,10 @@ mod tests {
         ) -> Result<Vec<u8>, ActivityError> {
             Ok(input.unwrap_or_else(|| b"success".to_vec()))
         }
-
-        fn clone_box(&self) -> Box<dyn Activity> {
-            Box::new(SuccessActivity)
-        }
     }
 
     // Test activity that returns an error
+    #[derive(Clone)]
     struct FailActivity;
     impl Activity for FailActivity {
         fn execute(
@@ -286,10 +284,6 @@ mod tests {
             _input: Option<Vec<u8>>,
         ) -> Result<Vec<u8>, ActivityError> {
             Err(ActivityError::ExecutionFailed("test error".to_string()))
-        }
-
-        fn clone_box(&self) -> Box<dyn Activity> {
-            Box::new(FailActivity)
         }
     }
 
@@ -450,6 +444,7 @@ mod tests {
     }
 
     // Test activity that fails twice then succeeds
+    #[derive(Clone)]
     struct RetryableActivity {
         attempts: Arc<std::sync::atomic::AtomicI32>,
     }
@@ -472,12 +467,6 @@ mod tests {
             } else {
                 Ok(b"success after retries".to_vec())
             }
-        }
-
-        fn clone_box(&self) -> Box<dyn Activity> {
-            Box::new(RetryableActivity {
-                attempts: self.attempts.clone(),
-            })
         }
     }
 

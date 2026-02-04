@@ -1058,10 +1058,6 @@ mod tests {
                 Ok(res)
             })
         }
-
-        fn clone_box(&self) -> Box<dyn Workflow> {
-            Box::new(self.clone())
-        }
     }
 
     #[derive(Clone)]
@@ -1080,10 +1076,6 @@ mod tests {
                 let nanos = now.timestamp_nanos_opt().unwrap_or(0);
                 Ok(nanos.to_le_bytes().to_vec())
             })
-        }
-
-        fn clone_box(&self) -> Box<dyn Workflow> {
-            Box::new(self.clone())
         }
     }
 

@@ -116,10 +116,6 @@ impl Activity for ProcessJobActivity {
             ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
         })
     }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(self.clone())
-    }
 }
 
 #[derive(Clone)]
@@ -145,12 +141,10 @@ impl Activity for FastProcessActivity {
             ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
         })
     }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(self.clone())
-    }
 }
 
+// ============================================================================
+// Workflow Implementations
 // ============================================================================
 // Workflows
 // ============================================================================
@@ -236,10 +230,6 @@ impl Workflow for SplitMergeWorkflow {
             })
         })
     }
-
-    fn clone_box(&self) -> Box<dyn Workflow> {
-        Box::new(self.clone())
-    }
 }
 
 #[derive(Clone)]
@@ -313,10 +303,6 @@ impl Workflow for ParallelWorkflow {
                 WorkflowError::ExecutionFailed(format!("Failed to serialize output: {}", e))
             })
         })
-    }
-
-    fn clone_box(&self) -> Box<dyn Workflow> {
-        Box::new(self.clone())
     }
 }
 

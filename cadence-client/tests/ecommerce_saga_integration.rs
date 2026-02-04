@@ -99,10 +99,6 @@ impl Activity for CalculateOrderTotalActivity {
             .sum();
         serde_json::to_vec(&total).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
     }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(self.clone())
-    }
 }
 
 // 2. Reserve Inventory
@@ -117,10 +113,6 @@ impl Activity for ReserveInventoryActivity {
     ) -> Result<Vec<u8>, ActivityError> {
         // Always succeed for this test
         Ok(vec![])
-    }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(self.clone())
     }
 }
 
@@ -152,10 +144,6 @@ impl Activity for ProcessPaymentActivity {
         println!("Processed payment of ${} for user {}", total, order.user_id);
         Ok(vec![])
     }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(self.clone())
-    }
 }
 
 // 4. Release Inventory (Compensation)
@@ -170,10 +158,6 @@ impl Activity for ReleaseInventoryActivity {
     ) -> Result<Vec<u8>, ActivityError> {
         println!("Compensating: Releasing inventory");
         Ok(vec![])
-    }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(self.clone())
     }
 }
 
@@ -193,10 +177,6 @@ impl Activity for SendNotificationActivity {
             .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
         println!("Sending notification: {}", message);
         Ok(vec![])
-    }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(self.clone())
     }
 }
 
@@ -312,12 +292,10 @@ impl Workflow for OrderProcessingSagaWorkflow {
             }
         })
     }
-
-    fn clone_box(&self) -> Box<dyn Workflow> {
-        Box::new(self.clone())
-    }
 }
 
+// ============================================================================
+// Test
 // ============================================================================
 // Helpers
 // ============================================================================

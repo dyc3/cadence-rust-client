@@ -17,6 +17,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
 
 // Test activity that echoes input
+#[derive(Clone)]
 struct EchoActivity;
 impl Activity for EchoActivity {
     fn execute(
@@ -25,10 +26,6 @@ impl Activity for EchoActivity {
         input: Option<Vec<u8>>,
     ) -> Result<Vec<u8>, ActivityError> {
         Ok(input.unwrap_or_default())
-    }
-
-    fn clone_box(&self) -> Box<dyn Activity> {
-        Box::new(EchoActivity)
     }
 }
 
@@ -205,6 +202,7 @@ async fn test_local_activity_execution_count() {
     let counter = Arc::new(AtomicUsize::new(0));
 
     // Activity that increments counter
+    #[derive(Clone)]
     struct CountingActivity {
         counter: Arc<AtomicUsize>,
     }
@@ -217,12 +215,6 @@ async fn test_local_activity_execution_count() {
         ) -> Result<Vec<u8>, ActivityError> {
             self.counter.fetch_add(1, Ordering::SeqCst);
             Ok(input.unwrap_or_default())
-        }
-
-        fn clone_box(&self) -> Box<dyn Activity> {
-            Box::new(CountingActivity {
-                counter: self.counter.clone(),
-            })
         }
     }
 
