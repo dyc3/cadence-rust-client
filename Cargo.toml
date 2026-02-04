@@ -33,6 +33,7 @@ members = [
     "examples/23_performance",
     "examples/24_complete_application",
     "examples/25_best_practices",
+    "examples/26_channels_and_spawn",
 ]
 resolver = "2"
 

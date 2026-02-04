@@ -15,6 +15,12 @@ pub type TimerFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 /// Workflow error
 #[derive(Debug, thiserror::Error)]
 pub enum WorkflowError {
+    #[error("Workflow execution failed: {0}")]
+    ExecutionFailed(String),
+    #[error("Non-deterministic workflow: {0}")]
+    NonDeterministic(String),
+    #[error("Workflow panicked: {0}")]
+    Panic(String),
     #[error("Activity failed: {0}")]
     ActivityFailed(String),
     #[error("Child workflow failed: {0}")]

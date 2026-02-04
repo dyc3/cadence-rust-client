@@ -4,6 +4,7 @@
 
 use cadence_activity::ActivityContext;
 use cadence_workflow::context::WorkflowContext;
+pub use cadence_workflow::WorkflowError;
 use dashmap::DashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -39,27 +40,6 @@ impl Clone for Box<dyn Activity> {
     fn clone(&self) -> Self {
         self.clone_box()
     }
-}
-
-/// Workflow error
-#[derive(Debug, thiserror::Error)]
-pub enum WorkflowError {
-    #[error("Workflow execution failed: {0}")]
-    ExecutionFailed(String),
-    #[error("Non-deterministic workflow: {0}")]
-    NonDeterministic(String),
-    #[error("Workflow cancelled")]
-    Cancelled,
-    #[error("Workflow panicked: {0}")]
-    Panic(String),
-    #[error("Activity failed: {0}")]
-    ActivityFailed(String),
-    #[error("Child workflow failed: {0}")]
-    ChildWorkflowFailed(String),
-    #[error("Generic error: {0}")]
-    Generic(String),
-    #[error("Continue as new")]
-    ContinueAsNew,
 }
 
 /// Activity error

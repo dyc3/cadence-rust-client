@@ -15,6 +15,7 @@ use cadence_proto::workflow_service::PollForDecisionTaskResponse;
 use cadence_proto::{QueryResultType, WorkflowQueryResult};
 use cadence_workflow::commands::WorkflowCommand;
 use cadence_workflow::context::{CommandSink, WorkflowContext};
+use cadence_workflow::dispatcher::{WorkflowDispatcher, WorkflowTask};
 use cadence_workflow::future::WorkflowError;
 use cadence_workflow::state_machine::{
     ActivityDecisionStateMachine, ChildWorkflowDecisionStateMachine, DecisionId,
@@ -729,197 +730,230 @@ impl WorkflowExecutor {
             None
         };
 
-        let mut workflow_future = workflow.execute(context, args);
+        let workflow_future = workflow.execute(context.clone(), args);
+
+        // Create dispatcher for managing spawned tasks
+        let dispatcher = Arc::new(Mutex::new(WorkflowDispatcher::new()));
+        context.set_dispatcher(dispatcher.clone());
+
+        // Create root workflow task
+        let root_task = WorkflowTask::new(0, "root".to_string(), workflow_future);
+
+        // Add root task to dispatcher
+        {
+            let mut disp = dispatcher.lock().unwrap();
+            disp.spawn_task(root_task);
+        }
 
         println!("[WorkflowExecutor] Starting workflow execution polling loop");
 
-        // Main execution loop - poll workflow and execute pending local activities
+        // Main execution loop - execute dispatcher and process local activities
         loop {
-            // Poll the workflow in its own scope to ensure context is dropped
-            let poll_result = {
-                let waker = futures::task::noop_waker();
-                let mut cx = std::task::Context::from_waker(&waker);
-                workflow_future.as_mut().poll(&mut cx)
-                // waker and cx are dropped here
+            // Execute dispatcher until all tasks blocked
+            let all_done = {
+                let mut disp = dispatcher.lock().unwrap();
+                disp.execute_until_all_blocked()
+                    .map_err(|e| CadenceError::Other(format!("Dispatcher error: {}", e)))?
             };
 
-            match poll_result {
-                std::task::Poll::Ready(result) => {
-                    println!("[WorkflowExecutor] Workflow Completed!");
-                    let mut engine = engine_arc.lock().unwrap();
-                    match result {
-                        Ok(output) => {
-                            println!("[WorkflowExecutor] Workflow Result: OK");
-                            engine.decisions_helper.complete_workflow_execution(output);
-                        }
-                        Err(e) => {
-                            println!("[WorkflowExecutor] Workflow Result: ERR - {:?}", e);
-                            engine
-                                .decisions_helper
-                                .fail_workflow_execution(e.to_string(), "".to_string());
-                        }
-                    }
-                    break; // Exit loop - workflow is done
-                }
-                std::task::Poll::Pending => {
-                    println!("[WorkflowExecutor] Workflow Pending (Blocked)");
+            // Check if root task (workflow) completed
+            if all_done {
+                println!("[WorkflowExecutor] Workflow Completed!");
+                let mut engine = engine_arc.lock().unwrap();
 
-                    // Check if there are pending local activity submissions
-                    let pending_submissions = {
-                        let mut pending = pending_local_activity_submissions.lock().unwrap();
-                        std::mem::take(&mut *pending)
+                // Get result from root task
+                let disp = dispatcher.lock().unwrap();
+                if let Some(result_any) = disp.get_task_result(0) {
+                    // Downcast to Result<Vec<u8>, WorkflowError>
+                    if let Ok(result) = result_any.downcast::<Result<Vec<u8>, WorkflowError>>() {
+                        match *result {
+                            Ok(output) => {
+                                println!("[WorkflowExecutor] Workflow Result: OK");
+                                engine.decisions_helper.complete_workflow_execution(output);
+                            }
+                            Err(e) => {
+                                println!("[WorkflowExecutor] Workflow Result: ERR - {:?}", e);
+                                engine
+                                    .decisions_helper
+                                    .fail_workflow_execution(e.to_string(), "".to_string());
+                            }
+                        }
+                    } else {
+                        println!("[WorkflowExecutor] Failed to downcast workflow result");
+                        engine
+                            .decisions_helper
+                            .fail_workflow_execution("Type error".to_string(), "".to_string());
+                    }
+                } else {
+                    println!("[WorkflowExecutor] Root task result not found");
+                    engine
+                        .decisions_helper
+                        .fail_workflow_execution("Missing result".to_string(), "".to_string());
+                }
+                break; // Exit loop - workflow is done
+            }
+
+            println!("[WorkflowExecutor] All tasks blocked");
+
+            // Check if there are pending local activity submissions
+            let pending_submissions = {
+                let mut pending = pending_local_activity_submissions.lock().unwrap();
+                std::mem::take(&mut *pending)
+            };
+
+            if !pending_submissions.is_empty() {
+                use crate::local_activity_queue::LocalActivityTask;
+                use cadence_workflow::local_activity::{
+                    encode_local_activity_marker, LocalActivityMarkerData,
+                };
+
+                println!(
+                    "[WorkflowExecutor] Executing {} pending local activities",
+                    pending_submissions.len()
+                );
+
+                // Execute each pending local activity
+                for submission in pending_submissions {
+                    println!(
+                        "[WorkflowExecutor] Executing local activity: {}",
+                        submission.activity_id
+                    );
+
+                    // Create oneshot channel for result
+                    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+
+                    // Create and submit local activity task
+                    let task = LocalActivityTask {
+                        activity_id: submission.activity_id.clone(),
+                        activity_type: submission.activity_type.clone(),
+                        args: submission.args,
+                        options: submission.options,
+                        workflow_info: workflow_info.clone(),
+                        header: None,
+                        attempt: 0,
+                        scheduled_time: std::time::SystemTime::now(),
+                        result_sender: result_tx,
                     };
 
-                    if !pending_submissions.is_empty() {
-                        use crate::local_activity_queue::LocalActivityTask;
-                        use cadence_workflow::local_activity::{
-                            encode_local_activity_marker, LocalActivityMarkerData,
-                        };
-
+                    // Submit task to queue
+                    if let Err(_) = self.local_activity_queue.send(task) {
                         println!(
-                            "[WorkflowExecutor] Executing {} pending local activities",
-                            pending_submissions.len()
+                            "[WorkflowExecutor] Failed to submit local activity task: {}",
+                            submission.activity_id
                         );
+                        continue;
+                    }
 
-                        // Execute each pending local activity
-                        for submission in pending_submissions {
+                    // Wait for result
+                    match result_rx.await {
+                        Ok(result) => {
                             println!(
-                                "[WorkflowExecutor] Executing local activity: {}",
-                                submission.activity_id
+                                "[WorkflowExecutor] Local activity {} completed: {:?}",
+                                submission.activity_id,
+                                result.as_ref().map(|r| r.len()).map_err(|e| e.to_string())
                             );
 
-                            // Create oneshot channel for result
-                            let (result_tx, result_rx) = tokio::sync::oneshot::channel();
-
-                            // Create and submit local activity task
-                            let task = LocalActivityTask {
-                                activity_id: submission.activity_id.clone(),
-                                activity_type: submission.activity_type.clone(),
-                                args: submission.args,
-                                options: submission.options,
-                                workflow_info: workflow_info.clone(),
-                                header: None,
-                                attempt: 0,
-                                scheduled_time: std::time::SystemTime::now(),
-                                result_sender: result_tx,
+                            // Record marker with result
+                            let marker_data = match &result {
+                                Ok(result_bytes) => LocalActivityMarkerData::success(
+                                    submission.activity_id.clone(),
+                                    submission.activity_type.clone(),
+                                    result_bytes.clone(),
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs() as i64,
+                                    0, // attempt
+                                ),
+                                Err(err) => LocalActivityMarkerData::failure(
+                                    submission.activity_id.clone(),
+                                    submission.activity_type.clone(),
+                                    err.to_string(),
+                                    None,
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs() as i64,
+                                    0, // attempt
+                                ),
                             };
 
-                            // Submit task to queue
-                            if let Err(_) = self.local_activity_queue.send(task) {
+                            // Encode and record marker
+                            let marker_details = encode_local_activity_marker(&marker_data);
+                            let attrs = cadence_proto::shared::RecordMarkerDecisionAttributes {
+                                marker_name:
+                                    cadence_workflow::local_activity::LOCAL_ACTIVITY_MARKER_NAME
+                                        .to_string(),
+                                details: Some(marker_details),
+                                header: None,
+                            };
+
+                            let marker_id =
+                                format!("local_activity_{}_{}", submission.activity_id, {
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_nanos()
+                                });
+
+                            let decision = Box::new(
+                                cadence_workflow::state_machine::MarkerDecisionStateMachine::new(
+                                    marker_id.clone(),
+                                    attrs,
+                                ),
+                            );
+
+                            let mut engine_lock = engine_arc.lock().unwrap();
+                            engine_lock.decisions_helper.add_decision(decision);
+
+                            // Store result in engine's local activity cache for workflow to retrieve
+                            engine_lock
+                                .local_activity_results
+                                .lock()
+                                .unwrap()
+                                .insert(submission.activity_id.clone(), marker_data.clone());
+                            drop(engine_lock);
+
+                            println!("[WorkflowExecutor] Recorded marker and cached result for local activity: {}", marker_id);
+
+                            // Signal the workflow that this local activity is complete
+                            let waker = local_activity_wakers
+                                .lock()
+                                .unwrap()
+                                .remove(&submission.activity_id);
+                            if let Some(tx) = waker {
+                                let result_to_send = match result {
+                                    Ok(bytes) => Ok(bytes),
+                                    Err(err) => Err(WorkflowError::ActivityFailed(err.to_string())),
+                                };
+                                let _ = tx.send(result_to_send);
                                 println!(
-                                    "[WorkflowExecutor] Failed to submit local activity task: {}",
+                                    "[WorkflowExecutor] Sent result to workflow for activity: {}",
                                     submission.activity_id
                                 );
-                                continue;
-                            }
-
-                            // Wait for result
-                            match result_rx.await {
-                                Ok(result) => {
-                                    println!(
-                                        "[WorkflowExecutor] Local activity {} completed: {:?}",
-                                        submission.activity_id,
-                                        result.as_ref().map(|r| r.len()).map_err(|e| e.to_string())
-                                    );
-
-                                    // Record marker with result
-                                    let marker_data = match &result {
-                                        Ok(result_bytes) => LocalActivityMarkerData::success(
-                                            submission.activity_id.clone(),
-                                            submission.activity_type.clone(),
-                                            result_bytes.clone(),
-                                            std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_secs()
-                                                as i64,
-                                            0, // attempt
-                                        ),
-                                        Err(err) => LocalActivityMarkerData::failure(
-                                            submission.activity_id.clone(),
-                                            submission.activity_type.clone(),
-                                            err.to_string(),
-                                            None,
-                                            std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_secs()
-                                                as i64,
-                                            0, // attempt
-                                        ),
-                                    };
-
-                                    // Encode and record marker
-                                    let marker_details = encode_local_activity_marker(&marker_data);
-                                    let attrs = cadence_proto::shared::RecordMarkerDecisionAttributes {
-                                        marker_name: cadence_workflow::local_activity::LOCAL_ACTIVITY_MARKER_NAME.to_string(),
-                                        details: Some(marker_details),
-                                        header: None,
-                                    };
-
-                                    let marker_id =
-                                        format!("local_activity_{}_{}", submission.activity_id, {
-                                            std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_nanos()
-                                        });
-
-                                    let decision = Box::new(
-                                        cadence_workflow::state_machine::MarkerDecisionStateMachine::new(
-                                            marker_id.clone(),
-                                            attrs,
-                                        ),
-                                    );
-
-                                    let mut engine_lock = engine_arc.lock().unwrap();
-                                    engine_lock.decisions_helper.add_decision(decision);
-
-                                    // Store result in engine's local activity cache for workflow to retrieve
-                                    engine_lock.local_activity_results.lock().unwrap().insert(
-                                        submission.activity_id.clone(),
-                                        marker_data.clone(),
-                                    );
-                                    drop(engine_lock);
-
-                                    println!("[WorkflowExecutor] Recorded marker and cached result for local activity: {}", marker_id);
-
-                                    // Signal the workflow that this local activity is complete
-                                    let waker = local_activity_wakers
-                                        .lock()
-                                        .unwrap()
-                                        .remove(&submission.activity_id);
-                                    if let Some(tx) = waker {
-                                        let result_to_send = match result {
-                                            Ok(bytes) => Ok(bytes),
-                                            Err(err) => {
-                                                Err(WorkflowError::ActivityFailed(err.to_string()))
-                                            }
-                                        };
-                                        let _ = tx.send(result_to_send);
-                                        println!("[WorkflowExecutor] Sent result to workflow for activity: {}", submission.activity_id);
-                                    } else {
-                                        println!("[WorkflowExecutor] Warning: No waker found for activity: {}", submission.activity_id);
-                                    }
-                                }
-                                Err(e) => {
-                                    println!(
-                                        "[WorkflowExecutor] Local activity {} channel closed: {:?}",
-                                        submission.activity_id, e
-                                    );
-                                }
+                            } else {
+                                println!(
+                                    "[WorkflowExecutor] Warning: No waker found for activity: {}",
+                                    submission.activity_id
+                                );
                             }
                         }
-
-                        println!("[WorkflowExecutor] All pending local activities processed, re-polling workflow");
-                        // Continue loop to poll workflow again with the new results
-                        continue;
-                    } else {
-                        // No pending local activities, workflow is genuinely blocked (waiting for regular activities/timers)
-                        println!("[WorkflowExecutor] No pending local activities, workflow blocked on external events");
-                        break; // Exit loop
+                        Err(e) => {
+                            println!(
+                                "[WorkflowExecutor] Local activity {} channel closed: {:?}",
+                                submission.activity_id, e
+                            );
+                        }
                     }
                 }
+
+                println!("[WorkflowExecutor] All pending local activities processed, re-polling workflow");
+                // Continue loop to poll workflow again with the new results
+                continue;
+            } else {
+                // No pending local activities, workflow is genuinely blocked (waiting for regular activities/timers)
+                println!("[WorkflowExecutor] No pending local activities, workflow blocked on external events");
+                break; // Exit loop
             }
         }
 

@@ -3,3 +3,6 @@ test-grpc-integration:
 
 test-ecommerce-saga:
     cargo test --test ecommerce_saga_integration -- --ignored --nocapture --test-threads=1
+
+test-all-integration:
+    cargo test -p cadence-client -- --ignored --test-threads=1

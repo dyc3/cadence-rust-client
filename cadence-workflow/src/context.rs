@@ -10,6 +10,7 @@ use crate::commands::{
 use cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 use futures::future::poll_fn;
 use serde::Serialize;
+use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -18,6 +19,9 @@ use std::task::Poll;
 use std::time::Duration;
 
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use crate::channel::{channel, Receiver, Sender};
+use crate::dispatcher::{WorkflowDispatcher, WorkflowTask};
 
 /// Marker names for side effects
 pub const SIDE_EFFECT_MARKER_NAME: &str = "SideEffect";
@@ -50,10 +54,11 @@ impl CommandSink for NoopCommandSink {
 }
 
 /// Workflow context for executing workflow logic
+#[derive(Clone)]
 pub struct WorkflowContext {
     workflow_info: WorkflowInfo,
     command_sink: Arc<dyn CommandSink>,
-    sequence: AtomicU64,
+    sequence: Arc<AtomicU64>,
     signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
     query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
     cancelled: Arc<std::sync::atomic::AtomicBool>,
@@ -69,6 +74,16 @@ pub struct WorkflowContext {
     // Local activity results cache for replay
     local_activity_results:
         Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
+    // Dispatcher for managing spawned tasks
+    dispatcher: Arc<Mutex<Option<Arc<Mutex<WorkflowDispatcher>>>>>,
+    // Pending tasks queue (shared with dispatcher for lock-free spawning)
+    pending_spawn_tasks: Arc<Mutex<Option<Arc<Mutex<Vec<WorkflowTask>>>>>>,
+    // Completed results (shared with dispatcher for lock-free join)
+    completed_results: Arc<Mutex<Option<Arc<Mutex<HashMap<u64, Box<dyn Any + Send>>>>>>>,
+    // Task sequence counter
+    task_sequence: Arc<AtomicU64>,
+    // Channel sequence counter
+    channel_sequence: Arc<AtomicU64>,
 }
 
 impl WorkflowContext {
@@ -79,7 +94,7 @@ impl WorkflowContext {
         Self {
             workflow_info,
             command_sink: Arc::new(NoopCommandSink),
-            sequence: AtomicU64::new(0),
+            sequence: Arc::new(AtomicU64::new(0)),
             signals: Arc::new(Mutex::new(HashMap::new())),
             query_handlers: Arc::new(Mutex::new(HashMap::new())),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -89,6 +104,12 @@ impl WorkflowContext {
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions: Arc::new(Mutex::new(HashMap::new())),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
+            dispatcher: Arc::new(Mutex::new(None)),
+            pending_spawn_tasks: Arc::new(Mutex::new(None)),
+            completed_results: Arc::new(Mutex::new(None)),
+            // Start task_sequence at 1 because root workflow task is ID 0
+            task_sequence: Arc::new(AtomicU64::new(1)),
+            channel_sequence: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -110,7 +131,7 @@ impl WorkflowContext {
         Self {
             workflow_info,
             command_sink: sink,
-            sequence: AtomicU64::new(0),
+            sequence: Arc::new(AtomicU64::new(0)),
             signals,
             query_handlers,
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -120,6 +141,12 @@ impl WorkflowContext {
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions,
             local_activity_results,
+            dispatcher: Arc::new(Mutex::new(None)),
+            pending_spawn_tasks: Arc::new(Mutex::new(None)),
+            completed_results: Arc::new(Mutex::new(None)),
+            // Start task_sequence at 1 because root workflow task is ID 0
+            task_sequence: Arc::new(AtomicU64::new(1)),
+            channel_sequence: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -698,6 +725,111 @@ impl WorkflowContext {
     pub fn set_cancelled(&self, cancelled: bool) {
         self.cancelled.store(cancelled, Ordering::Relaxed);
     }
+
+    /// Create a new channel for coordinating between spawned tasks
+    ///
+    /// # Arguments
+    /// * `buffer_size` - Capacity of the channel buffer. Use 0 for unbuffered.
+    ///
+    /// # Returns
+    /// A tuple of (Sender, Receiver)
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let (tx, rx) = ctx.new_channel(10);
+    /// ```
+    pub fn new_channel<T>(&self, buffer_size: usize) -> (Sender<T>, Receiver<T>) {
+        let _channel_id = self.channel_sequence.fetch_add(1, Ordering::SeqCst);
+        channel(buffer_size)
+    }
+
+    /// Spawn a new task in the workflow
+    ///
+    /// The task will be executed cooperatively by the workflow dispatcher.
+    /// Tasks are polled in creation order to ensure deterministic execution.
+    ///
+    /// # Arguments
+    /// * `f` - The future to execute
+    ///
+    /// # Returns
+    /// A JoinHandle that can be awaited to get the task result
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let handle = ctx.spawn(async move {
+    ///     ctx.execute_activity("process", args, options).await
+    /// });
+    ///
+    /// let result = handle.join().await?;
+    /// ```
+    pub fn spawn<F>(&self, f: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let task_id = self.task_sequence.fetch_add(1, Ordering::SeqCst);
+
+        println!("[Context] Spawning task {}", task_id);
+
+        // Create the task
+        let task = WorkflowTask::new(task_id, format!("task-{}", task_id), f);
+
+        // Get completed_results Arc (for JoinHandle) - no dispatcher lock needed
+        let completed_results_arc = {
+            let completed_opt = self.completed_results.lock().unwrap();
+            completed_opt
+                .as_ref()
+                .expect("Completed results not set on WorkflowContext. This is a bug.")
+                .clone()
+        };
+
+        // Add task to pending queue WITHOUT locking the dispatcher
+        // This avoids deadlock when spawning from within a task
+        let pending_tasks_opt = self.pending_spawn_tasks.lock().unwrap();
+        if let Some(pending_tasks_arc) = pending_tasks_opt.as_ref() {
+            let mut pending = pending_tasks_arc.lock().unwrap();
+            pending.push(task);
+            println!(
+                "[Context] Task {} added to pending queue (now {} pending)",
+                task_id,
+                pending.len()
+            );
+        } else {
+            panic!("Pending tasks queue not set on WorkflowContext. This is a bug.");
+        }
+
+        JoinHandle {
+            task_id,
+            completed_results: completed_results_arc,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Set the dispatcher for this context (for workflow executor)
+    pub fn set_dispatcher(&self, dispatcher: Arc<Mutex<WorkflowDispatcher>>) {
+        // Get the dispatcher's pending_tasks and completed_results Arcs to share with context
+        let (pending_tasks_arc, completed_results_arc) = {
+            let disp = dispatcher.lock().unwrap();
+            (disp.pending_tasks.clone(), disp.get_completed_results_arc())
+        };
+
+        // Store the dispatcher
+        let mut disp_opt = self.dispatcher.lock().unwrap();
+        *disp_opt = Some(dispatcher);
+
+        // Share the dispatcher's pending_tasks Arc with context
+        let mut pending_opt = self.pending_spawn_tasks.lock().unwrap();
+        *pending_opt = Some(pending_tasks_arc);
+
+        // Share the dispatcher's completed_results Arc with context
+        let mut completed_opt = self.completed_results.lock().unwrap();
+        *completed_opt = Some(completed_results_arc);
+    }
+
+    /// Get the dispatcher (for workflow executor)
+    pub fn get_dispatcher(&self) -> Option<Arc<Mutex<WorkflowDispatcher>>> {
+        self.dispatcher.lock().unwrap().clone()
+    }
 }
 
 /// Local activity options
@@ -706,6 +838,76 @@ pub struct LocalActivityOptions {
     pub schedule_to_close_timeout: Duration,
     pub retry_policy: Option<RetryPolicy>,
 }
+
+/// Handle for a spawned workflow task
+pub struct JoinHandle<T> {
+    task_id: u64,
+    completed_results: Arc<Mutex<HashMap<u64, Box<dyn Any + Send>>>>,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Send + 'static> JoinHandle<T> {
+    /// Wait for the task to complete and get its result
+    ///
+    /// In the workflow execution model, this will poll until the task completes.
+    /// The actual execution happens in execute_until_all_blocked().
+    pub async fn join(self) -> Result<T, JoinError> {
+        println!("[JoinHandle] Waiting for task {} to complete", self.task_id);
+        // Poll until task is complete
+        poll_fn(|_cx| {
+            let results = self.completed_results.lock().unwrap();
+            if results.contains_key(&self.task_id) {
+                println!("[JoinHandle] Task {} is complete", self.task_id);
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        })
+        .await;
+
+        // Get the result
+        println!("[JoinHandle] Getting result for task {}", self.task_id);
+        let mut results = self.completed_results.lock().unwrap();
+        println!(
+            "[JoinHandle] Locked results, currently {} results",
+            results.len()
+        );
+        let result = results
+            .remove(&self.task_id)
+            .ok_or(JoinError::TaskNotComplete(self.task_id))?;
+        println!(
+            "[JoinHandle] Removed task {} result, now {} results remaining",
+            self.task_id,
+            results.len()
+        );
+
+        // Downcast to the expected type
+        result
+            .downcast::<T>()
+            .map(|boxed| *boxed)
+            .map_err(|_| JoinError::TaskCancelled(self.task_id))
+    }
+}
+
+/// Error returned when joining a task fails
+#[derive(Debug, Clone)]
+pub enum JoinError {
+    /// Task has not completed yet
+    TaskNotComplete(u64),
+    /// Task was cancelled
+    TaskCancelled(u64),
+}
+
+impl std::fmt::Display for JoinError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JoinError::TaskNotComplete(id) => write!(f, "task {} not complete", id),
+            JoinError::TaskCancelled(id) => write!(f, "task {} cancelled", id),
+        }
+    }
+}
+
+impl std::error::Error for JoinError {}
 
 /// Continue as new options
 #[derive(Debug, Clone)]
