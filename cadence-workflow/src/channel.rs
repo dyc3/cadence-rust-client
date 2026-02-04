@@ -420,7 +420,10 @@ mod tests {
         assert_eq!(rx.recv().await, Some(2));
 
         drop(tx1);
-        assert!(rx.recv().await.is_none()); // Should not close yet
+        // Channel should still be open because tx2 is alive
+        // Verify by sending and receiving another value
+        tx2.send(3).await.unwrap();
+        assert_eq!(rx.recv().await, Some(3));
 
         drop(tx2);
         assert_eq!(rx.recv().await, None); // Now closed
