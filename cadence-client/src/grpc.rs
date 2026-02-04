@@ -26,6 +26,7 @@ const CLIENT_IMPL_NAME: &str = "cadence-rust";
 ///
 /// These headers are required by the Cadence server to identify the client
 /// and its capabilities. They match the headers sent by the Go client.
+#[allow(clippy::result_large_err)]
 fn add_cadence_headers(mut req: tonic::Request<()>) -> Result<tonic::Request<()>, Status> {
     let metadata = req.metadata_mut();
 

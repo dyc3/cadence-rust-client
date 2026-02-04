@@ -538,7 +538,7 @@ async fn test_list_open_workflow_executions() {
 
     // Verify our workflow is in the list
     let found = list_response.executions.iter().any(|exec| {
-        exec.execution.as_ref().map_or(false, |e| {
+        exec.execution.as_ref().is_some_and(|e| {
             e.workflow_id == workflow_id && e.run_id == start_response.run_id
         })
     });

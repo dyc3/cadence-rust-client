@@ -18,6 +18,10 @@ use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::Duration;
 
+// Type aliases to reduce complexity
+type PendingSpawnTasks = Arc<Mutex<Option<Arc<Mutex<Vec<WorkflowTask>>>>>>;
+type CompletedResults = Arc<Mutex<Option<Arc<Mutex<HashMap<u64, Box<dyn Any + Send>>>>>>>;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::channel::{channel, Receiver, Sender};
@@ -33,6 +37,95 @@ pub const DEFAULT_VERSION: i32 = -1;
 
 /// Type alias for query handlers
 pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
+
+/// Builder for WorkflowContext creation with command sink
+pub struct WorkflowContextBuilder {
+    workflow_info: WorkflowInfo,
+    sink: Arc<dyn CommandSink>,
+    signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+    query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
+    side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
+    mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    change_versions: Arc<Mutex<HashMap<String, i32>>>,
+    local_activity_results:
+        Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
+}
+
+impl WorkflowContextBuilder {
+    pub fn new(workflow_info: WorkflowInfo, sink: Arc<dyn CommandSink>) -> Self {
+        Self {
+            workflow_info,
+            sink,
+            signals: Arc::new(Mutex::new(HashMap::new())),
+            query_handlers: Arc::new(Mutex::new(HashMap::new())),
+            side_effect_results: Arc::new(Mutex::new(HashMap::new())),
+            mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
+            change_versions: Arc::new(Mutex::new(HashMap::new())),
+            local_activity_results: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn signals(mut self, signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>) -> Self {
+        self.signals = signals;
+        self
+    }
+
+    pub fn query_handlers(
+        mut self,
+        query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
+    ) -> Self {
+        self.query_handlers = query_handlers;
+        self
+    }
+
+    pub fn side_effect_results(
+        mut self,
+        side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
+    ) -> Self {
+        self.side_effect_results = side_effect_results;
+        self
+    }
+
+    pub fn mutable_side_effects(
+        mut self,
+        mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    ) -> Self {
+        self.mutable_side_effects = mutable_side_effects;
+        self
+    }
+
+    pub fn change_versions(
+        mut self,
+        change_versions: Arc<Mutex<HashMap<String, i32>>>,
+    ) -> Self {
+        self.change_versions = change_versions;
+        self
+    }
+
+    pub fn local_activity_results(
+        mut self,
+        local_activity_results: Arc<
+            Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>,
+        >,
+    ) -> Self {
+        self.local_activity_results = local_activity_results;
+        self
+    }
+
+    pub fn build(self) -> WorkflowContext {
+        WorkflowContext::with_sink(
+            self.workflow_info,
+            self.sink,
+            self.signals,
+            self.query_handlers,
+            self.side_effect_results,
+            self.mutable_side_effects,
+            self.change_versions,
+            self.local_activity_results,
+        )
+    }
+}
+
 
 /// Trait for handling workflow commands (implemented by worker)
 pub trait CommandSink: Send + Sync {
@@ -77,9 +170,9 @@ pub struct WorkflowContext {
     // Dispatcher for managing spawned tasks
     dispatcher: Arc<Mutex<Option<Arc<Mutex<WorkflowDispatcher>>>>>,
     // Pending tasks queue (shared with dispatcher for lock-free spawning)
-    pending_spawn_tasks: Arc<Mutex<Option<Arc<Mutex<Vec<WorkflowTask>>>>>>,
+    pending_spawn_tasks: PendingSpawnTasks,
     // Completed results (shared with dispatcher for lock-free join)
-    completed_results: Arc<Mutex<Option<Arc<Mutex<HashMap<u64, Box<dyn Any + Send>>>>>>>,
+    completed_results: CompletedResults,
     // Task sequence counter
     task_sequence: Arc<AtomicU64>,
     // Channel sequence counter
@@ -113,6 +206,7 @@ impl WorkflowContext {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn with_sink(
         workflow_info: WorkflowInfo,
         sink: Arc<dyn CommandSink>,
@@ -442,9 +536,13 @@ impl WorkflowContext {
         let is_replay = self.is_replay.load(Ordering::SeqCst);
 
         // Check cache for existing result
-        let cache = self.mutable_side_effects.lock().unwrap();
-        if let Some(encoded_result) = cache.get(id) {
-            let cached_value: R = serde_json::from_slice(encoded_result)
+        let cached_result = {
+            let cache = self.mutable_side_effects.lock().unwrap();
+            cache.get(id).cloned()
+        };
+
+        if let Some(encoded_result) = cached_result {
+            let cached_value: R = serde_json::from_slice(&encoded_result)
                 .expect("Failed to deserialize mutable side effect result");
 
             if is_replay {
@@ -460,7 +558,7 @@ impl WorkflowContext {
             } else {
                 // Default comparison using serialization
                 let new_encoded = serde_json::to_vec(&new_value).unwrap();
-                encoded_result == &new_encoded
+                encoded_result == new_encoded
             };
 
             if is_equal {
@@ -469,7 +567,6 @@ impl WorkflowContext {
             }
 
             // Value changed, record new marker and update cache
-            drop(cache); // Release lock
             let new_encoded = serde_json::to_vec(&new_value).unwrap();
 
             let details = encode_mutable_side_effect_details(id, &new_encoded);
@@ -493,8 +590,6 @@ impl WorkflowContext {
 
             return new_value;
         }
-
-        drop(cache);
 
         if is_replay {
             panic!(

@@ -1,5 +1,5 @@
 use cadence_activity::ActivityContext;
-use cadence_workflow::WorkflowError;
+use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct JobResult {
 }
 
 /// Process a job (simulates some work)
-pub async fn process_job(_ctx: &ActivityContext, job: Job) -> Result<JobResult, WorkflowError> {
+pub async fn process_job(_ctx: &ActivityContext, job: Job) -> Result<JobResult, ActivityError> {
     // Simulate some processing time
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -26,6 +26,6 @@ pub async fn process_job(_ctx: &ActivityContext, job: Job) -> Result<JobResult, 
 }
 
 /// Fast processing activity for testing
-pub async fn fast_process(_ctx: &ActivityContext, value: u32) -> Result<u32, WorkflowError> {
+pub async fn fast_process(_ctx: &ActivityContext, value: u32) -> Result<u32, ActivityError> {
     Ok(value * 2)
 }

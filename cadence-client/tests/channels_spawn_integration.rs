@@ -318,6 +318,7 @@ fn generate_test_domain_name() -> String {
     format!("channels-spawn-test-{}", Uuid::new_v4())
 }
 
+#[allow(dead_code)]
 fn generate_task_list_name() -> String {
     format!("channels-spawn-task-list-{}", Uuid::new_v4())
 }
@@ -535,7 +536,7 @@ async fn test_split_merge_workflow_with_channels_and_spawn() {
     // Create and start worker
     let worker = CadenceWorker::new(
         domain.clone(),
-        task_list.clone(),
+        task_list.to_string(),
         WorkerOptions::default(),
         registry,
         service,
@@ -568,7 +569,7 @@ async fn test_split_merge_workflow_with_channels_and_spawn() {
 
     let start_request = create_start_workflow_request(
         &domain,
-        &task_list,
+        task_list,
         &workflow_id,
         "split_merge_workflow",
         &input,
@@ -690,7 +691,7 @@ async fn test_parallel_workflow_with_spawn() {
     // Create and start worker
     let worker = CadenceWorker::new(
         domain.clone(),
-        task_list.clone(),
+        task_list.to_string(),
         WorkerOptions::default(),
         registry,
         service,
@@ -708,7 +709,7 @@ async fn test_parallel_workflow_with_spawn() {
 
     let start_request = create_start_workflow_request(
         &domain,
-        &task_list,
+        task_list,
         &workflow_id,
         "parallel_workflow",
         &input,

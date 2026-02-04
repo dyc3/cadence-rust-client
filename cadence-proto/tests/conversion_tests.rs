@@ -153,7 +153,7 @@ fn test_workflow_execution_started_conversion() {
     assert_eq!(api_attributes.attempt, 3);
     assert_eq!(
         api_attributes.expiration_timestamp,
-        Some(999999999_000_000_000)
+        Some(999_999_999_000_000_000)
     );
     assert_eq!(api_attributes.cron_schedule, Some("0 * * * *".to_string()));
     assert_eq!(api_attributes.first_decision_task_backoff_seconds, 5);
@@ -213,5 +213,5 @@ fn test_reset_point_info_conversion() {
     assert_eq!(api_info.first_decision_completed_id, 50);
     assert_eq!(api_info.created_time_nano, 1600000000000000000);
     assert_eq!(api_info.expiring_time_nano, 0);
-    assert_eq!(api_info.resettable, true);
+    assert!(api_info.resettable);
 }

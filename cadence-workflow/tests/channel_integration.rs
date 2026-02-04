@@ -1,5 +1,4 @@
 use cadence_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
-use cadence_workflow::channel::channel;
 use cadence_workflow::context::WorkflowContext;
 use cadence_workflow::dispatcher::{WorkflowDispatcher, WorkflowTask};
 use std::sync::{Arc, Mutex};
@@ -18,7 +17,6 @@ async fn test_channel_with_dispatcher() {
     let (tx, rx) = ctx.new_channel::<i32>(2);
 
     // Spawn sender task
-    let ctx1 = ctx.clone();
     let send_task = WorkflowTask::new(0, "sender".to_string(), async move {
         tx.send(1).await.unwrap();
         tx.send(2).await.unwrap();
@@ -27,7 +25,6 @@ async fn test_channel_with_dispatcher() {
     });
 
     // Spawn receiver task
-    let ctx2 = ctx.clone();
     let recv_task = WorkflowTask::new(1, "receiver".to_string(), async move {
         let mut results = Vec::new();
         while let Some(val) = rx.recv().await {

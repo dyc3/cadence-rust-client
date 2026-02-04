@@ -26,16 +26,21 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+// Type alias to reduce complexity
+type LocalActivityWakers =
+    Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<Vec<u8>, WorkflowError>>>>>;
+
 struct ReplayCommandSink {
     engine: Arc<Mutex<ReplayEngine>>,
     default_task_list: String,
+    #[allow(dead_code)]
     local_activity_queue: LocalActivityQueue,
+    #[allow(dead_code)]
     workflow_info: WorkflowInfo,
     // Track pending local activity submissions
     pending_local_activity_submissions: Arc<Mutex<Vec<PendingLocalActivitySubmission>>>,
     // Map of activity_id to waker for unblocking workflow when local activity completes
-    local_activity_wakers:
-        Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<Vec<u8>, WorkflowError>>>>>,
+    local_activity_wakers: LocalActivityWakers,
 }
 
 // Represents a local activity that needs to be executed
@@ -836,7 +841,7 @@ impl WorkflowExecutor {
                     };
 
                     // Submit task to queue
-                    if let Err(_) = self.local_activity_queue.send(task) {
+                    if self.local_activity_queue.send(task).is_err() {
                         println!(
                             "[WorkflowExecutor] Failed to submit local activity task: {}",
                             submission.activity_id

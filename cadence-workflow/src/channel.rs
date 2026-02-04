@@ -99,6 +99,7 @@ impl<T> ChannelInner<T> {
     }
 
     /// Wake all blocked senders
+    #[allow(dead_code)]
     fn wake_senders(&mut self) {
         for waker in self.blocked_sends.drain(..) {
             waker.wake();
@@ -127,6 +128,7 @@ impl<T> ChannelInner<T> {
     }
 
     /// Check if we can receive (buffer not empty or unbuffered with waiting sender)
+    #[allow(dead_code)]
     fn can_recv(&self) -> bool {
         if !self.buffer.is_empty() {
             return true;
@@ -418,7 +420,7 @@ mod tests {
         assert_eq!(rx.recv().await, Some(2));
 
         drop(tx1);
-        assert_eq!(rx.recv().await.is_some(), false); // Should not close yet
+        assert!(rx.recv().await.is_none()); // Should not close yet
 
         drop(tx2);
         assert_eq!(rx.recv().await, None); // Now closed

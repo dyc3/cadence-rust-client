@@ -65,6 +65,7 @@ impl LocalActivityQueue {
     /// Send a local activity task to the queue
     ///
     /// Returns an error if the receiver has been dropped.
+    #[allow(clippy::result_large_err)]
     pub fn send(&self, task: LocalActivityTask) -> Result<(), LocalActivityTask> {
         self.sender.send(task).map_err(|e| e.0)
     }

@@ -837,6 +837,7 @@ impl DecisionStateMachine for RequestCancelExternalWorkflowDecisionStateMachine 
 /// Marker decision state machine for side effects and versioning
 pub struct MarkerDecisionStateMachine {
     base: DecisionStateMachineBase,
+    #[allow(dead_code)]
     marker_name: String,
     attributes: RecordMarkerDecisionAttributes,
 }
