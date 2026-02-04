@@ -36,6 +36,53 @@ impl ActivityContext {
         }
     }
 
+    /// Create a new activity context for a local activity execution
+    ///
+    /// Local activities are executed synchronously in the workflow worker process,
+    /// so they don't have task tokens or heartbeat capabilities.
+    pub fn new_for_local_activity(
+        workflow_info: cadence_core::WorkflowInfo,
+        activity_type: String,
+        activity_id: String,
+        attempt: i32,
+        scheduled_time: std::time::SystemTime,
+    ) -> Self {
+        use std::time::{Duration, UNIX_EPOCH};
+
+        // Convert SystemTime to chrono::DateTime
+        let scheduled_time_chrono = {
+            let duration_since_epoch = scheduled_time
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::from_secs(0));
+            let secs = duration_since_epoch.as_secs() as i64;
+            let nanos = duration_since_epoch.subsec_nanos();
+            chrono::DateTime::from_timestamp(secs, nanos).unwrap_or_else(chrono::Utc::now)
+        };
+
+        let activity_info = ActivityInfo {
+            task_token: Vec::new(), // Local activities don't have task tokens
+            workflow_execution: WorkflowExecution {
+                workflow_id: workflow_info.workflow_execution.workflow_id,
+                run_id: workflow_info.workflow_execution.run_id,
+            },
+            activity_id,
+            activity_type,
+            attempt,
+            scheduled_time: scheduled_time_chrono,
+            started_time: chrono::Utc::now(),
+            deadline: None, // Set by executor based on timeout
+            heartbeat_timeout: Duration::from_secs(0), // Local activities don't heartbeat
+            heartbeat_details: None,
+        };
+
+        Self {
+            deadline: None,
+            worker_stop_channel: None,
+            activity_info,
+            runtime: None, // Local activities don't have runtime
+        }
+    }
+
     /// Set the worker stop channel
     pub fn set_worker_stop_channel(&mut self, channel: tokio::sync::watch::Receiver<bool>) {
         self.worker_stop_channel = Some(channel);

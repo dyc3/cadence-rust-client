@@ -242,6 +242,11 @@ impl PollerManager {
         self.activity_pollers.push(poller);
     }
 
+    /// Add a join handle for a background task
+    pub fn add_join_handle(&mut self, handle: tokio::task::JoinHandle<()>) {
+        self.join_handles.push(handle);
+    }
+
     /// Start all pollers
     pub fn start(&mut self) {
         // Start decision pollers

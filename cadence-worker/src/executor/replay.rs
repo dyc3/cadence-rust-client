@@ -1,11 +1,13 @@
 use crate::registry::ActivityError;
 use cadence_core::CadenceError;
 use cadence_proto::shared::{EventAttributes, EventType, HistoryEvent};
+use cadence_workflow::local_activity::{decode_local_activity_marker, LocalActivityMarkerData};
 use cadence_workflow::side_effect_serialization::{
     decode_mutable_side_effect_details, decode_side_effect_details, decode_version_details,
 };
 use cadence_workflow::state_machine::{DecisionId, DecisionsHelper, StateMachineDecisionType};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub type EventResult = Result<Vec<u8>, ActivityError>;
 
@@ -27,11 +29,16 @@ pub struct ReplayEngine {
     pub workflow_task_time_nanos: Option<i64>,
     // Version markers cache for workflow versioning
     pub change_versions: HashMap<String, i32>,
+    // Local activity results cache for replay (shared with workflow context)
+    pub local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
 }
 
 impl ReplayEngine {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            local_activity_results: Arc::new(Mutex::new(HashMap::new())),
+            ..Default::default()
+        }
     }
 
     pub fn replay_history(&mut self, events: &[HistoryEvent]) -> Result<(), CadenceError> {
@@ -463,6 +470,23 @@ impl ReplayEngine {
                                     );
                                 }
                             }
+                            cadence_workflow::local_activity::LOCAL_ACTIVITY_MARKER_NAME => {
+                                // Decode local activity marker details
+                                if let Ok(marker_data) = decode_local_activity_marker(details) {
+                                    println!(
+                                        "[ReplayEngine] Processing local activity marker: id={}, type={}",
+                                        marker_data.activity_id, marker_data.activity_type
+                                    );
+                                    self.local_activity_results
+                                        .lock()
+                                        .unwrap()
+                                        .insert(marker_data.activity_id.clone(), marker_data);
+                                } else {
+                                    println!(
+                                        "[ReplayEngine] Failed to decode local activity marker details"
+                                    );
+                                }
+                            }
                             _ => {
                                 // Unknown marker type, ignore
                                 println!("[ReplayEngine] Unknown marker type: {}", marker_name);
@@ -533,6 +557,29 @@ impl ReplayEngine {
             }
         }
         None
+    }
+
+    /// Get local activity result from replay cache
+    ///
+    /// Local activities are recorded as markers and their results are cached
+    /// for deterministic replay.
+    pub fn get_local_activity_result(&self, activity_id: &str) -> Option<LocalActivityMarkerData> {
+        println!(
+            "[ReplayEngine] Looking up local activity result for: {}",
+            activity_id
+        );
+        let result = self
+            .local_activity_results
+            .lock()
+            .unwrap()
+            .get(activity_id)
+            .cloned();
+        println!(
+            "[ReplayEngine] Local activity result for {}: {:?}",
+            activity_id,
+            result.is_some()
+        );
+        result
     }
 
     pub fn get_request_cancel_external_workflow_result(

@@ -4,8 +4,8 @@
 //! scheduling activities, child workflows, handling signals, and more.
 
 use crate::commands::{
-    RecordMarkerCommand, ScheduleActivityCommand, StartChildWorkflowCommand, StartTimerCommand,
-    WorkflowCommand,
+    RecordMarkerCommand, ScheduleActivityCommand, ScheduleLocalActivityCommand,
+    StartChildWorkflowCommand, StartTimerCommand, WorkflowCommand,
 };
 use cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 use futures::future::poll_fn;
@@ -66,6 +66,9 @@ pub struct WorkflowContext {
     current_time_nanos: Arc<std::sync::atomic::AtomicI64>,
     // Version markers cache for workflow versioning
     change_versions: Arc<Mutex<HashMap<String, i32>>>,
+    // Local activity results cache for replay
+    local_activity_results:
+        Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
 }
 
 impl WorkflowContext {
@@ -85,6 +88,7 @@ impl WorkflowContext {
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions: Arc::new(Mutex::new(HashMap::new())),
+            local_activity_results: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -96,6 +100,9 @@ impl WorkflowContext {
         side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
         mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
         change_versions: Arc<Mutex<HashMap<String, i32>>>,
+        local_activity_results: Arc<
+            Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>,
+        >,
     ) -> Self {
         // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
@@ -112,6 +119,7 @@ impl WorkflowContext {
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions,
+            local_activity_results,
         }
     }
 
@@ -141,6 +149,24 @@ impl WorkflowContext {
     pub fn set_change_versions(&self, versions: HashMap<String, i32>) {
         let mut cache = self.change_versions.lock().unwrap();
         *cache = versions;
+    }
+
+    /// Set local activity results cache (used during replay)
+    pub fn set_local_activity_results(
+        &self,
+        results: HashMap<String, crate::local_activity::LocalActivityMarkerData>,
+    ) {
+        let mut cache = self.local_activity_results.lock().unwrap();
+        *cache = results;
+    }
+
+    /// Get local activity result from cache (used during replay)
+    fn get_local_activity_result(
+        &self,
+        activity_id: &str,
+    ) -> Option<crate::local_activity::LocalActivityMarkerData> {
+        let cache = self.local_activity_results.lock().unwrap();
+        cache.get(activity_id).cloned()
     }
 
     fn next_id(&self) -> String {
@@ -180,12 +206,34 @@ impl WorkflowContext {
     /// Execute a local activity (executed synchronously in workflow thread)
     pub async fn execute_local_activity(
         &self,
-        _activity_type: &str,
-        _args: Option<Vec<u8>>,
-        _options: LocalActivityOptions,
+        activity_type: &str,
+        args: Option<Vec<u8>>,
+        options: LocalActivityOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
-        // TODO: Implement local activity execution
-        unimplemented!("Local activity execution not yet implemented")
+        let activity_id = self.next_id();
+
+        // Check if replay mode - return cached result if available
+        if self.is_replay.load(Ordering::SeqCst) {
+            if let Some(marker_data) = self.get_local_activity_result(&activity_id) {
+                return crate::local_activity::marker_data_to_result(marker_data);
+            }
+            // If not in cache during replay, this is a non-determinism error
+            return Err(WorkflowError::Generic(format!(
+                "Local activity {} not found during replay - non-deterministic workflow code",
+                activity_id
+            )));
+        }
+
+        // Execution mode - schedule local activity
+        let command = WorkflowCommand::ScheduleLocalActivity(ScheduleLocalActivityCommand {
+            activity_id: activity_id.clone(),
+            activity_type: activity_type.to_string(),
+            args,
+            options,
+        });
+
+        // Submit and wait for result
+        self.command_sink.submit(command).await
     }
 
     /// Execute a child workflow

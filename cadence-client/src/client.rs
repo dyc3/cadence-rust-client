@@ -1434,7 +1434,7 @@ impl Client for WorkflowClient {
                         .last_access_time
                         .and_then(|nanos| {
                             chrono::DateTime::from_timestamp(
-                                ((nanos / 1_000_000_000)),
+                                nanos / 1_000_000_000,
                                 (nanos % 1_000_000_000) as u32,
                             )
                         })

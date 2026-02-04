@@ -63,7 +63,7 @@ pub enum WorkflowError {
 }
 
 /// Activity error
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ActivityError {
     #[error("Activity execution failed: {0}")]
     ExecutionFailed(String),

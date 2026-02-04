@@ -11,7 +11,7 @@ use cadence_proto::workflow_service::{
 };
 use cadence_worker::registry::{Activity, ActivityError, Registry, Workflow, WorkflowError};
 use cadence_worker::{CadenceWorker, Worker, WorkerOptions};
-use cadence_workflow::WorkflowContext;
+use cadence_workflow::{LocalActivityOptions, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -76,7 +76,9 @@ pub enum OrderStatus {
 // Activities
 // ============================================================================
 
-// 1. Calculate Order Total
+// 1. Calculate Order Total (Local Activity)
+// This is a fast, synchronous computation that doesn't need external I/O,
+// making it ideal for local activity execution
 #[derive(Clone)]
 pub struct CalculateOrderTotalActivity;
 
@@ -95,10 +97,7 @@ impl Activity for CalculateOrderTotalActivity {
             .iter()
             .map(|item| item.unit_price * item.quantity as f64)
             .sum();
-        Ok(
-            serde_json::to_vec(&total)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?,
-        )
+        serde_json::to_vec(&total).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
     }
 
     fn clone_box(&self) -> Box<dyn Activity> {
@@ -220,7 +219,22 @@ impl Workflow for OrderProcessingSagaWorkflow {
             let order: OrderInput = serde_json::from_slice(&input_data)
                 .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
 
-            // Step 1: Calculate Total
+            // Step 1: Calculate Total (using local activity for fast computation)
+            let local_options = LocalActivityOptions {
+                schedule_to_close_timeout: Duration::from_secs(5),
+                retry_policy: None,
+            };
+
+            let total_bytes = ctx
+                .execute_local_activity(
+                    "calculate_order_total",
+                    Some(input_data.clone()),
+                    local_options,
+                )
+                .await
+                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+
+            // Options for regular activities
             let options = ActivityOptions {
                 task_list: "".to_string(), // Use default task list
                 schedule_to_close_timeout: Duration::from_secs(60),
@@ -231,15 +245,6 @@ impl Workflow for OrderProcessingSagaWorkflow {
                 wait_for_cancellation: false,
                 local_activity: false,
             };
-
-            let total_bytes = ctx
-                .execute_activity(
-                    "calculate_order_total",
-                    Some(input_data.clone()),
-                    options.clone(),
-                )
-                .await
-                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
 
             let total: f64 = serde_json::from_slice(&total_bytes)
                 .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
@@ -292,7 +297,7 @@ impl Workflow for OrderProcessingSagaWorkflow {
                     .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
 
                     // Notify user of failure
-                    let notification = format!("Order failed: payment declined");
+                    let notification = "Order failed: payment declined".to_owned();
                     let notif_bytes = serde_json::to_vec(&notification)
                         .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
                     let _ = ctx
@@ -504,8 +509,31 @@ async fn get_workflow_history(
         .unwrap_or_else(|| cadence_proto::shared::History { events: vec![] }))
 }
 
-fn assert_activity_executed(history: &cadence_proto::shared::History, activity_type: &str) -> bool {
+fn assert_local_activity_executed(
+    history: &cadence_proto::shared::History,
+    activity_type: &str,
+) -> bool {
     history.events.iter().any(|e| {
+        if e.event_type == EventType::MarkerRecorded {
+            if let Some(EventAttributes::MarkerRecordedEventAttributes(attr)) = &e.attributes {
+                if attr.marker_name == "LocalActivity" {
+                    // Check if details contain the activity type
+                    if let Some(details) = &attr.details {
+                        // Try to parse the marker data to check activity type
+                        if let Ok(marker_str) = std::str::from_utf8(details) {
+                            return marker_str.contains(activity_type);
+                        }
+                    }
+                }
+            }
+        }
+        false
+    })
+}
+
+fn assert_activity_executed(history: &cadence_proto::shared::History, activity_type: &str) -> bool {
+    // Check for regular activity
+    let regular_activity = history.events.iter().any(|e| {
         if e.event_type == EventType::ActivityTaskScheduled {
             if let Some(EventAttributes::ActivityTaskScheduledEventAttributes(attr)) = &e.attributes
             {
@@ -515,7 +543,10 @@ fn assert_activity_executed(history: &cadence_proto::shared::History, activity_t
             }
         }
         false
-    })
+    });
+
+    // If not found as regular activity, check for local activity marker
+    regular_activity || assert_local_activity_executed(history, activity_type)
 }
 
 fn assert_activity_failed(history: &cadence_proto::shared::History, activity_type: &str) -> bool {

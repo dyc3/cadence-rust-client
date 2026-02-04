@@ -26,3 +26,4 @@ dashmap = { workspace = true }
 [dev-dependencies]
 mockall = { workspace = true }
 tokio-test = { workspace = true }
+serde_json = { workspace = true }

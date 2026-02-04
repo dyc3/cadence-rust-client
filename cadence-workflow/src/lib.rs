@@ -6,11 +6,13 @@
 pub mod commands;
 pub mod context;
 pub mod future;
+pub mod local_activity;
 pub mod side_effect_serialization;
 pub mod state_machine;
 
 pub use commands::*;
 pub use context::*;
 pub use future::*;
+pub use local_activity::*;
 pub use side_effect_serialization::*;
 pub use state_machine::*;

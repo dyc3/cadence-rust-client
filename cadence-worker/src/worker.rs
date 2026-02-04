@@ -4,9 +4,11 @@
 //! and executing workflow and activity implementations.
 
 use crate::executor::cache::WorkflowCache;
+use crate::executor::local_activity::LocalActivityExecutor;
 use crate::executor::workflow::WorkflowExecutor;
 use crate::handlers::activity::ActivityTaskHandler;
 use crate::handlers::decision::DecisionTaskHandler;
+use crate::local_activity_queue::LocalActivityQueue;
 use crate::pollers::{ActivityTaskPoller, DecisionTaskPoller, PollerManager};
 use crate::registry::Registry;
 use cadence_core::CadenceError;
@@ -229,12 +231,18 @@ impl Worker for CadenceWorker {
         // Create cache
         let cache = Arc::new(WorkflowCache::new(self.options.max_cached_workflows));
 
+        // Create local activity queue and executor
+        let local_activity_queue = LocalActivityQueue::new();
+        let local_activity_executor =
+            LocalActivityExecutor::new(self.registry.clone(), local_activity_queue.clone());
+
         // Create executor
         let executor = Arc::new(WorkflowExecutor::new(
             self.registry.clone(),
             cache,
             self.options.clone(),
             self.task_list.clone(),
+            local_activity_queue,
         ));
 
         // Create decision handler
@@ -283,6 +291,12 @@ impl Worker for CadenceWorker {
             );
             poller_manager.add_activity_poller(Arc::new(poller));
         }
+
+        // Spawn local activity executor
+        let executor_handle = tokio::spawn(async move {
+            local_activity_executor.run().await;
+        });
+        poller_manager.add_join_handle(executor_handle);
 
         // Start pollers
         poller_manager.start();

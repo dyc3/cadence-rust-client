@@ -119,6 +119,7 @@ async fn test_signal_handling() {
         cache,
         WorkerOptions::default(),
         "test-task-list".to_string(),
+        cadence_worker::local_activity_queue::LocalActivityQueue::new(),
     );
 
     // 4. Create History
@@ -208,6 +209,7 @@ async fn test_query_handling() {
         cache,
         WorkerOptions::default(),
         "test-task-list".to_string(),
+        cadence_worker::local_activity_queue::LocalActivityQueue::new(),
     );
 
     // 4. Create History
