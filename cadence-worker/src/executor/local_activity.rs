@@ -144,7 +144,7 @@ impl LocalActivityExecutor {
             })?;
 
         // Create activity context for local activity
-        let mut ctx = ActivityContext::new_for_local_activity(
+        let ctx = ActivityContext::new_for_local_activity(
             task.workflow_info.clone(),
             task.activity_type.clone(),
             task.activity_id.clone(),
@@ -164,13 +164,14 @@ impl LocalActivityExecutor {
             .duration_since(now)
             .unwrap_or(Duration::from_secs(0));
 
-        // Clone args before moving into spawn_blocking
+        // Clone args before moving into spawn
         let args = task.args.clone();
+        let ctx_ref = &ctx;
+        let future = activity.execute(ctx_ref, args);
 
         // Execute with timeout
         match tokio::time::timeout(remaining, async move {
-            // Execute activity in blocking task (activity.execute is synchronous)
-            tokio::task::spawn_blocking(move || activity.execute(&mut ctx, args))
+            tokio::spawn(future)
                 .await
                 .map_err(|e| ActivityError::Panic(format!("Activity panicked: {}", e)))?
         })
@@ -258,6 +259,8 @@ mod tests {
     use crate::registry::{Activity, WorkflowRegistry};
     use cadence_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
     use cadence_workflow::LocalActivityOptions;
+    use std::future::Future;
+    use std::pin::Pin;
     use std::time::{Duration, SystemTime};
     use tokio::sync::oneshot;
 
@@ -267,10 +270,10 @@ mod tests {
     impl Activity for SuccessActivity {
         fn execute(
             &self,
-            _ctx: &mut ActivityContext,
+            _ctx: &ActivityContext,
             input: Option<Vec<u8>>,
-        ) -> Result<Vec<u8>, ActivityError> {
-            Ok(input.unwrap_or_else(|| b"success".to_vec()))
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+            Box::pin(async move { Ok(input.unwrap_or_else(|| b"success".to_vec())) })
         }
     }
 
@@ -280,10 +283,10 @@ mod tests {
     impl Activity for FailActivity {
         fn execute(
             &self,
-            _ctx: &mut ActivityContext,
+            _ctx: &ActivityContext,
             _input: Option<Vec<u8>>,
-        ) -> Result<Vec<u8>, ActivityError> {
-            Err(ActivityError::ExecutionFailed("test error".to_string()))
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+            Box::pin(async move { Err(ActivityError::ExecutionFailed("test error".to_string())) })
         }
     }
 
@@ -451,22 +454,24 @@ mod tests {
     impl Activity for RetryableActivity {
         fn execute(
             &self,
-            ctx: &mut ActivityContext,
+            ctx: &ActivityContext,
             _input: Option<Vec<u8>>,
-        ) -> Result<Vec<u8>, ActivityError> {
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
             let attempt = ctx.get_info().attempt;
-            let prev_attempts = self
-                .attempts
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let attempts = self.attempts.clone();
 
-            if prev_attempts < 2 {
-                Err(ActivityError::Retryable(format!(
-                    "Temporary failure on attempt {}",
-                    attempt
-                )))
-            } else {
-                Ok(b"success after retries".to_vec())
-            }
+            Box::pin(async move {
+                let prev_attempts = attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                if prev_attempts < 2 {
+                    Err(ActivityError::Retryable(format!(
+                        "Temporary failure on attempt {}",
+                        attempt
+                    )))
+                } else {
+                    Ok(b"success after retries".to_vec())
+                }
+            })
         }
     }
 

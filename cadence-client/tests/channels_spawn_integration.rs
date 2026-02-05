@@ -93,27 +93,29 @@ struct ProcessJobActivity;
 impl Activity for ProcessJobActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_bytes =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let job: Job = serde_json::from_slice(&input_bytes).map_err(|e| {
-            ActivityError::ExecutionFailed(format!("Failed to deserialize job: {}", e))
-        })?;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_bytes =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let job: Job = serde_json::from_slice(&input_bytes).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to deserialize job: {}", e))
+            })?;
 
-        tracing::info!("Processing job {}: {}", job.id, job.data);
+            tracing::info!("Processing job {}: {}", job.id, job.data);
 
-        // Simulate some processing - but we can't use tokio::sleep in a sync function
-        // In a real implementation, this would be blocking work
+            // Simulate some processing - now we can use async/await!
+            // In a real implementation, this could be an async API call
 
-        let result = JobResult {
-            job_id: job.id,
-            result: format!("Processed: {}", job.data),
-        };
+            let result = JobResult {
+                job_id: job.id,
+                result: format!("Processed: {}", job.data),
+            };
 
-        serde_json::to_vec(&result).map_err(|e| {
-            ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
+            serde_json::to_vec(&result).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
+            })
         })
     }
 }
@@ -124,21 +126,23 @@ struct FastProcessActivity;
 impl Activity for FastProcessActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_bytes =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let value: u32 = serde_json::from_slice(&input_bytes).map_err(|e| {
-            ActivityError::ExecutionFailed(format!("Failed to deserialize value: {}", e))
-        })?;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_bytes =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let value: u32 = serde_json::from_slice(&input_bytes).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to deserialize value: {}", e))
+            })?;
 
-        tracing::info!("Fast processing value: {}", value);
+            tracing::info!("Fast processing value: {}", value);
 
-        let result = value * 2;
+            let result = value * 2;
 
-        serde_json::to_vec(&result).map_err(|e| {
-            ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
+            serde_json::to_vec(&result).map_err(|e| {
+                ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
+            })
         })
     }
 }

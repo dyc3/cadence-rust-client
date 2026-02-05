@@ -12,6 +12,8 @@ use cadence_worker::local_activity_queue::{LocalActivityQueue, LocalActivityTask
 use cadence_worker::registry::{Activity, Registry};
 use cadence_worker::{ActivityError, WorkflowRegistry};
 use cadence_workflow::LocalActivityOptions;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
@@ -22,10 +24,10 @@ struct EchoActivity;
 impl Activity for EchoActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        Ok(input.unwrap_or_default())
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move { Ok(input.unwrap_or_default()) })
     }
 }
 
@@ -210,11 +212,14 @@ async fn test_local_activity_execution_count() {
     impl Activity for CountingActivity {
         fn execute(
             &self,
-            _ctx: &mut ActivityContext,
+            _ctx: &ActivityContext,
             input: Option<Vec<u8>>,
-        ) -> Result<Vec<u8>, ActivityError> {
-            self.counter.fetch_add(1, Ordering::SeqCst);
-            Ok(input.unwrap_or_default())
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+            let counter = self.counter.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Ok(input.unwrap_or_default())
+            })
         }
     }
 

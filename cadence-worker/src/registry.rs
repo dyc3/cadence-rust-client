@@ -26,9 +26,9 @@ dyn_clone::clone_trait_object!(Workflow);
 pub trait Activity: Send + Sync + DynClone {
     fn execute(
         &self,
-        ctx: &mut ActivityContext,
+        ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError>;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>>;
 }
 
 dyn_clone::clone_trait_object!(Activity);

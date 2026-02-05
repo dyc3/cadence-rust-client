@@ -72,22 +72,24 @@ struct SendEmailActivity;
 impl Activity for SendEmailActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_data =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let email_request: EmailRequest = serde_json::from_slice(&input_data)
-            .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_data =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let email_request: EmailRequest = serde_json::from_slice(&input_data)
+                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
 
-        // Stubbed: just log/print the email
-        println!(
-            "[SEND_EMAIL] To: {} | Subject: {} | Body: {}",
-            email_request.to, email_request.subject, email_request.body
-        );
+            // Stubbed: just log/print the email
+            println!(
+                "[SEND_EMAIL] To: {} | Subject: {} | Body: {}",
+                email_request.to, email_request.subject, email_request.body
+            );
 
-        // Return success
-        Ok(vec![])
+            // Return success
+            Ok(vec![])
+        })
     }
 }
 

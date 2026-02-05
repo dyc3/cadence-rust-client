@@ -85,19 +85,21 @@ pub struct CalculateOrderTotalActivity;
 impl Activity for CalculateOrderTotalActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_data =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let order: OrderInput = serde_json::from_slice(&input_data)
-            .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
-        let total: f64 = order
-            .items
-            .iter()
-            .map(|item| item.unit_price * item.quantity as f64)
-            .sum();
-        serde_json::to_vec(&total).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_data =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let order: OrderInput = serde_json::from_slice(&input_data)
+                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+            let total: f64 = order
+                .items
+                .iter()
+                .map(|item| item.unit_price * item.quantity as f64)
+                .sum();
+            serde_json::to_vec(&total).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+        })
     }
 }
 
@@ -108,11 +110,13 @@ pub struct ReserveInventoryActivity;
 impl Activity for ReserveInventoryActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         _input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        // Always succeed for this test
-        Ok(vec![])
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            // Always succeed for this test
+            Ok(vec![])
+        })
     }
 }
 
@@ -123,26 +127,28 @@ pub struct ProcessPaymentActivity;
 impl Activity for ProcessPaymentActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_data =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let (order, total): (OrderInput, f64) = serde_json::from_slice(&input_data)
-            .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_data =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let (order, total): (OrderInput, f64) = serde_json::from_slice(&input_data)
+                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
 
-        // Fail if any item is expensive (simple logic for testing failure)
-        for item in order.items {
-            if item.unit_price > 10000.0 {
-                return Err(ActivityError::ExecutionFailed(
-                    "Payment declined: limit exceeded".to_string(),
-                ));
+            // Fail if any item is expensive (simple logic for testing failure)
+            for item in order.items {
+                if item.unit_price > 10000.0 {
+                    return Err(ActivityError::ExecutionFailed(
+                        "Payment declined: limit exceeded".to_string(),
+                    ));
+                }
             }
-        }
 
-        // Mock payment processing
-        println!("Processed payment of ${} for user {}", total, order.user_id);
-        Ok(vec![])
+            // Mock payment processing
+            println!("Processed payment of ${} for user {}", total, order.user_id);
+            Ok(vec![])
+        })
     }
 }
 
@@ -153,11 +159,13 @@ pub struct ReleaseInventoryActivity;
 impl Activity for ReleaseInventoryActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         _input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        println!("Compensating: Releasing inventory");
-        Ok(vec![])
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            println!("Compensating: Releasing inventory");
+            Ok(vec![])
+        })
     }
 }
 
@@ -168,15 +176,17 @@ pub struct SendNotificationActivity;
 impl Activity for SendNotificationActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_data =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let message: String = serde_json::from_slice(&input_data)
-            .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
-        println!("Sending notification: {}", message);
-        Ok(vec![])
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_data =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let message: String = serde_json::from_slice(&input_data)
+                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+            println!("Sending notification: {}", message);
+            Ok(vec![])
+        })
     }
 }
 

@@ -99,27 +99,29 @@ struct InitiatePaymentActivity;
 impl Activity for InitiatePaymentActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_data =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let payment_input: PaymentInput = serde_json::from_slice(&input_data)
-            .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_data =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let payment_input: PaymentInput = serde_json::from_slice(&input_data)
+                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
 
-        // Stubbed: generate a mock payment intent ID
-        let payment_intent = PaymentIntent {
-            payment_intent_id: format!("pi_{}", Uuid::new_v4().to_string().replace("-", "")),
-            status: "requires_confirmation".to_string(),
-        };
+            // Stubbed: generate a mock payment intent ID
+            let payment_intent = PaymentIntent {
+                payment_intent_id: format!("pi_{}", Uuid::new_v4().to_string().replace("-", "")),
+                status: "requires_confirmation".to_string(),
+            };
 
-        println!(
-            "[INITIATE_PAYMENT] Order: {} | Amount: ${:.2} | Payment Intent: {}",
-            payment_input.order_id, payment_input.amount, payment_intent.payment_intent_id
-        );
+            println!(
+                "[INITIATE_PAYMENT] Order: {} | Amount: ${:.2} | Payment Intent: {}",
+                payment_input.order_id, payment_input.amount, payment_intent.payment_intent_id
+            );
 
-        serde_json::to_vec(&payment_intent)
-            .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&payment_intent)
+                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+        })
     }
 }
 
@@ -129,20 +131,23 @@ struct SendReceiptEmailActivity;
 impl Activity for SendReceiptEmailActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_data =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let (order_id, amount, email): (String, f64, String) = serde_json::from_slice(&input_data)
-            .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_data =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let (order_id, amount, email): (String, f64, String) =
+                serde_json::from_slice(&input_data)
+                    .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
 
-        println!(
-            "[SEND_RECEIPT] To: {} | Order: {} | Amount: ${:.2}",
-            email, order_id, amount
-        );
+            println!(
+                "[SEND_RECEIPT] To: {} | Order: {} | Amount: ${:.2}",
+                email, order_id, amount
+            );
 
-        Ok(vec![])
+            Ok(vec![])
+        })
     }
 }
 
@@ -152,21 +157,23 @@ struct SendFailureNotificationActivity;
 impl Activity for SendFailureNotificationActivity {
     fn execute(
         &self,
-        _ctx: &mut ActivityContext,
+        _ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, ActivityError> {
-        let input_data =
-            input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-        let (order_id, reason, email): (String, String, String) =
-            serde_json::from_slice(&input_data)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
+        Box::pin(async move {
+            let input_data =
+                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let (order_id, reason, email): (String, String, String) =
+                serde_json::from_slice(&input_data)
+                    .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
 
-        println!(
-            "[SEND_FAILURE_NOTIFICATION] To: {} | Order: {} | Reason: {}",
-            email, order_id, reason
-        );
+            println!(
+                "[SEND_FAILURE_NOTIFICATION] To: {} | Order: {} | Reason: {}",
+                email, order_id, reason
+            );
 
-        Ok(vec![])
+            Ok(vec![])
+        })
     }
 }
 

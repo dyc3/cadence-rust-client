@@ -147,7 +147,7 @@ impl ActivityTaskHandler {
         };
 
         // Create activity context
-        let mut context = cadence_activity::ActivityContext::new(activity_info, Some(runtime));
+        let context = cadence_activity::ActivityContext::new(activity_info, Some(runtime));
 
         // TODO: Pass worker stop channel to context if available
 
@@ -174,9 +174,11 @@ impl ActivityTaskHandler {
             "[ActivityTaskHandler] Executing activity: {}",
             activity_type
         );
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            activity.execute(&mut context, input)
-        }));
+        let context_ref = &context;
+        let future = activity.execute(context_ref, input);
+
+        // Execute with panic recovery using tokio::spawn
+        let result = tokio::spawn(future).await;
 
         // Stop heartbeat
         let _ = cancel_heartbeat_tx.send(());
@@ -196,13 +198,11 @@ impl ActivityTaskHandler {
                 );
                 Err(e)
             }
-            Err(panic_info) => {
-                let panic_msg = if let Some(s) = panic_info.downcast_ref::<String>() {
-                    s.clone()
-                } else if let Some(s) = panic_info.downcast_ref::<&str>() {
-                    s.to_string()
+            Err(join_error) => {
+                let panic_msg = if join_error.is_panic() {
+                    format!("Activity panicked: {}", join_error)
                 } else {
-                    "Unknown panic".to_string()
+                    format!("Activity task cancelled: {}", join_error)
                 };
                 println!(
                     "[ActivityTaskHandler] Activity PANICKED: {} - {}",
