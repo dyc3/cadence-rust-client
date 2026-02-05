@@ -1,3 +1,6 @@
+_default:
+    just --list
+
 test-grpc-integration:
     cargo test --test grpc_integration -- --ignored --test-threads=1
 
