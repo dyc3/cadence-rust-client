@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use cadence_core::CadenceError;
+use cadence_core::CadenceResult;
 use cadence_proto::shared::{EventAttributes, EventType, HistoryEvent};
 use cadence_workflow::local_activity::{decode_local_activity_marker, LocalActivityMarkerData};
 use cadence_workflow::side_effect_serialization::{
@@ -43,7 +43,7 @@ impl ReplayEngine {
         }
     }
 
-    pub fn replay_history(&mut self, events: &[HistoryEvent]) -> Result<(), CadenceError> {
+    pub fn replay_history(&mut self, events: &[HistoryEvent]) -> CadenceResult<()> {
         for event in events {
             // Only process events we haven't seen before
             if event.event_id > self.last_processed_event_id {
@@ -54,7 +54,7 @@ impl ReplayEngine {
         Ok(())
     }
 
-    fn process_event(&mut self, event: &HistoryEvent) -> Result<(), CadenceError> {
+    fn process_event(&mut self, event: &HistoryEvent) -> CadenceResult<()> {
         println!(
             "[ReplayEngine] Processing event: ID={}, Type={:?}",
             event.event_id, event.event_type

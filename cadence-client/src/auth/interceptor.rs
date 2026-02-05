@@ -51,11 +51,12 @@ impl tonic::service::Interceptor for AuthInterceptor {
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use tonic::service::Interceptor;
 
+    use crate::auth::jwt::GenerateTokenError;
+
     use super::*;
-    use async_trait::async_trait;
-    use cadence_core::CadenceResult;
 
     use super::super::provider::{AuthProvider, AuthToken};
 
@@ -65,7 +66,7 @@ mod tests {
 
     #[async_trait]
     impl AuthProvider for MockAuthProvider {
-        async fn get_token(&self) -> CadenceResult<AuthToken> {
+        async fn get_token(&self) -> Result<AuthToken, GenerateTokenError> {
             Ok(AuthToken {
                 token: self.token.clone(),
                 expires_at: i64::MAX,

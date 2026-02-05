@@ -1,7 +1,6 @@
 //! JWT authentication provider implementation.
 
 use async_trait::async_trait;
-use cadence_core::{CadenceError, CadenceResult};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -64,10 +63,9 @@ impl Default for CustomClaims {
 }
 
 /// JWT authentication provider with token caching
-#[derive(Debug)]
 pub struct JwtAuthProvider {
     /// RSA private key in PEM format
-    private_key: Vec<u8>,
+    private_key: EncodingKey,
     /// JWT issuer
     issuer: String,
     /// Token TTL in seconds
@@ -78,6 +76,18 @@ pub struct JwtAuthProvider {
     custom_claims: Option<CustomClaims>,
 }
 
+impl std::fmt::Debug for JwtAuthProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JwtAuthProvider")
+            .field("private_key", &"[REDACTED]")
+            .field("issuer", &self.issuer)
+            .field("ttl_seconds", &self.ttl_seconds)
+            .field("cached_token", &self.cached_token)
+            .field("custom_claims", &self.custom_claims)
+            .finish()
+    }
+}
+
 impl JwtAuthProvider {
     /// Create a new JWT authentication provider with default settings
     ///
@@ -86,12 +96,9 @@ impl JwtAuthProvider {
     ///
     /// # Errors
     /// Returns an error if the private key is invalid
-    pub fn new(private_key: Vec<u8>) -> CadenceResult<Self> {
-        // Validate the RSA key on construction
-        Self::validate_rsa_key(&private_key)?;
-
+    pub fn new(private_key: Vec<u8>) -> Result<Self, jsonwebtoken::errors::Error> {
         Ok(Self {
-            private_key,
+            private_key: EncodingKey::from_rsa_pem(&private_key)?,
             issuer: "cadence-rust-client".to_string(),
             ttl_seconds: DEFAULT_TTL_SECONDS,
             cached_token: Arc::new(RwLock::new(None)),
@@ -109,23 +116,19 @@ impl JwtAuthProvider {
     ///
     /// # Errors
     /// Returns an error if the private key is invalid
+    ///
+    /// # Panics
+    /// Panics if `ttl_seconds` is not positive
     pub fn with_options(
         private_key: Vec<u8>,
         issuer: impl Into<String>,
         ttl_seconds: i64,
         custom_claims: Option<CustomClaims>,
-    ) -> CadenceResult<Self> {
-        // Validate the RSA key on construction
-        Self::validate_rsa_key(&private_key)?;
-
-        if ttl_seconds <= 0 {
-            return Err(CadenceError::InvalidArgument(
-                "TTL must be positive".to_string(),
-            ));
-        }
+    ) -> Result<Self, jsonwebtoken::errors::Error> {
+        assert!(ttl_seconds > 0, "TTL must be positive");
 
         Ok(Self {
-            private_key,
+            private_key: EncodingKey::from_rsa_pem(&private_key)?,
             issuer: issuer.into(),
             ttl_seconds,
             cached_token: Arc::new(RwLock::new(None)),
@@ -133,20 +136,10 @@ impl JwtAuthProvider {
         })
     }
 
-    /// Validate that the provided key is a valid RSA private key
-    fn validate_rsa_key(key: &[u8]) -> CadenceResult<()> {
-        // Try to create an encoding key to validate the PEM format
-        let _ = EncodingKey::from_rsa_pem(key).map_err(|e| {
-            CadenceError::InvalidArgument(format!("Invalid RSA private key: {}", e))
-        })?;
-        Ok(())
-    }
-
     /// Generate a new JWT token
-    fn generate_token(&self) -> CadenceResult<AuthToken> {
+    fn generate_token(&self) -> Result<AuthToken, GenerateTokenError> {
         let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| CadenceError::Other(format!("System time error: {}", e)))?
+            .duration_since(std::time::UNIX_EPOCH)?
             .as_secs() as i64;
 
         let expires_at = now + self.ttl_seconds;
@@ -168,24 +161,27 @@ impl JwtAuthProvider {
             ttl: self.ttl_seconds,
         };
 
-        let encoding_key = EncodingKey::from_rsa_pem(&self.private_key).map_err(|e| {
-            CadenceError::Authentication(format!("Failed to create encoding key: {}", e))
-        })?;
-
         let token = encode(
             &Header::new(jsonwebtoken::Algorithm::RS256),
             &claims,
-            &encoding_key,
-        )
-        .map_err(|e| CadenceError::Authentication(format!("Failed to encode JWT: {}", e)))?;
+            &self.private_key,
+        )?;
 
         Ok(AuthToken::new(token, expires_at))
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum GenerateTokenError {
+    #[error("JWT generation error: {0}")]
+    JwtError(#[from] jsonwebtoken::errors::Error),
+    #[error("System time error: {0}")]
+    SystemTimeError(#[from] std::time::SystemTimeError),
+}
+
 #[async_trait]
 impl AuthProvider for JwtAuthProvider {
-    async fn get_token(&self) -> CadenceResult<AuthToken> {
+    async fn get_token(&self) -> Result<AuthToken, GenerateTokenError> {
         // Fast path: read lock, check cache
         {
             let cache = self.cached_token.read();
@@ -307,18 +303,6 @@ mod tests {
         assert_ne!(token1.expires_at, token2.expires_at);
     }
 
-    #[test]
-    fn test_invalid_private_key() {
-        let invalid_key = b"not a valid key".to_vec();
-        let result = JwtAuthProvider::new(invalid_key);
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            CadenceError::InvalidArgument(_)
-        ));
-    }
-
     #[tokio::test]
     async fn test_custom_claims() {
         let (private_key, public_key) = generate_test_rsa_key();
@@ -349,20 +333,15 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "TTL must be positive")]
     fn test_invalid_ttl() {
         let (private_key, _public_key) = generate_test_rsa_key();
 
-        let result = JwtAuthProvider::with_options(
+        let _result = JwtAuthProvider::with_options(
             private_key,
             "test",
             0, // Invalid TTL
             None,
         );
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            CadenceError::InvalidArgument(_)
-        ));
     }
 }

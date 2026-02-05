@@ -1,8 +1,9 @@
 //! Authentication provider trait and types.
 
 use async_trait::async_trait;
-use cadence_core::CadenceResult;
 use std::sync::Arc;
+
+use crate::auth::jwt::GenerateTokenError;
 
 /// Authentication token with expiration information
 #[derive(Debug, Clone)]
@@ -39,7 +40,7 @@ pub trait AuthProvider: Send + Sync {
     ///
     /// Returns a token that can be used for authentication. The provider
     /// should handle caching and refresh internally.
-    async fn get_token(&self) -> CadenceResult<AuthToken>;
+    async fn get_token(&self) -> Result<AuthToken, GenerateTokenError>;
 }
 
 /// Type alias for boxed auth provider
