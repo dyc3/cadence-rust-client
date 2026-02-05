@@ -2,9 +2,9 @@ use crate::executor::cache::{CachedWorkflow, WorkflowCache, WorkflowExecutionKey
 use crate::executor::replay::ReplayEngine;
 use crate::local_activity_queue::LocalActivityQueue;
 use crate::registry::Registry;
-use crate::replay_verifier::{match_replay_with_history, ReplayContext};
+use crate::replay_verifier::match_replay_with_history;
 use crate::WorkerOptions;
-use cadence_core::{CadenceError, WorkflowInfo};
+use cadence_core::{CadenceError, ReplayContext, WorkflowInfo};
 use cadence_proto::shared::{
     ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType,
     HistoryEvent, RequestCancelExternalWorkflowExecutionDecisionAttributes,

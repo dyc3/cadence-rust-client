@@ -3,7 +3,7 @@
 //! This module provides functionality to verify that replay decisions match
 //! the history events, detecting non-deterministic workflow execution.
 
-use cadence_core::{NonDeterminismReason, NonDeterministicError};
+use cadence_core::{NonDeterminismReason, NonDeterministicError, ReplayContext};
 use cadence_proto::shared::{
     Decision, DecisionAttributes, DecisionType, EventAttributes, EventType, HistoryEvent,
 };
@@ -11,34 +11,6 @@ use cadence_proto::shared::{
 /// Marker names that should be skipped during deterministic check
 const VERSION_MARKER_NAME: &str = "Version";
 const MUTABLE_SIDE_EFFECT_MARKER_NAME: &str = "MutableSideEffect";
-
-/// Context information for the workflow being verified
-#[derive(Debug, Clone)]
-pub struct ReplayContext {
-    pub workflow_type: String,
-    pub workflow_id: String,
-    pub run_id: String,
-    pub task_list: String,
-    pub domain_name: String,
-}
-
-impl ReplayContext {
-    pub fn new(
-        workflow_type: impl Into<String>,
-        workflow_id: impl Into<String>,
-        run_id: impl Into<String>,
-        task_list: impl Into<String>,
-        domain_name: impl Into<String>,
-    ) -> Self {
-        Self {
-            workflow_type: workflow_type.into(),
-            workflow_id: workflow_id.into(),
-            run_id: run_id.into(),
-            task_list: task_list.into(),
-            domain_name: domain_name.into(),
-        }
-    }
-}
 
 /// Match replay decisions with history events to verify determinism.
 ///
@@ -332,11 +304,7 @@ fn create_error(
 
     NonDeterministicError {
         reason,
-        workflow_type: context.workflow_type.clone(),
-        workflow_id: context.workflow_id.clone(),
-        run_id: context.run_id.clone(),
-        task_list: context.task_list.clone(),
-        domain_name: context.domain_name.clone(),
+        context: context.clone(),
         history_event_text,
         decision_text,
     }

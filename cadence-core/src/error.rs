@@ -6,6 +6,8 @@
 use std::fmt;
 use thiserror::Error;
 
+use crate::ReplayContext;
+
 /// Custom error type for workflow-defined errors
 #[derive(Debug, Clone, Error)]
 #[error("CustomError: reason={reason}, details={details:?}")]
@@ -152,17 +154,12 @@ pub enum NonDeterminismReason {
 /// Error type for non-deterministic workflow execution
 ///
 /// TODO: explain what non-determinism is in this context
-/// TODO: Should this just have `ReplayContext` instead?
 /// FIXME: why so many strings? could mean we are losing type info, hurting debuggability or error recovery
 #[derive(Debug, Clone, Error)]
-#[error("NonDeterministicError: reason={reason}, workflow_type={workflow_type}, workflow_id={workflow_id}")]
+#[error("NonDeterministicError: reason={reason}, context={context:?}")]
 pub struct NonDeterministicError {
     pub reason: NonDeterminismReason,
-    pub workflow_type: String,
-    pub workflow_id: String,
-    pub run_id: String,
-    pub task_list: String,
-    pub domain_name: String,
+    pub context: ReplayContext,
     pub history_event_text: Option<String>,
     pub decision_text: Option<String>,
 }
@@ -428,11 +425,13 @@ pub mod factory {
     ) -> NonDeterministicError {
         NonDeterministicError {
             reason,
-            workflow_type: workflow_type.into(),
-            workflow_id: workflow_id.into(),
-            run_id: run_id.into(),
-            task_list: task_list.into(),
-            domain_name: domain_name.into(),
+            context: ReplayContext {
+                workflow_type: workflow_type.into(),
+                workflow_id: workflow_id.into(),
+                run_id: run_id.into(),
+                task_list: task_list.into(),
+                domain_name: domain_name.into(),
+            },
             history_event_text,
             decision_text,
         }

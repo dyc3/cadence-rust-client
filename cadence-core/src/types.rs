@@ -377,6 +377,38 @@ pub struct WorkerIdentity {
     pub version: String,
 }
 
+/// Context information for workflow replay verification
+///
+/// This type is used to provide context about the workflow being replayed,
+/// including identifiers and metadata needed for error reporting during
+/// non-determinism detection.
+#[derive(Debug, Clone)]
+pub struct ReplayContext {
+    pub workflow_type: String,
+    pub workflow_id: String,
+    pub run_id: String,
+    pub task_list: String,
+    pub domain_name: String,
+}
+
+impl ReplayContext {
+    pub fn new(
+        workflow_type: impl Into<String>,
+        workflow_id: impl Into<String>,
+        run_id: impl Into<String>,
+        task_list: impl Into<String>,
+        domain_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            workflow_type: workflow_type.into(),
+            workflow_id: workflow_id.into(),
+            run_id: run_id.into(),
+            task_list: task_list.into(),
+            domain_name: domain_name.into(),
+        }
+    }
+}
+
 impl Default for WorkerIdentity {
     fn default() -> Self {
         Self {
