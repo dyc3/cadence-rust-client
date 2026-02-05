@@ -16,7 +16,6 @@ pub(super) fn seconds_to_duration(seconds: Option<i32>) -> Option<prost_types::D
 }
 
 /// Convert prost Duration to seconds (i32)
-#[allow(dead_code)]
 pub(super) fn duration_to_seconds(duration: Option<prost_types::Duration>) -> Option<i32> {
     duration.map(|d| d.seconds as i32)
 }
@@ -44,7 +43,6 @@ pub(super) fn bytes_to_payload(data: Option<Vec<u8>>) -> Option<pb::Payload> {
 }
 
 /// Convert protobuf Payload to Vec<u8>
-#[allow(dead_code)]
 pub(super) fn payload_to_bytes(payload: Option<pb::Payload>) -> Option<Vec<u8>> {
     payload.map(|p| p.data)
 }

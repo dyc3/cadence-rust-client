@@ -73,7 +73,7 @@ pub struct CircuitBreaker {
     state: CircuitState,
     failure_count: u32,
     failure_threshold: u32,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     success_threshold: u32,
     reset_timeout: Duration,
 }

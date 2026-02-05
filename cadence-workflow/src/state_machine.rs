@@ -125,9 +125,9 @@ impl DecisionStateMachineBase {
 pub struct ActivityDecisionStateMachine {
     base: DecisionStateMachineBase,
     attributes: ScheduleActivityTaskDecisionAttributes,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     scheduled_event_id: Option<i64>,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     started_event_id: Option<i64>,
 }
 
@@ -837,7 +837,7 @@ impl DecisionStateMachine for RequestCancelExternalWorkflowDecisionStateMachine 
 /// Marker decision state machine for side effects and versioning
 pub struct MarkerDecisionStateMachine {
     base: DecisionStateMachineBase,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     marker_name: String,
     attributes: RecordMarkerDecisionAttributes,
 }

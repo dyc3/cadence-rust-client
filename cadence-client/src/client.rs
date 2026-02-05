@@ -331,7 +331,6 @@ impl HistoryEventIterator {
         self.position < self.events.len() || self.next_page_token.is_some()
     }
 
-    #[allow(clippy::should_implement_trait)]
     pub async fn next(&mut self) -> CadenceResult<Option<HistoryEvent>> {
         if self.position < self.events.len() {
             let event = self.events[self.position].clone();
@@ -1536,7 +1535,7 @@ pub trait DataConverter: Send + Sync {
     /// Serialize a value to bytes
     fn to_data(&self, value: &dyn std::any::Any) -> CadenceResult<Vec<u8>>;
     /// Deserialize bytes into a target value
-    #[allow(clippy::wrong_self_convention)]
+    #[expect(clippy::wrong_self_convention)]
     fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> CadenceResult<()>;
 }
 

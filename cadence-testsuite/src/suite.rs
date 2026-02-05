@@ -105,7 +105,7 @@ impl TestWorkflowEnvironment {
         I: for<'de> Deserialize<'de> + Send + 'static,
         O: Serialize + Send + 'static,
     {
-        #[allow(clippy::type_complexity)]
+        #[expect(clippy::type_complexity)]
         let boxed = Box::new(
             move |ctx: TestWorkflowContext,
                   input_bytes: Vec<u8>|
@@ -351,7 +351,7 @@ impl TestWorkflowEnvironment {
         self.executed_activities.contains(&name.to_string())
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     fn track_activity_execution(&mut self, name: &str) {
         self.executed_activities.push(name.to_string());
     }
@@ -371,7 +371,7 @@ pub struct TestWorkflowContext {
     task_list: String,
     activities: HashMap<String, ActivityFn>,
     signals: HashMap<String, Vec<Vec<u8>>>,
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     queries: HashMap<String, Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>>,
     test_time: Arc<Mutex<TestTime>>,
     is_cancelled: bool,

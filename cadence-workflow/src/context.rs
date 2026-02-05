@@ -202,7 +202,7 @@ impl WorkflowContext {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn with_sink(
         workflow_info: WorkflowInfo,
         sink: Arc<dyn CommandSink>,

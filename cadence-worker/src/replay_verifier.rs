@@ -330,16 +330,16 @@ fn create_error(
     let history_event_text = history_event.map(|e| format!("{:?}", e));
     let decision_text = decision.map(|d| format!("{:?}", d));
 
-    NonDeterministicError::new(
+    NonDeterministicError {
         reason,
-        context.workflow_type.clone(),
-        context.workflow_id.clone(),
-        context.run_id.clone(),
-        context.task_list.clone(),
-        context.domain_name.clone(),
+        workflow_type: context.workflow_type.clone(),
+        workflow_id: context.workflow_id.clone(),
+        run_id: context.run_id.clone(),
+        task_list: context.task_list.clone(),
+        domain_name: context.domain_name.clone(),
         history_event_text,
         decision_text,
-    )
+    }
 }
 
 #[cfg(test)]

@@ -318,7 +318,7 @@ fn generate_test_domain_name() -> String {
     format!("channels-spawn-test-{}", Uuid::new_v4())
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 fn generate_task_list_name() -> String {
     format!("channels-spawn-task-list-{}", Uuid::new_v4())
 }

@@ -32,8 +32,8 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Cadence Rust Client Contributors"]
-license = "MIT"
+authors = ["Carson McManus"]
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/uber/cadence-rust-client"
 
 [workspace.dependencies]
@@ -54,7 +54,6 @@ tonic-build = "0.12"
 
 # Observability
 tracing = "0.1"
-log = "0.4"
 opentelemetry = "0.27"
 
 # Utilities
@@ -84,3 +83,6 @@ codegen-units = 1
 [profile.dev]
 opt-level = 0
 debug = true
+
+[workspace.lints.clippy]
+allow_attributes = "deny"

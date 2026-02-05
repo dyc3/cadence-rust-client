@@ -138,14 +138,6 @@ impl GenericError {
     }
 }
 
-/// Error type for panics in workflows
-#[derive(Debug, Error)]
-#[error("PanicError: message={message}, stack_trace={stack_trace}")]
-pub struct PanicError {
-    pub message: String,
-    pub stack_trace: String,
-}
-
 /// Reason for non-determinism error
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum NonDeterminismReason {
@@ -158,6 +150,10 @@ pub enum NonDeterminismReason {
 }
 
 /// Error type for non-deterministic workflow execution
+///
+/// TODO: explain what non-determinism is in this context
+/// TODO: Should this just have `ReplayContext` instead?
+/// FIXME: why so many strings? could mean we are losing type info, hurting debuggability or error recovery
 #[derive(Debug, Clone, Error)]
 #[error("NonDeterministicError: reason={reason}, workflow_type={workflow_type}, workflow_id={workflow_id}")]
 pub struct NonDeterministicError {
@@ -171,28 +167,13 @@ pub struct NonDeterministicError {
     pub decision_text: Option<String>,
 }
 
-impl NonDeterministicError {
-    pub fn new(
-        reason: NonDeterminismReason,
-        workflow_type: impl Into<String>,
-        workflow_id: impl Into<String>,
-        run_id: impl Into<String>,
-        task_list: impl Into<String>,
-        domain_name: impl Into<String>,
-        history_event_text: Option<String>,
-        decision_text: Option<String>,
-    ) -> Self {
-        Self {
-            reason,
-            workflow_type: workflow_type.into(),
-            workflow_id: workflow_id.into(),
-            run_id: run_id.into(),
-            task_list: task_list.into(),
-            domain_name: domain_name.into(),
-            history_event_text,
-            decision_text,
-        }
-    }
+/// Error type for panics in workflows
+#[derive(Debug, Error)]
+#[error("PanicError: message={message}, stack_trace={stack_trace}")]
+pub struct PanicError {
+    pub message: String,
+    /// TODO: use `Backtrace` instead?
+    pub stack_trace: String,
 }
 
 impl PanicError {
@@ -309,6 +290,8 @@ pub enum ServerError {
 }
 
 /// Main Cadence error type that encompasses all errors
+///
+/// TODO: docstrings for each variant
 #[derive(Debug, Error)]
 pub enum CadenceError {
     #[error(transparent)]
@@ -432,6 +415,7 @@ pub mod factory {
         )
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub fn non_deterministic_error(
         reason: NonDeterminismReason,
         workflow_type: impl Into<String>,
@@ -442,16 +426,16 @@ pub mod factory {
         history_event_text: Option<String>,
         decision_text: Option<String>,
     ) -> NonDeterministicError {
-        NonDeterministicError::new(
+        NonDeterministicError {
             reason,
-            workflow_type,
-            workflow_id,
-            run_id,
-            task_list,
-            domain_name,
+            workflow_type: workflow_type.into(),
+            workflow_id: workflow_id.into(),
+            run_id: run_id.into(),
+            task_list: task_list.into(),
+            domain_name: domain_name.into(),
             history_event_text,
             decision_text,
-        )
+        }
     }
 }
 

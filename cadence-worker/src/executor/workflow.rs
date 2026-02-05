@@ -6,8 +6,8 @@ use crate::replay_verifier::{match_replay_with_history, ReplayContext};
 use crate::WorkerOptions;
 use cadence_core::{CadenceError, WorkflowInfo};
 use cadence_proto::shared::{
-    ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType, HistoryEvent,
-    RequestCancelExternalWorkflowExecutionDecisionAttributes,
+    ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType,
+    HistoryEvent, RequestCancelExternalWorkflowExecutionDecisionAttributes,
     ScheduleActivityTaskDecisionAttributes, SignalExternalWorkflowExecutionDecisionAttributes,
     StartChildWorkflowExecutionDecisionAttributes, StartTimerDecisionAttributes, TaskList,
     TaskListKind, WorkflowType,
@@ -34,9 +34,9 @@ type LocalActivityWakers =
 struct ReplayCommandSink {
     engine: Arc<Mutex<ReplayEngine>>,
     default_task_list: String,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     local_activity_queue: LocalActivityQueue,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     workflow_info: WorkflowInfo,
     // Track pending local activity submissions
     pending_local_activity_submissions: Arc<Mutex<Vec<PendingLocalActivitySubmission>>>,
@@ -500,11 +500,9 @@ impl CommandSink for ReplayCommandSink {
 
 /// Workflow executor
 pub struct WorkflowExecutor {
-    #[allow(dead_code)]
     registry: Arc<dyn Registry>,
-    #[allow(dead_code)]
     cache: Arc<WorkflowCache>,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     options: WorkerOptions,
     task_list: String,
     local_activity_queue: LocalActivityQueue,
@@ -1058,12 +1056,13 @@ impl WorkflowExecutor {
 
                 // TODO: Apply NonDeterministicWorkflowPolicy based on worker configuration
                 // For now, we'll fail the workflow execution
-                engine
-                    .decisions_helper
-                    .fail_workflow_execution(
-                        format!("Non-deterministic workflow execution: {}", non_deterministic_error),
-                        "".to_string(),
-                    );
+                engine.decisions_helper.fail_workflow_execution(
+                    format!(
+                        "Non-deterministic workflow execution: {}",
+                        non_deterministic_error
+                    ),
+                    "".to_string(),
+                );
             }
         }
 

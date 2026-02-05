@@ -4,8 +4,8 @@
 //! The code is generated during the build process by tonic-build.
 
 // Include the generated protobuf code
-#[allow(clippy::all)]
-#[allow(warnings)]
+#[expect(clippy::all)]
+#[expect(warnings)]
 #[path = "uber.cadence.api.v1.rs"]
 pub mod uber_cadence_api_v1;
 

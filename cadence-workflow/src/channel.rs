@@ -99,7 +99,7 @@ impl<T> ChannelInner<T> {
     }
 
     /// Wake all blocked senders
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     fn wake_senders(&mut self) {
         for waker in self.blocked_sends.drain(..) {
             waker.wake();
@@ -128,7 +128,7 @@ impl<T> ChannelInner<T> {
     }
 
     /// Check if we can receive (buffer not empty or unbuffered with waiting sender)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     fn can_recv(&self) -> bool {
         if !self.buffer.is_empty() {
             return true;
