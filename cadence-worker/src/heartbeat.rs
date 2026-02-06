@@ -4,7 +4,7 @@ use cadence_core::CadenceError;
 use cadence_proto::workflow_service::*;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex};
 
 /// Heartbeat manager for activities
 pub struct HeartbeatManager {
@@ -31,7 +31,7 @@ impl HeartbeatManager {
         heartbeat_interval: Duration,
         cancel_rx: oneshot::Receiver<()>,
         on_server_cancel: Option<tokio::sync::broadcast::Sender<()>>,
-        details: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>,
+        details: Arc<Mutex<Option<Vec<u8>>>>,
     ) -> tokio::task::JoinHandle<()> {
         let service = Arc::clone(&self.service);
         let identity = self.identity.clone();
@@ -48,7 +48,7 @@ impl HeartbeatManager {
                     _ = interval_timer.tick() => {
                         // Get latest details
                         let current_details = {
-                            let guard = details.lock().unwrap();
+                            let guard = details.lock().await;
                             guard.clone()
                         };
 

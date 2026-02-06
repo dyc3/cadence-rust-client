@@ -5,9 +5,9 @@ use crate::registry::{ActivityError, Registry};
 use cadence_core::CadenceError;
 use cadence_proto::workflow_service::*;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::{broadcast, oneshot, Mutex};
 
 /// Activity task handler
 pub struct ActivityTaskHandler {
@@ -24,7 +24,7 @@ struct ActivityRuntimeImpl {
 
 impl cadence_activity::ActivityRuntime for ActivityRuntimeImpl {
     fn record_heartbeat(&self, details: Option<Vec<u8>>) {
-        let mut d = self.heartbeat_details.lock().unwrap();
+        let mut d = self.heartbeat_details.blocking_lock();
         *d = details;
     }
 
