@@ -1,14 +1,14 @@
 use anyhow::Result;
 use clap::Parser;
 
+mod activities;
 mod cli;
 mod config;
-mod activities;
 mod metrics;
 mod scenarios;
-mod workflows;
 mod utils;
 mod worker;
+mod workflows;
 
 use cli::{Cli, Mode, Scenario};
 

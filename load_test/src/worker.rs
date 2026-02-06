@@ -14,15 +14,15 @@ use cadence_worker::registry::Registry;
 use cadence_worker::{CadenceWorker, Worker, WorkerOptions};
 use uuid::Uuid;
 
-use crate::config;
-use crate::workflows::noop::NoopWorkflow;
-use crate::workflows::cpu_bound::CpuBoundWorkflow;
-use crate::workflows::io_bound::IoBoundWorkflow;
-use crate::workflows::failing::FailingWorkflow;
-use crate::activities::fast::FastActivity;
 use crate::activities::cpu_intensive::CpuIntensiveActivity;
-use crate::activities::io_simulated::IoSimulatedActivity;
 use crate::activities::failing::FailingActivity;
+use crate::activities::fast::FastActivity;
+use crate::activities::io_simulated::IoSimulatedActivity;
+use crate::config;
+use crate::workflows::cpu_bound::CpuBoundWorkflow;
+use crate::workflows::failing::FailingWorkflow;
+use crate::workflows::io_bound::IoBoundWorkflow;
+use crate::workflows::noop::NoopWorkflow;
 
 /// Run the load test worker
 ///

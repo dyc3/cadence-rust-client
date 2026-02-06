@@ -18,7 +18,11 @@ use crate::workflows::io_bound::IoWorkflowInput;
 use crate::workflows::noop::NoopInput;
 
 /// Helper function to create workflow input based on type
-fn create_workflow_input(workflow_type: &str, id: usize, args: &HighThroughputArgs) -> Result<Vec<u8>> {
+fn create_workflow_input(
+    workflow_type: &str,
+    id: usize,
+    args: &HighThroughputArgs,
+) -> Result<Vec<u8>> {
     let input_bytes = match workflow_type {
         "noop_workflow" => {
             let input = NoopInput { id };
@@ -53,72 +57,75 @@ fn create_workflow_input(workflow_type: &str, id: usize, args: &HighThroughputAr
 
 pub async fn run(client_args: ClientArgs, args: HighThroughputArgs) -> Result<()> {
     tracing::info!("Starting high throughput scenario");
-    
+
     let domain = &client_args.domain;
     let task_list = &client_args.task_list;
     let endpoint = &client_args.endpoint;
-    
+
     // Create client only (no worker)
     let client = GrpcWorkflowServiceClient::connect(endpoint, domain, None).await?;
-    
+
     tracing::info!("Client connected, waiting for warmup period");
-    
+
     // Warmup period
     if args.warmup > 0 {
         tokio::time::sleep(Duration::from_secs(args.warmup)).await;
     }
-    
+
     // Setup metrics collector
     let collector = MetricsCollector::new();
     let collector_clone = collector.clone();
-    
+
     // Start periodic metrics reporter
     tokio::spawn(async move {
         reporter::start_periodic_reporter(collector_clone, 2).await;
     });
-    
+
     // Run load test
     let start_time = Instant::now();
     let duration = Duration::from_secs(client_args.duration);
     let target_rate = args.target_rate;
-    
+
     // Use timestamp to ensure workflow IDs are unique across runs
     let run_id = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    
-    tracing::info!("Starting workflow spawning at {} workflows/sec", target_rate);
-    
+
+    tracing::info!(
+        "Starting workflow spawning at {} workflows/sec",
+        target_rate
+    );
+
     let mut ticker = interval(Duration::from_secs(1));
     let mut workflow_counter = 0usize;
     let mut workflow_handles = Vec::new();
-    
+
     loop {
         ticker.tick().await;
-        
+
         // Check if we've exceeded duration
         if start_time.elapsed() >= duration {
             break;
         }
-        
+
         // Spawn target_rate workflows this second
         for _ in 0..(target_rate as usize) {
             workflow_counter += 1;
             let workflow_id = format!("load-test-ht-{}-{}", run_id, workflow_counter);
             let input_bytes = create_workflow_input(&args.workflow_type, workflow_counter, &args)?;
-            
+
             // Record workflow start
             collector.workflow_started();
             let start = Instant::now();
-            
+
             // Start workflow and track the handle
             let client_clone = client.clone();
             let domain_clone = domain.clone();
             let task_list_clone = task_list.clone();
             let collector_clone = collector.clone();
             let workflow_type_clone = args.workflow_type.clone();
-            
+
             let handle = tokio::spawn(async move {
                 let start_request = StartWorkflowExecutionRequest {
                     domain: domain_clone.clone(),
@@ -147,7 +154,7 @@ pub async fn run(client_args: ClientArgs, args: HighThroughputArgs) -> Result<()
                     first_decision_task_backoff_seconds: None,
                     partition_config: None,
                 };
-                
+
                 match client_clone.start_workflow_execution(start_request).await {
                     Ok(_) => {
                         let duration_ms = start.elapsed().as_millis() as u64;
@@ -160,29 +167,36 @@ pub async fn run(client_args: ClientArgs, args: HighThroughputArgs) -> Result<()
                     }
                 }
             });
-            
+
             workflow_handles.push(handle);
         }
     }
-    
-    tracing::info!("Load test duration completed, waiting for {} in-flight workflows...", workflow_handles.len());
-    
+
+    tracing::info!(
+        "Load test duration completed, waiting for {} in-flight workflows...",
+        workflow_handles.len()
+    );
+
     // Wait for all spawned workflows to complete
     for (idx, handle) in workflow_handles.into_iter().enumerate() {
         if let Err(e) = handle.await {
             tracing::error!("Workflow task {} panicked: {}", idx, e);
         }
-        
+
         // Log progress every 100 workflows
         if (idx + 1) % 100 == 0 {
-            tracing::info!("Waited for {}/{} workflows to complete", idx + 1, workflow_counter);
+            tracing::info!(
+                "Waited for {}/{} workflows to complete",
+                idx + 1,
+                workflow_counter
+            );
         }
     }
-    
+
     tracing::info!("All workflows completed");
-    
+
     // Print final report
     reporter::print_final_report(&collector);
-    
+
     Ok(())
 }

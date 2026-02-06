@@ -25,6 +25,21 @@ fn parse_name_argument(args: TokenStream) -> syn::Result<Option<String>> {
     Ok(None)
 }
 
+/// Mark a workflow function and generate a registry helper.
+///
+/// ```rust
+/// use cadence_workflow::{workflow, WorkflowContext};
+///
+/// #[workflow(name = "welcome_flow")]
+/// async fn welcome_flow(ctx: WorkflowContext, input: String) -> Result<(), cadence_worker::WorkflowError> {
+///     println!("Hello {}", input);
+///     Ok(())
+/// }
+///
+/// fn register_all(registry: &dyn cadence_worker::Registry) {
+///     welcome_flow_cadence::register(registry);
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
     let name_value = match parse_name_argument(args) {
@@ -77,6 +92,21 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
+/// Mark an activity function and generate a registry helper.
+///
+/// ```rust
+/// use cadence_activity::{activity, ActivityContext};
+///
+/// #[activity(name = "send_email")]
+/// async fn send_email(_ctx: &ActivityContext, input: String) -> Result<(), cadence_worker::ActivityError> {
+///     println!("Send {}", input);
+///     Ok(())
+/// }
+///
+/// fn register_all(registry: &dyn cadence_worker::Registry) {
+///     send_email_cadence::register(registry);
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
     let name_value = match parse_name_argument(args) {
@@ -130,6 +160,17 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
+/// Call a typed activity using the name from `#[activity]`.
+///
+/// ```rust
+/// use cadence_workflow::{call_activity, WorkflowContext};
+///
+/// async fn run(ctx: WorkflowContext) -> Result<(), cadence_worker::WorkflowError> {
+///     let options = cadence_core::ActivityOptions::default();
+///     let _: () = call_activity!(ctx, send_email, "hello".to_string(), options).await?;
+///     Ok(())
+/// }
+/// ```
 #[proc_macro]
 pub fn call_activity(input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(input as CallActivityArgs);

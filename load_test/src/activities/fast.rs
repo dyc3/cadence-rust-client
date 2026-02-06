@@ -1,9 +1,9 @@
 // Fast activity - sub-millisecond execution
 
-use std::pin::Pin;
 use cadence_activity::ActivityContext;
 use cadence_worker::registry::{Activity, ActivityError};
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FastInput {
@@ -17,7 +17,7 @@ pub struct FastOutput {
 }
 
 /// A fast activity that performs minimal computation
-/// 
+///
 /// This activity completes in less than 1ms and is used to test
 /// the overhead of activity scheduling and execution.
 #[derive(Clone)]
@@ -36,15 +36,15 @@ impl Activity for FastActivity {
             }
             let input: FastInput = serde_json::from_slice(&input_bytes)
                 .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
-            
+
             // Minimal computation - just a simple calculation
             let result = input.id * 2 + 1;
-            
+
             let output = FastOutput {
                 id: input.id,
                 result,
             };
-            
+
             serde_json::to_vec(&output).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
         })
     }

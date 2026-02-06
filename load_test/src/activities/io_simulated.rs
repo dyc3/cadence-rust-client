@@ -1,10 +1,10 @@
 // IO-simulated activity
 
-use std::pin::Pin;
-use std::time::Duration;
 use cadence_activity::ActivityContext;
 use cadence_worker::registry::{Activity, ActivityError};
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IoInput {
@@ -19,7 +19,7 @@ pub struct IoOutput {
 }
 
 /// An activity that simulates I/O delays
-/// 
+///
 /// This activity uses tokio::time::sleep to simulate I/O-bound work
 /// such as database queries, API calls, etc.
 #[derive(Clone)]
@@ -36,15 +36,15 @@ impl Activity for IoSimulatedActivity {
                 input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
             let input: IoInput = serde_json::from_slice(&input_bytes)
                 .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
-            
+
             // Simulate I/O delay
             tokio::time::sleep(Duration::from_millis(input.delay_ms)).await;
-            
+
             let output = IoOutput {
                 id: input.id,
                 completed: true,
             };
-            
+
             serde_json::to_vec(&output).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
         })
     }
