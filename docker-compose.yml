@@ -16,6 +16,19 @@ services:
     networks:
       - cadence-network
 
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"  # Changed from default 9090 to 9091
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - cadence-network
+
   cadence:
     image: ubercadence/server:master-auto-setup
     ports:
@@ -24,15 +37,25 @@ services:
       - "7935:7935"
       - "7939:7939"
       - "7833:7833"
+      - "8000:8000"  # Prometheus endpoint for frontend
+      - "8001:8001"  # Prometheus endpoint for history
+      - "8002:8002"  # Prometheus endpoint for matching
+      - "8003:8003"  # Prometheus endpoint for worker
     environment:
       - CASSANDRA_SEEDS=cassandra
       - ENABLE_ES=false
       - POD_NAME=cadence
       - SERVICES=history,matching,frontend,worker
       - LOG_LEVEL=debug
+      - PROMETHEUS_ENDPOINT_0=0.0.0.0:8000
+      - PROMETHEUS_ENDPOINT_1=0.0.0.0:8001
+      - PROMETHEUS_ENDPOINT_2=0.0.0.0:8002
+      - PROMETHEUS_ENDPOINT_3=0.0.0.0:8003
     depends_on:
       cassandra:
         condition: service_healthy
+      prometheus:
+        condition: service_started
     networks:
       - cadence-network
 
@@ -47,6 +70,25 @@ services:
     networks:
       - cadence-network
 
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3333:3000"  # Changed from default 3000 to 3333
+    volumes:
+      - ./grafana:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+    networks:
+      - cadence-network
+
 networks:
   cadence-network:
     driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
