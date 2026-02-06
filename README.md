@@ -77,6 +77,76 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Macro-based Workflows and Activities
+
+```rust
+use cadence_activity::{activity, ActivityContext};
+use cadence_worker::{CadenceWorker, WorkerOptions, WorkflowRegistry};
+use cadence_workflow::{call_activity, workflow, WorkflowContext};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Duration;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WelcomeInput {
+    email: String,
+    name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EmailRequest {
+    to: String,
+    subject: String,
+    body: String,
+}
+
+#[activity(name = "send_email")]
+async fn send_email(_ctx: &ActivityContext, input: EmailRequest) -> Result<(), cadence_worker::ActivityError> {
+    println!("Sending to {}", input.to);
+    Ok(())
+}
+
+#[workflow(name = "welcome_flow")]
+async fn welcome_flow(ctx: WorkflowContext, input: WelcomeInput) -> Result<(), cadence_worker::WorkflowError> {
+    let options = cadence_core::ActivityOptions {
+        schedule_to_close_timeout: Duration::from_secs(30),
+        schedule_to_start_timeout: Duration::from_secs(30),
+        start_to_close_timeout: Duration::from_secs(30),
+        heartbeat_timeout: Duration::from_secs(0),
+        ..Default::default()
+    };
+
+    let request = EmailRequest {
+        to: input.email,
+        subject: "Welcome".to_string(),
+        body: format!("Hi {}, welcome!", input.name),
+    };
+
+    let _: () = call_activity!(ctx, send_email, request, options).await?;
+    Ok(())
+}
+
+fn register_all(registry: &dyn cadence_worker::Registry) {
+    welcome_flow_cadence::register(registry);
+    send_email_cadence::register(registry);
+}
+
+#[tokio::main]
+async fn main() -> Result<(), cadence_core::CadenceError> {
+    let registry = Arc::new(WorkflowRegistry::new());
+    register_all(registry.as_ref());
+
+    let worker = CadenceWorker::new(
+        "my-domain",
+        "my-task-list",
+        WorkerOptions::default(),
+        registry,
+    );
+    worker.start()?;
+    Ok(())
+}
+```
+
 ### Starting a Workflow
 
 ```rust

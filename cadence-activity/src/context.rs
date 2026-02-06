@@ -16,6 +16,7 @@ pub trait ActivityRuntime: Send + Sync {
 }
 
 /// Activity context for executing activity logic
+#[derive(Clone)]
 pub struct ActivityContext {
     activity_info: ActivityInfo,
     deadline: Option<Instant>,

@@ -3,6 +3,7 @@ members = [
     "cadence-proto",
     "cadence-core",
     "cadence-client",
+    "cadence-macros",
     "cadence-worker",
     "cadence-workflow",
     "cadence-activity",

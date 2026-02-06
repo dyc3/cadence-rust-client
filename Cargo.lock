@@ -300,6 +300,7 @@ name = "cadence-activity"
 version = "0.1.0"
 dependencies = [
  "cadence-core",
+ "cadence-macros",
  "cadence-proto",
  "chrono",
  "mockall",
@@ -355,6 +356,15 @@ dependencies = [
  "tokio-test",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "cadence-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -418,6 +428,7 @@ name = "cadence-workflow"
 version = "0.1.0"
 dependencies = [
  "cadence-core",
+ "cadence-macros",
  "cadence-proto",
  "chrono",
  "futures",

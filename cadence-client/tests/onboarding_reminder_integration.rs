@@ -23,7 +23,7 @@
 //! cargo test --test onboarding_reminder_integration -- --ignored --test-threads=1 --nocapture
 //! ```
 
-use cadence_activity::ActivityContext;
+use cadence_activity::{activity, ActivityContext};
 use cadence_client::GrpcWorkflowServiceClient;
 use cadence_core::{ActivityOptions, CadenceError};
 use cadence_proto::shared::{
@@ -34,13 +34,11 @@ use cadence_proto::workflow_service::{
     GetWorkflowExecutionHistoryRequest, RegisterDomainRequest, StartWorkflowExecutionRequest,
     WorkflowService,
 };
-use cadence_worker::registry::{Activity, ActivityError, Registry, Workflow, WorkflowError};
+use cadence_worker::registry::{ActivityError, WorkflowError};
 use cadence_worker::{CadenceWorker, Worker, WorkerOptions};
-use cadence_workflow::WorkflowContext;
+use cadence_workflow::{call_activity, workflow, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -66,109 +64,72 @@ struct OnboardingInput {
 // Activity Implementation
 // ============================================================================
 
-#[derive(Clone)]
-struct SendEmailActivity;
+#[activity(name = "send_email")]
+async fn send_email(_ctx: &ActivityContext, input: EmailRequest) -> Result<(), ActivityError> {
+    // Stubbed: just log/print the email
+    println!(
+        "[SEND_EMAIL] To: {} | Subject: {} | Body: {}",
+        input.to, input.subject, input.body
+    );
 
-impl Activity for SendEmailActivity {
-    fn execute(
-        &self,
-        _ctx: &ActivityContext,
-        input: Option<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
-        Box::pin(async move {
-            let input_data =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-            let email_request: EmailRequest = serde_json::from_slice(&input_data)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
-
-            // Stubbed: just log/print the email
-            println!(
-                "[SEND_EMAIL] To: {} | Subject: {} | Body: {}",
-                email_request.to, email_request.subject, email_request.body
-            );
-
-            // Return success
-            Ok(vec![])
-        })
-    }
+    Ok(())
 }
 
 // ============================================================================
 // Workflow Implementation
 // ============================================================================
 
-#[derive(Clone)]
-struct OnboardingReminderWorkflow;
+#[workflow(name = "onboarding_reminder")]
+async fn onboarding_reminder(
+    ctx: WorkflowContext,
+    input: OnboardingInput,
+) -> Result<(), WorkflowError> {
+    // Activity options
+    let options = ActivityOptions {
+        task_list: "".to_string(),
+        schedule_to_close_timeout: Duration::from_secs(60),
+        schedule_to_start_timeout: Duration::from_secs(60),
+        start_to_close_timeout: Duration::from_secs(60),
+        heartbeat_timeout: Duration::from_secs(60),
+        retry_policy: None,
+        wait_for_cancellation: false,
+        local_activity: false,
+    };
 
-impl Workflow for OnboardingReminderWorkflow {
-    fn execute(
-        &self,
-        ctx: WorkflowContext,
-        input: Option<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
-        Box::pin(async move {
-            let input_data =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
-            let onboarding_input: OnboardingInput = serde_json::from_slice(&input_data)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+    // Step 1: Send welcome email
+    let welcome_email = EmailRequest {
+        to: input.user_email.clone(),
+        subject: "Welcome to our platform!".to_string(),
+        body: format!(
+            "Hello {}, welcome to our platform! We're excited to have you.",
+            input.user_name
+        ),
+    };
 
-            // Activity options
-            let options = ActivityOptions {
-                task_list: "".to_string(),
-                schedule_to_close_timeout: Duration::from_secs(60),
-                schedule_to_start_timeout: Duration::from_secs(60),
-                start_to_close_timeout: Duration::from_secs(60),
-                heartbeat_timeout: Duration::from_secs(60),
-                retry_policy: None,
-                wait_for_cancellation: false,
-                local_activity: false,
-            };
+    let _: () = call_activity!(ctx, send_email, welcome_email, options.clone()).await?;
 
-            // Step 1: Send welcome email
-            let welcome_email = EmailRequest {
-                to: onboarding_input.user_email.clone(),
-                subject: "Welcome to our platform!".to_string(),
-                body: format!(
-                    "Hello {}, welcome to our platform! We're excited to have you.",
-                    onboarding_input.user_name
-                ),
-            };
-            let welcome_bytes = serde_json::to_vec(&welcome_email)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+    println!("[WORKFLOW] Welcome email sent, sleeping for 5 seconds...");
 
-            ctx.execute_activity("send_email", Some(welcome_bytes), options.clone())
-                .await
-                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+    // Step 2: Sleep for 5 seconds
+    ctx.sleep(Duration::from_secs(5)).await;
 
-            println!("[WORKFLOW] Welcome email sent, sleeping for 5 seconds...");
+    println!("[WORKFLOW] Sleep completed, sending reminder email...");
 
-            // Step 2: Sleep for 5 seconds
-            ctx.sleep(Duration::from_secs(5)).await;
+    // Step 3: Send reminder email
+    let reminder_email = EmailRequest {
+        to: input.user_email.clone(),
+        subject: "Don't forget to complete your onboarding!".to_string(),
+        body: format!(
+            "Hi {}, we noticed you haven't completed your onboarding yet. Take a few minutes to finish setting up your account!",
+            input.user_name
+        ),
+    };
 
-            println!("[WORKFLOW] Sleep completed, sending reminder email...");
+    let _: () = call_activity!(ctx, send_email, reminder_email, options.clone()).await?;
 
-            // Step 3: Send reminder email
-            let reminder_email = EmailRequest {
-                to: onboarding_input.user_email.clone(),
-                subject: "Don't forget to complete your onboarding!".to_string(),
-                body: format!(
-                    "Hi {}, we noticed you haven't completed your onboarding yet. Take a few minutes to finish setting up your account!",
-                    onboarding_input.user_name
-                ),
-            };
-            let reminder_bytes = serde_json::to_vec(&reminder_email)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+    println!("[WORKFLOW] Reminder email sent, workflow complete!");
 
-            ctx.execute_activity("send_email", Some(reminder_bytes), options.clone())
-                .await
-                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
-
-            println!("[WORKFLOW] Reminder email sent, workflow complete!");
-
-            // Return success result
-            Ok(vec![])
-        })
-    }
+    Ok(())
 }
 
 // ============================================================================
@@ -232,7 +193,7 @@ fn create_workflow_request(
         domain: domain.to_string(),
         workflow_id: workflow_id.to_string(),
         workflow_type: Some(WorkflowType {
-            name: "onboarding_reminder".to_string(),
+            name: onboarding_reminder_cadence::NAME.to_string(),
         }),
         task_list: Some(TaskList {
             name: task_list.to_string(),
@@ -412,8 +373,8 @@ async fn test_onboarding_reminder_flow() {
 
     // Setup registry
     let registry = Arc::new(cadence_worker::registry::WorkflowRegistry::new());
-    registry.register_workflow("onboarding_reminder", Box::new(OnboardingReminderWorkflow));
-    registry.register_activity("send_email", Box::new(SendEmailActivity));
+    onboarding_reminder_cadence::register(registry.as_ref());
+    send_email_cadence::register(registry.as_ref());
 
     println!("✓ Workflow and activity registered");
 

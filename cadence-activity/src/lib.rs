@@ -5,4 +5,5 @@
 
 pub mod context;
 
+pub use cadence_macros::activity;
 pub use context::*;

@@ -10,6 +10,7 @@ description = "Workflow authoring SDK for Cadence"
 [dependencies]
 cadence-proto = { path = "../cadence-proto" }
 cadence-core = { path = "../cadence-core" }
+cadence-macros = { path = "../cadence-macros" }
 tokio = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }

@@ -68,12 +68,14 @@ impl MetricsCollector {
         }
     }
 
+    #[expect(dead_code)]
     pub fn activity_started(&self) {
         let mut metrics = self.metrics.write();
         metrics.activity.started += 1;
         metrics.activity.in_flight += 1;
     }
 
+    #[expect(dead_code)]
     pub fn activity_completed(&self, duration_ms: u64) {
         let mut metrics = self.metrics.write();
         metrics.activity.completed += 1;
@@ -86,6 +88,7 @@ impl MetricsCollector {
         }
     }
 
+    #[expect(dead_code)]
     pub fn activity_failed(&self, duration_ms: u64) {
         let mut metrics = self.metrics.write();
         metrics.activity.failed += 1;
@@ -110,8 +113,8 @@ impl MetricsCollector {
         metrics.system.cpu_usage = system.global_cpu_usage();
 
         // Get memory usage
-        metrics.system.memory_used_mb = (system.used_memory() / 1024 / 1024) as u64;
-        metrics.system.memory_total_mb = (system.total_memory() / 1024 / 1024) as u64;
+        metrics.system.memory_used_mb = system.used_memory() / 1024 / 1024;
+        metrics.system.memory_total_mb = system.total_memory() / 1024 / 1024;
     }
 
     pub fn get_snapshot(&self) -> TestMetrics {
