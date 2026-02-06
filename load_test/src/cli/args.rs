@@ -104,13 +104,33 @@ pub struct HighThroughputArgs {
     #[arg(long)]
     pub target_rate: f64,
 
-    /// Workflow type to use: noop, fast-activity, cpu-bound, io-bound
-    #[arg(long, default_value = "noop")]
+    /// Workflow type to use: noop_workflow, cpu_bound_workflow, io_bound_workflow, failing_workflow
+    #[arg(
+        long,
+        default_value = "noop_workflow",
+        value_parser = ["noop_workflow", "cpu_bound_workflow", "io_bound_workflow", "failing_workflow"]
+    )]
     pub workflow_type: String,
 
     /// Warmup duration in seconds (ramp up from 0 to target rate)
     #[arg(long, default_value = "10")]
     pub warmup: u64,
+
+    /// CPU iterations (used by cpu_bound_workflow)
+    #[arg(long, default_value = "10000")]
+    pub cpu_iterations: usize,
+
+    /// IO delay in milliseconds (used by io_bound_workflow)
+    #[arg(long, default_value = "100")]
+    pub io_delay_ms: u64,
+
+    /// Failure rate 0.0-1.0 (used by failing_workflow)
+    #[arg(long, default_value = "0.0")]
+    pub failure_rate: f64,
+
+    /// Max retry attempts (used by failing_workflow)
+    #[arg(long, default_value = "3")]
+    pub max_retries: usize,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -130,9 +150,29 @@ pub struct SustainedLoadArgs {
     #[arg(long)]
     pub rate: f64,
 
-    /// Workflow type to use: noop, fast-activity, cpu-bound, io-bound
-    #[arg(long, default_value = "fast-activity")]
+    /// Workflow type to use: noop_workflow, cpu_bound_workflow, io_bound_workflow, failing_workflow
+    #[arg(
+        long,
+        default_value = "noop_workflow",
+        value_parser = ["noop_workflow", "cpu_bound_workflow", "io_bound_workflow", "failing_workflow"]
+    )]
     pub workflow_type: String,
+
+    /// CPU iterations (used by cpu_bound_workflow)
+    #[arg(long, default_value = "10000")]
+    pub cpu_iterations: usize,
+
+    /// IO delay in milliseconds (used by io_bound_workflow)
+    #[arg(long, default_value = "100")]
+    pub io_delay_ms: u64,
+
+    /// Failure rate 0.0-1.0 (used by failing_workflow)
+    #[arg(long, default_value = "0.0")]
+    pub failure_rate: f64,
+
+    /// Max retry attempts (used by failing_workflow)
+    #[arg(long, default_value = "3")]
+    pub max_retries: usize,
 }
 
 #[derive(Args, Debug, Clone)]

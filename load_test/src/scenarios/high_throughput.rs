@@ -12,7 +12,44 @@ use uuid::Uuid;
 use crate::cli::{ClientArgs, HighThroughputArgs};
 use crate::metrics::collector::MetricsCollector;
 use crate::metrics::reporter;
+use crate::workflows::cpu_bound::CpuWorkflowInput;
+use crate::workflows::failing::FailingWorkflowInput;
+use crate::workflows::io_bound::IoWorkflowInput;
 use crate::workflows::noop::NoopInput;
+
+/// Helper function to create workflow input based on type
+fn create_workflow_input(workflow_type: &str, id: usize, args: &HighThroughputArgs) -> Result<Vec<u8>> {
+    let input_bytes = match workflow_type {
+        "noop_workflow" => {
+            let input = NoopInput { id };
+            serde_json::to_vec(&input)?
+        }
+        "cpu_bound_workflow" => {
+            let input = CpuWorkflowInput {
+                id,
+                iterations: args.cpu_iterations,
+            };
+            serde_json::to_vec(&input)?
+        }
+        "io_bound_workflow" => {
+            let input = IoWorkflowInput {
+                id,
+                delay_ms: args.io_delay_ms,
+            };
+            serde_json::to_vec(&input)?
+        }
+        "failing_workflow" => {
+            let input = FailingWorkflowInput {
+                id,
+                failure_rate: args.failure_rate,
+                max_retries: args.max_retries,
+            };
+            serde_json::to_vec(&input)?
+        }
+        _ => anyhow::bail!("Unknown workflow type: {}", workflow_type),
+    };
+    Ok(input_bytes)
+}
 
 pub async fn run(client_args: ClientArgs, args: HighThroughputArgs) -> Result<()> {
     tracing::info!("Starting high throughput scenario");
@@ -69,8 +106,7 @@ pub async fn run(client_args: ClientArgs, args: HighThroughputArgs) -> Result<()
         for _ in 0..(target_rate as usize) {
             workflow_counter += 1;
             let workflow_id = format!("load-test-ht-{}-{}", run_id, workflow_counter);
-            let input = NoopInput { id: workflow_counter };
-            let input_bytes = serde_json::to_vec(&input)?;
+            let input_bytes = create_workflow_input(&args.workflow_type, workflow_counter, &args)?;
             
             // Record workflow start
             collector.workflow_started();
@@ -81,13 +117,14 @@ pub async fn run(client_args: ClientArgs, args: HighThroughputArgs) -> Result<()
             let domain_clone = domain.clone();
             let task_list_clone = task_list.clone();
             let collector_clone = collector.clone();
+            let workflow_type_clone = args.workflow_type.clone();
             
             let handle = tokio::spawn(async move {
                 let start_request = StartWorkflowExecutionRequest {
                     domain: domain_clone.clone(),
                     workflow_id: workflow_id.clone(),
                     workflow_type: Some(WorkflowType {
-                        name: "noop_workflow".to_string(),
+                        name: workflow_type_clone,
                     }),
                     task_list: Some(TaskList {
                         name: task_list_clone.clone(),
