@@ -1,0 +1,44 @@
+[package]
+name = "load_test"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace crates
+cadence-client = { path = "../cadence-client" }
+cadence-worker = { path = "../cadence-worker" }
+cadence-workflow = { path = "../cadence-workflow" }
+cadence-activity = { path = "../cadence-activity" }
+cadence-core = { path = "../cadence-core" }
+cadence-proto = { path = "../cadence-proto" }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Metrics
+hdrhistogram = "7.5"
+sysinfo = "0.31"
+
+# Async/Utils (from workspace)
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+
+# Additional
+rand = "0.8"
+chrono = { workspace = true }
+
+[[bin]]
+name = "load_test"
+path = "src/main.rs"

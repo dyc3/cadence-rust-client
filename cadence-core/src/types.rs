@@ -83,21 +83,21 @@ pub enum QueryConsistencyLevel {
 /// Activity options for scheduling activities
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityOptions {
-    /// Task list to schedule activity on
+    /// The task list where the activity should be scheduled. Workers poll from task lists to pick up work. Empty string uses the default task list (same as the workflow's task list).
     pub task_list: String,
-    /// Schedule to close timeout
+    /// The total end-to-end timeout for the entire activity lifecycle, from when it's scheduled until it completes. If zero, defaults to the sum of [`self.schedule_to_start_timeout`] and [`self.start_to_close_timeout`].
     pub schedule_to_close_timeout: Duration,
-    /// Schedule to start timeout
+    /// Maximum time the activity can wait in the queue before a worker picks it up. If exceeded, the activity is marked as timed out.
     pub schedule_to_start_timeout: Duration,
-    /// Start to close timeout
+    /// Maximum time the activity has to execute once started by a worker. If the activity takes longer, it's marked as timed out.
     pub start_to_close_timeout: Duration,
-    /// Heartbeat timeout
+    /// Maximum time allowed between heartbeats. If zero, no heartbeat is required. Activities must call record_heartbeat() within this interval to show they're still alive.
     pub heartbeat_timeout: Duration,
-    /// Wait for cancellation before completing
+    ///  If true, the workflow waits for the activity to complete (fail, complete, or accept cancellation) before proceeding. If false, the activity is abandoned when cancelled. Default: false.
     pub wait_for_cancellation: bool,
-    /// Retry policy
+    /// Specifies how to retry the activity if it fails. Includes initial interval, backoff coefficient, max attempts, etc. Default: no retry.
     pub retry_policy: Option<RetryPolicy>,
-    /// Local activity flag
+    /// If true, executes the activity synchronously in the workflow worker process instead of scheduling it on the server. Useful for short, fast operations. Default: false.
     pub local_activity: bool,
 }
 

@@ -9,3 +9,7 @@ test-ecommerce-saga:
 
 test-all-integration:
     cargo test -p cadence-client -- --ignored --test-threads=1
+
+# Run the load test tool (pass args like: just load-test worker or just load-test client --duration 60 high-throughput --target-rate 100)
+load-test *args:
+    cargo run --bin load_test --release -- {{ args }}
