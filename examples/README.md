@@ -35,51 +35,51 @@ Advanced workflow patterns
 - **08_versioning** - Workflow versioning and patches
 - **09_continue_as_new** - Long-running workflows
 
-### 4. Error Handling (10-11)
+### 4. Error Handling (10)
 Resilience and recovery patterns
 
 - **10_error_handling** - Error types and handling
-- **11_retry_policies** - Retry configuration
 
-### 5. Configuration (12-17)
+### 5. Configuration (11-14)
 Client, worker, and domain configuration
 
-- **12_query_operations** - Querying workflow state
-- **13_workflow_options** - Workflow lifecycle policies
-- **14_search_attributes** - Searchable workflows
-- **15_client_operations** - Full client API
-- **16_domain_management** - Domain lifecycle
-- **17_worker_configuration** - Worker setup and tuning
+- **11_client_operations** - Full client API
+- **12_domain_management** - Domain lifecycle
+- **13_worker_configuration** - Worker setup and tuning
+- **14_local_activities** - Low-latency activities
 
-### 6. Advanced Features (18-19)
+### 6. Advanced Features (15-18)
 Production patterns
 
-- **18_local_activities** - Low-latency activities
-- **19_workflow_patterns** - Saga, fan-out/fan-in, batch
-
-### 7. Testing (20-22)
-Testing and debugging
-
-- **20_testing_basics** - TestWorkflowEnvironment deep dive
-- **21_workflow_replay** - Debugging with replay
-- **22_data_converter** - Custom serialization
-
-### 8. Production (23-25)
-Performance and best practices
-
-- **23_performance** - Performance tuning
-- **24_complete_application** - Full integration example
-- **25_best_practices** - Idiomatic patterns
+- **15_performance** - Performance tuning
+- **16_complete_application** - Full integration example
+- **17_best_practices** - Idiomatic patterns
+- **18_channels_and_spawn** - Advanced concurrency patterns
 
 ## Structure
 
 ```
 examples/
 ├── examples-common/          # Shared utilities and helpers
-├── 01_hello_workflow/        # (exists)
+├── 01_hello_workflow/
 ├── 02_activity_basics/
-├── ... (more examples)
-└── 25_best_practices/
+├── 03_activity_advanced/
+├── 04_workflow_signals/
+├── 05_workflow_external/
+├── 06_child_workflows/
+├── 07_time_and_sleep/
+├── 08_versioning/
+├── 09_continue_as_new/
+├── 10_error_handling/
+├── 11_client_operations/
+├── 12_domain_management/
+├── 13_worker_configuration/
+├── 14_local_activities/
+├── 15_performance/
+├── 16_complete_application/
+├── 17_best_practices/
+├── 18_channels_and_spawn/
+└── examples-common/          # Shared utilities
 ```
 
 Each example is a standalone crate with:
@@ -139,15 +139,15 @@ Edit the root `Cargo.toml` to add the new example to the workspace members.
 5. 03_activity_advanced
 6. 06_child_workflows
 7. 10_error_handling
-8. 12_query_operations
+8. 11_client_operations
 
 ### Advanced
 9. 08_versioning
-9. 19_workflow_patterns
-10. 21_workflow_replay
+10. 14_local_activities
 
 ### Production
-11. 17_worker_configuration
-12. 23_performance
-13. 24_complete_application
-14. 25_best_practices
+11. 13_worker_configuration
+12. 15_performance
+13. 16_complete_application
+14. 17_best_practices
+15. 18_channels_and_spawn
