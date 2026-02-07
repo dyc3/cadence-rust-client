@@ -2,12 +2,12 @@
 
 use crate::heartbeat::HeartbeatManager;
 use crate::registry::{ActivityError, Registry};
-use uber_cadence_core::CadenceError;
-use uber_cadence_proto::workflow_service::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, oneshot, Mutex};
+use uber_cadence_core::CadenceError;
+use uber_cadence_proto::workflow_service::*;
 
 /// Activity task handler
 pub struct ActivityTaskHandler {

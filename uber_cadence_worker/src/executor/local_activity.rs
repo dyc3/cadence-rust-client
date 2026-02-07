@@ -6,10 +6,10 @@
 
 use crate::local_activity_queue::{LocalActivityQueue, LocalActivityTask};
 use crate::registry::{ActivityError, Registry};
-use uber_cadence_activity::ActivityContext;
-use uber_cadence_core::RetryPolicy;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_core::RetryPolicy;
 
 /// Local activity executor
 ///
@@ -63,8 +63,9 @@ impl LocalActivityExecutor {
                     "[LocalActivityExecutor] Activity '{}' (id={}) timed out after {} attempts",
                     task.activity_type, task.activity_id, attempt
                 );
-                let error =
-                    ActivityError::Timeout(uber_cadence_proto::shared::TimeoutType::ScheduleToClose);
+                let error = ActivityError::Timeout(
+                    uber_cadence_proto::shared::TimeoutType::ScheduleToClose,
+                );
                 let _ = task.result_sender.send(Err(error.clone()));
                 return Err(error);
             }
@@ -257,12 +258,12 @@ fn calculate_backoff(retry_policy: &Option<RetryPolicy>, attempt: i32) -> Durati
 mod tests {
     use super::*;
     use crate::registry::{Activity, WorkflowRegistry};
-    use uber_cadence_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
-    use uber_cadence_workflow::LocalActivityOptions;
     use std::future::Future;
     use std::pin::Pin;
     use std::time::{Duration, SystemTime};
     use tokio::sync::oneshot;
+    use uber_cadence_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
+    use uber_cadence_workflow::LocalActivityOptions;
 
     // Test activity that returns success
     #[derive(Clone)]

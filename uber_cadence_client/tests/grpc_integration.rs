@@ -33,6 +33,7 @@
 //! The tests connect to `http://localhost:7833` (gRPC port).
 //! This is different from the Thrift port (7933).
 
+use std::collections::HashMap;
 use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_core::CadenceError;
 use uber_cadence_proto::shared::{
@@ -43,7 +44,6 @@ use uber_cadence_proto::workflow_service::{
     QueryWorkflowRequest, RegisterDomainRequest, SignalWorkflowExecutionRequest, StartTimeFilter,
     StartWorkflowExecutionRequest, WorkflowQuery, WorkflowService,
 };
-use std::collections::HashMap;
 use uuid::Uuid;
 
 /// gRPC endpoint for Cadence server

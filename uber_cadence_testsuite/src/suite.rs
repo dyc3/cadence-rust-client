@@ -9,6 +9,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
 use uber_cadence_activity::{
     ActivityContext, ActivityInfo, WorkflowExecution as ActivityWorkflowExecution,
 };
@@ -16,7 +17,6 @@ use uber_cadence_core::{
     ActivityOptions, ChildWorkflowOptions, WorkflowExecution, WorkflowInfo, WorkflowType,
 };
 use uber_cadence_workflow::context::WorkflowError;
-use serde::{Deserialize, Serialize};
 
 /// Type alias for boxed workflow functions
 type WorkflowFn = Box<

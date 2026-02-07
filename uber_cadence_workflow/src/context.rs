@@ -7,7 +7,6 @@ use crate::commands::{
     RecordMarkerCommand, ScheduleActivityCommand, ScheduleLocalActivityCommand,
     StartChildWorkflowCommand, StartTimerCommand, WorkflowCommand,
 };
-use uber_cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 use futures::future::poll_fn;
 use serde::Serialize;
 use std::any::Any;
@@ -17,6 +16,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::Duration;
+use uber_cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 
 // Type aliases to reduce complexity
 type PendingSpawnTasks = Arc<Mutex<Option<Arc<Mutex<Vec<WorkflowTask>>>>>>;

@@ -1,8 +1,8 @@
 use crate::executor::workflow::WorkflowExecutor;
-use uber_cadence_core::CadenceError;
-use uber_cadence_proto::workflow_service::*;
 use futures::FutureExt;
 use std::sync::Arc;
+use uber_cadence_core::CadenceError;
+use uber_cadence_proto::workflow_service::*;
 
 /// Decision task handler
 pub struct DecisionTaskHandler {

@@ -23,6 +23,10 @@
 //! cargo test --test onboarding_reminder_integration -- --ignored --test-threads=1 --nocapture
 //! ```
 
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
 use uber_cadence_activity::{activity, ActivityContext};
 use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_core::{ActivityOptions, CadenceError};
@@ -37,10 +41,6 @@ use uber_cadence_proto::workflow_service::{
 use uber_cadence_worker::registry::{ActivityError, WorkflowError};
 use uber_cadence_worker::{CadenceWorker, Worker, WorkerOptions};
 use uber_cadence_workflow::{call_activity, workflow, WorkflowContext};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 // ============================================================================
@@ -325,7 +325,10 @@ async fn get_workflow_history(
         .unwrap_or_else(|| uber_cadence_proto::shared::History { events: vec![] }))
 }
 
-fn assert_activity_executed(history: &uber_cadence_proto::shared::History, activity_type: &str) -> bool {
+fn assert_activity_executed(
+    history: &uber_cadence_proto::shared::History,
+    activity_type: &str,
+) -> bool {
     history.events.iter().any(|e| {
         if e.event_type == EventType::ActivityTaskScheduled {
             if let Some(EventAttributes::ActivityTaskScheduledEventAttributes(attr)) = &e.attributes

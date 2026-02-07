@@ -5,6 +5,11 @@
 //! 2. Executor can process tasks from the queue
 //! 3. Results are returned properly
 
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+use tokio::sync::oneshot;
 use uber_cadence_activity::ActivityContext;
 use uber_cadence_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
 use uber_cadence_worker::executor::local_activity::LocalActivityExecutor;
@@ -12,11 +17,6 @@ use uber_cadence_worker::local_activity_queue::{LocalActivityQueue, LocalActivit
 use uber_cadence_worker::registry::{Activity, Registry};
 use uber_cadence_worker::{ActivityError, WorkflowRegistry};
 use uber_cadence_workflow::LocalActivityOptions;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use tokio::sync::oneshot;
 
 // Test activity that echoes input
 #[derive(Clone)]

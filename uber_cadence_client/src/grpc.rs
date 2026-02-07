@@ -4,14 +4,14 @@
 //! Cadence server using protocol buffers.
 
 use async_trait::async_trait;
+use tonic::transport::Channel;
+use tonic::{metadata::MetadataValue, Request, Status};
 use uber_cadence_core::CadenceError;
 use uber_cadence_proto::generated::domain_api_client::DomainApiClient;
 use uber_cadence_proto::generated::visibility_api_client::VisibilityApiClient;
 use uber_cadence_proto::generated::worker_api_client::WorkerApiClient;
 use uber_cadence_proto::generated::workflow_api_client::WorkflowApiClient;
 use uber_cadence_proto::workflow_service::*;
-use tonic::transport::Channel;
-use tonic::{metadata::MetadataValue, Request, Status};
 
 use crate::auth::{AuthInterceptor, BoxedAuthProvider};
 
@@ -141,7 +141,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         request: StartWorkflowExecutionRequest,
     ) -> Result<StartWorkflowExecutionResponse, Self::Error> {
         // Convert our API request type to protobuf type
-        let pb_request: uber_cadence_proto::generated::StartWorkflowExecutionRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::StartWorkflowExecutionRequest =
+            request.into();
 
         // Make the gRPC call
         let mut client = self.workflow_client.clone();
@@ -159,7 +160,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         request: SignalWorkflowExecutionRequest,
     ) -> Result<SignalWorkflowExecutionResponse, Self::Error> {
         // Convert our API request type to protobuf type
-        let pb_request: uber_cadence_proto::generated::SignalWorkflowExecutionRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::SignalWorkflowExecutionRequest =
+            request.into();
 
         // Make the gRPC call
         let mut client = self.workflow_client.clone();
@@ -270,7 +272,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         &self,
         request: RespondDecisionTaskFailedRequest,
     ) -> Result<RespondDecisionTaskFailedResponse, Self::Error> {
-        let pb_request: uber_cadence_proto::generated::RespondDecisionTaskFailedRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::RespondDecisionTaskFailedRequest =
+            request.into();
 
         let mut client = self.worker_client.clone();
         let response = client
@@ -332,7 +335,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         &self,
         request: RespondActivityTaskFailedRequest,
     ) -> Result<RespondActivityTaskFailedResponse, Self::Error> {
-        let pb_request: uber_cadence_proto::generated::RespondActivityTaskFailedRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::RespondActivityTaskFailedRequest =
+            request.into();
 
         let mut client = self.worker_client.clone();
         let response = client
@@ -363,7 +367,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         &self,
         request: DescribeWorkflowExecutionRequest,
     ) -> Result<DescribeWorkflowExecutionResponse, Self::Error> {
-        let pb_request: uber_cadence_proto::generated::DescribeWorkflowExecutionRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::DescribeWorkflowExecutionRequest =
+            request.into();
 
         let mut client = self.workflow_client.clone();
         let response = client
@@ -511,7 +516,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         &self,
         request: ScanWorkflowExecutionsRequest,
     ) -> Result<ScanWorkflowExecutionsResponse, Self::Error> {
-        let pb_request: uber_cadence_proto::generated::ScanWorkflowExecutionsRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::ScanWorkflowExecutionsRequest =
+            request.into();
         let mut client = self.visibility_client.clone();
         let response = client
             .scan_workflow_executions(pb_request)
@@ -524,7 +530,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         &self,
         request: CountWorkflowExecutionsRequest,
     ) -> Result<CountWorkflowExecutionsResponse, Self::Error> {
-        let pb_request: uber_cadence_proto::generated::CountWorkflowExecutionsRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::CountWorkflowExecutionsRequest =
+            request.into();
         let mut client = self.visibility_client.clone();
         let response = client
             .count_workflow_executions(pb_request)
@@ -550,7 +557,8 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         &self,
         request: ResetWorkflowExecutionRequest,
     ) -> Result<ResetWorkflowExecutionResponse, Self::Error> {
-        let pb_request: uber_cadence_proto::generated::ResetWorkflowExecutionRequest = request.into();
+        let pb_request: uber_cadence_proto::generated::ResetWorkflowExecutionRequest =
+            request.into();
         let mut client = self.workflow_client.clone();
         let response = client
             .reset_workflow_execution(pb_request)

@@ -11,10 +11,10 @@ use crate::handlers::decision::DecisionTaskHandler;
 use crate::local_activity_queue::LocalActivityQueue;
 use crate::pollers::{ActivityTaskPoller, DecisionTaskPoller, PollerManager};
 use crate::registry::Registry;
-use uber_cadence_core::CadenceError;
-use uber_cadence_proto::workflow_service::WorkflowService;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use uber_cadence_core::CadenceError;
+use uber_cadence_proto::workflow_service::WorkflowService;
 
 /// Worker trait for hosting workflows and activities
 pub trait Worker: Send + Sync {

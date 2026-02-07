@@ -4,6 +4,10 @@ use crate::local_activity_queue::LocalActivityQueue;
 use crate::registry::Registry;
 use crate::replay_verifier::match_replay_with_history;
 use crate::WorkerOptions;
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use uber_cadence_core::{CadenceError, ReplayContext, WorkflowInfo};
 use uber_cadence_proto::shared::{
     ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType,
@@ -22,10 +26,6 @@ use uber_cadence_workflow::state_machine::{
     ActivityDecisionStateMachine, ChildWorkflowDecisionStateMachine, DecisionId,
     StateMachineDecisionType, TimerDecisionStateMachine,
 };
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
 
 // Type alias to reduce complexity
 type LocalActivityWakers =
@@ -1215,11 +1215,13 @@ mod tests {
                 event_id: 3,
                 event_type: EventType::DecisionTaskStarted,
                 attributes: Some(EventAttributes::DecisionTaskStartedEventAttributes(
-                    Box::new(uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
-                        scheduled_event_id: 2,
-                        identity: "test-worker".to_string(),
-                        request_id: "req-1".to_string(),
-                    }),
+                    Box::new(
+                        uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
+                            scheduled_event_id: 2,
+                            identity: "test-worker".to_string(),
+                            request_id: "req-1".to_string(),
+                        },
+                    ),
                 )),
                 timestamp: t1_nanos,
                 version: 0,
@@ -1327,11 +1329,13 @@ mod tests {
                 event_id: 6,
                 event_type: EventType::DecisionTaskStarted,
                 attributes: Some(EventAttributes::DecisionTaskStartedEventAttributes(
-                    Box::new(uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
-                        scheduled_event_id: 5,
-                        identity: "test-worker".to_string(),
-                        request_id: "req-2".to_string(),
-                    }),
+                    Box::new(
+                        uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
+                            scheduled_event_id: 5,
+                            identity: "test-worker".to_string(),
+                            request_id: "req-2".to_string(),
+                        },
+                    ),
                 )),
                 timestamp: t2_nanos,
                 version: 0,
@@ -1470,11 +1474,13 @@ mod tests {
                 event_id: 3,
                 event_type: EventType::DecisionTaskStarted,
                 attributes: Some(EventAttributes::DecisionTaskStartedEventAttributes(
-                    Box::new(uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
-                        scheduled_event_id: 2,
-                        identity: "test-worker".to_string(),
-                        request_id: "req-1".to_string(),
-                    }),
+                    Box::new(
+                        uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
+                            scheduled_event_id: 2,
+                            identity: "test-worker".to_string(),
+                            request_id: "req-1".to_string(),
+                        },
+                    ),
                 )),
                 timestamp: 0,
                 version: 0,
@@ -1529,13 +1535,15 @@ mod tests {
                 event_id: 6,
                 event_type: EventType::ActivityTaskStarted,
                 attributes: Some(EventAttributes::ActivityTaskStartedEventAttributes(
-                    Box::new(uber_cadence_proto::shared::ActivityTaskStartedEventAttributes {
-                        scheduled_event_id: 5,
-                        identity: "test-worker".to_string(),
-                        request_id: "req-2".to_string(),
-                        attempt: 0,
-                        last_failure_details: None,
-                    }),
+                    Box::new(
+                        uber_cadence_proto::shared::ActivityTaskStartedEventAttributes {
+                            scheduled_event_id: 5,
+                            identity: "test-worker".to_string(),
+                            request_id: "req-2".to_string(),
+                            attempt: 0,
+                            last_failure_details: None,
+                        },
+                    ),
                 )),
                 timestamp: 0,
                 version: 0,
@@ -1581,11 +1589,13 @@ mod tests {
                 event_id: 9,
                 event_type: EventType::DecisionTaskStarted,
                 attributes: Some(EventAttributes::DecisionTaskStartedEventAttributes(
-                    Box::new(uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
-                        scheduled_event_id: 8,
-                        identity: "test-worker".to_string(),
-                        request_id: "req-3".to_string(),
-                    }),
+                    Box::new(
+                        uber_cadence_proto::shared::DecisionTaskStartedEventAttributes {
+                            scheduled_event_id: 8,
+                            identity: "test-worker".to_string(),
+                            request_id: "req-3".to_string(),
+                        },
+                    ),
                 )),
                 timestamp: 0,
                 version: 0,

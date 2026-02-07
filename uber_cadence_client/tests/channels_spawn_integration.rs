@@ -27,6 +27,12 @@
 //!
 //! The test connects to `http://localhost:7833` (gRPC port).
 
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
 use uber_cadence_activity::ActivityContext;
 use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_core::{ActivityOptions, CadenceError};
@@ -43,12 +49,6 @@ use uber_cadence_worker::registry::{
 };
 use uber_cadence_worker::{CadenceWorker, Worker, WorkerOptions};
 use uber_cadence_workflow::WorkflowContext;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 /// gRPC endpoint for Cadence server
@@ -196,14 +196,16 @@ impl Workflow for SplitMergeWorkflow {
                         wait_for_cancellation: false,
                     };
 
-                    let job_bytes = serde_json::to_vec(&job)
-                        .map_err(|e| uber_cadence_workflow::WorkflowError::Generic(e.to_string()))?;
+                    let job_bytes = serde_json::to_vec(&job).map_err(|e| {
+                        uber_cadence_workflow::WorkflowError::Generic(e.to_string())
+                    })?;
                     let result_bytes = ctx_clone
                         .execute_activity("process_job", Some(job_bytes), options)
                         .await?;
 
-                    let result: JobResult = serde_json::from_slice(&result_bytes)
-                        .map_err(|e| uber_cadence_workflow::WorkflowError::Generic(e.to_string()))?;
+                    let result: JobResult = serde_json::from_slice(&result_bytes).map_err(|e| {
+                        uber_cadence_workflow::WorkflowError::Generic(e.to_string())
+                    })?;
                     tracing::info!("Job {} completed: {:?}", job.id, result);
 
                     // Send result through channel
@@ -271,8 +273,9 @@ impl Workflow for ParallelWorkflow {
                         wait_for_cancellation: false,
                     };
 
-                    let value_bytes = serde_json::to_vec(&value)
-                        .map_err(|e| uber_cadence_workflow::WorkflowError::Generic(e.to_string()))?;
+                    let value_bytes = serde_json::to_vec(&value).map_err(|e| {
+                        uber_cadence_workflow::WorkflowError::Generic(e.to_string())
+                    })?;
                     match ctx_clone
                         .execute_activity("fast_process", Some(value_bytes), options)
                         .await

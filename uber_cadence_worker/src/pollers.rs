@@ -6,11 +6,11 @@
 use crate::handlers::activity::ActivityTaskHandler;
 use crate::handlers::decision::DecisionTaskHandler;
 use async_trait::async_trait;
-use uber_cadence_core::CadenceError;
-use uber_cadence_proto::workflow_service::*;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
+use uber_cadence_core::CadenceError;
+use uber_cadence_proto::workflow_service::*;
 
 /// Task poller trait
 #[async_trait]

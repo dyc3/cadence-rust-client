@@ -1,10 +1,10 @@
 //! Heartbeat manager for long-running activities.
 
-use uber_cadence_core::CadenceError;
-use uber_cadence_proto::workflow_service::*;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex};
+use uber_cadence_core::CadenceError;
+use uber_cadence_proto::workflow_service::*;
 
 /// Heartbeat manager for activities
 pub struct HeartbeatManager {

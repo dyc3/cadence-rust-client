@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 use uber_cadence_proto::shared::{
     EventAttributes, EventType, History, HistoryEvent, WorkflowExecution,
     WorkflowExecutionSignaledEventAttributes, WorkflowExecutionStartedEventAttributes,
@@ -10,10 +14,6 @@ use uber_cadence_worker::executor::workflow::WorkflowExecutor;
 use uber_cadence_worker::registry::{Registry, Workflow, WorkflowError, WorkflowRegistry};
 use uber_cadence_worker::WorkerOptions;
 use uber_cadence_workflow::context::WorkflowContext;
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
 
 #[derive(Clone)]
 struct ClosureWorkflow<F>(F)

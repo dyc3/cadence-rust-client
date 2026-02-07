@@ -1,7 +1,7 @@
+use std::sync::{Arc, Mutex};
 use uber_cadence_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
 use uber_cadence_workflow::context::WorkflowContext;
 use uber_cadence_workflow::dispatcher::{WorkflowDispatcher, WorkflowTask};
-use std::sync::{Arc, Mutex};
 
 #[tokio::test]
 async fn test_channel_with_dispatcher() {

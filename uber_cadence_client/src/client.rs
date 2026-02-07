@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde_json;
 use uber_cadence_core::{
     CadenceError, CadenceResult, EncodedValue, QueryConsistencyLevel, RetryPolicy,
     WorkflowExecution, WorkflowIdReusePolicy,
@@ -21,7 +22,6 @@ use uber_cadence_proto::{
     WorkflowExecutionConfiguration as ProtoWorkflowExecutionConfiguration,
     WorkflowExecutionInfo as ProtoWorkflowExecutionInfo,
 };
-use serde_json;
 use uuid::Uuid;
 
 use crate::auth::BoxedAuthProvider;

@@ -4,9 +4,9 @@
 //! including registration, updates, and failover operations.
 
 use async_trait::async_trait;
-use uber_cadence_core::{CadenceError, CadenceResult};
 use std::collections::HashMap;
 use std::time::Duration;
+use uber_cadence_core::{CadenceError, CadenceResult};
 
 /// Domain client trait for managing domains
 #[async_trait]

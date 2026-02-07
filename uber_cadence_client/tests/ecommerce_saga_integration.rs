@@ -1,3 +1,9 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
 use uber_cadence_activity::ActivityContext;
 use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_core::{ActivityOptions, CadenceError};
@@ -12,12 +18,6 @@ use uber_cadence_proto::workflow_service::{
 use uber_cadence_worker::registry::{Activity, ActivityError, Registry, Workflow, WorkflowError};
 use uber_cadence_worker::{CadenceWorker, Worker, WorkerOptions};
 use uber_cadence_workflow::{LocalActivityOptions, WorkflowContext};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 // ============================================================================
@@ -519,7 +519,10 @@ fn assert_local_activity_executed(
     })
 }
 
-fn assert_activity_executed(history: &uber_cadence_proto::shared::History, activity_type: &str) -> bool {
+fn assert_activity_executed(
+    history: &uber_cadence_proto::shared::History,
+    activity_type: &str,
+) -> bool {
     // Check for regular activity
     let regular_activity = history.events.iter().any(|e| {
         if e.event_type == EventType::ActivityTaskScheduled {
@@ -537,7 +540,10 @@ fn assert_activity_executed(history: &uber_cadence_proto::shared::History, activ
     regular_activity || assert_local_activity_executed(history, activity_type)
 }
 
-fn assert_activity_failed(history: &uber_cadence_proto::shared::History, activity_type: &str) -> bool {
+fn assert_activity_failed(
+    history: &uber_cadence_proto::shared::History,
+    activity_type: &str,
+) -> bool {
     // This is harder to check directly without tracking schedule ID,
     // but we can check if there's a failure event for a scheduled event of that type.
     // For simplicity, we just check if the activity was scheduled, and if the workflow failed.

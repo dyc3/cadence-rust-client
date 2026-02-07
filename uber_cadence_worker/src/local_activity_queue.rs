@@ -5,11 +5,11 @@
 //! executor.
 
 use crate::registry::ActivityError;
-use uber_cadence_core::{Header, WorkflowInfo};
-use uber_cadence_workflow::LocalActivityOptions;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::{mpsc, oneshot, Mutex};
+use uber_cadence_core::{Header, WorkflowInfo};
+use uber_cadence_workflow::LocalActivityOptions;
 
 /// A task representing a local activity execution request
 #[derive(Debug)]
@@ -96,8 +96,8 @@ impl Default for LocalActivityQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uber_cadence_core::{WorkflowExecution, WorkflowType};
     use std::time::Duration;
+    use uber_cadence_core::{WorkflowExecution, WorkflowType};
 
     fn create_test_workflow_info() -> WorkflowInfo {
         WorkflowInfo {
