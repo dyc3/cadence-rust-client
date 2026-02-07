@@ -3,12 +3,12 @@
 //! This example demonstrates long-running activities with heartbeats,
 //! cancellation support, and deadline management.
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Input for file processing activity
 #[derive(Debug, Clone, Serialize, Deserialize)]

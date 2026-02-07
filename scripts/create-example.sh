@@ -31,13 +31,13 @@ edition = "2021"
 description = "Example demonstrating ${NAME//_/ }"
 
 [dependencies]
-cadence-client = { path = "../../cadence-client" }
-cadence-worker = { path = "../../cadence-worker" }
-cadence-workflow = { path = "../../cadence-workflow" }
-cadence-activity = { path = "../../cadence-activity" }
-cadence-core = { path = "../../cadence-core" }
-cadence-testsuite = { path = "../../cadence-testsuite" }
-examples-common = { path = "../examples-common" }
+uber_cadence_client = { path = "../../uber_cadence_client" }
+uber_cadence_worker = { path = "../../uber_cadence_worker" }
+uber_cadence_workflow = { path = "../../uber_cadence_workflow" }
+uber_cadence_activity = { path = "../../uber_cadence_activity" }
+uber_cadence_core = { path = "../../uber_cadence_core" }
+uber_cadence_testsuite = { path = "../../uber_cadence_testsuite" }
+examples_common = { path = "../examples-common", package = "examples_common" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -68,7 +68,7 @@ mkdir -p "${EXAMPLE_DIR}/src/activities"
 cat > "${EXAMPLE_DIR}/src/activities/mod.rs" << EOF
 //! Activity implementations for ${NAME//_/ } example.
 
-use cadence_activity::{ActivityContext, ActivityError};
+use uber_cadence_activity::{ActivityContext, ActivityError};
 use serde::{Deserialize, Serialize};
 
 /// Example activity input
@@ -99,8 +99,8 @@ mkdir -p "${EXAMPLE_DIR}/src/workflows"
 cat > "${EXAMPLE_DIR}/src/workflows/mod.rs" << EOF
 //! Workflow implementations for ${NAME//_/ } example.
 
-use cadence_core::ActivityOptions;
-use cadence_workflow::{WorkflowContext, WorkflowError};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::{WorkflowContext, WorkflowError};
 use serde::{Deserialize, Serialize};
 use crate::activities::{ExampleActivityInput, example_activity};
 
@@ -124,16 +124,16 @@ pub async fn example_workflow(
     let activity_input = ExampleActivityInput {
         data: input.name.clone(),
     };
-    
+
     let result = ctx.execute_activity(
         "example_activity",
         Some(serde_json::to_vec(&activity_input).unwrap()),
         ActivityOptions::default(),
     ).await?;
-    
+
     let activity_output = serde_json::from_slice(&result.unwrap_or_default())
         .map_err(|e| WorkflowError::Generic(format!("Failed to parse: {}", e)))?;
-    
+
     Ok(ExampleWorkflowOutput {
         greeting: activity_output.result,
     })
@@ -170,20 +170,20 @@ cat > "${EXAMPLE_DIR}/src/main.rs" << 'EOF'
 //! cargo run -p NUMBER_NAME
 //! ```
 
-use cadence_testsuite::TestWorkflowEnvironment;
+use uber_cadence_testsuite::TestWorkflowEnvironment;
 use tracing::info;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
-    
+
     println!("\n=== Example NUMBER: TITLE ===\n");
-    
+
     let mut env = TestWorkflowEnvironment::new();
     info!("Test environment created");
-    
+
     // TODO: Implement example logic
-    
+
     println!("\nExample completed!");
     Ok(())
 }
@@ -191,7 +191,7 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_example() {
         let _env = TestWorkflowEnvironment::new();

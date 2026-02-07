@@ -3,12 +3,12 @@
 //! This example demonstrates various error scenarios and how to handle them
 //! in activities and workflows.
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 use tracing::{error, info, warn};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Custom error types for the application
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]

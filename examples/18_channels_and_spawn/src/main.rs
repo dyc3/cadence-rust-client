@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cadence_testsuite::TestWorkflowEnvironment;
+    use uber_cadence_testsuite::TestWorkflowEnvironment;
     use channels_and_spawn::{fast_process, parallel_workflow, process_job, split_merge_workflow};
 
     #[tokio::test]

@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use cadence_client::GrpcWorkflowServiceClient;
-use cadence_proto::shared::{TaskList, TaskListKind, WorkflowType};
-use cadence_proto::workflow_service::{StartWorkflowExecutionRequest, WorkflowService};
 use tokio::time::{interval, Instant};
+use uber_cadence_client::GrpcWorkflowServiceClient;
+use uber_cadence_proto::shared::{TaskList, TaskListKind, WorkflowType};
+use uber_cadence_proto::workflow_service::{StartWorkflowExecutionRequest, WorkflowService};
 use uuid::Uuid;
 
 use crate::cli::{ClientArgs, HighConcurrencyArgs};

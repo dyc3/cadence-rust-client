@@ -1,10 +1,10 @@
 // Failing activity
 
-use cadence_activity::ActivityContext;
-use cadence_worker::registry::{Activity, ActivityError};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::registry::{Activity, ActivityError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FailingInput {

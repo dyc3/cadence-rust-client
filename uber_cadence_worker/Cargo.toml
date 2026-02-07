@@ -1,0 +1,30 @@
+[package]
+name = "uber_cadence_worker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cadence worker implementation for Rust"
+
+[dependencies]
+uber_cadence_proto = { path = "../uber_cadence_proto", package = "uber_cadence_proto" }
+uber_cadence_core = { path = "../uber_cadence_core", package = "uber_cadence_core" }
+uber_cadence_workflow = { path = "../uber_cadence_workflow", package = "uber_cadence_workflow" }
+uber_cadence_activity = { path = "../uber_cadence_activity", package = "uber_cadence_activity" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+dyn-clone = { workspace = true }
+
+[dev-dependencies]
+mockall = { workspace = true }
+tokio-test = { workspace = true }
+serde_json = { workspace = true }

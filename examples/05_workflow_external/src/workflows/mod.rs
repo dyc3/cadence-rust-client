@@ -3,12 +3,12 @@
 //! This example demonstrates signaling and canceling external workflows.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Signal to notify about dependency completion
 #[derive(Debug, Clone, Serialize, Deserialize)]

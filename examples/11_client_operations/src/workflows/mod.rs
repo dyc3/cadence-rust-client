@@ -3,11 +3,11 @@
 //! This module provides workflows that demonstrate various client operations
 //! like signals, queries, and long-running operations.
 
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Input for the signal handling workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]

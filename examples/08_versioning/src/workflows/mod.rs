@@ -4,11 +4,11 @@
 //! for handling non-deterministic operations.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::{info, warn};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// A workflow demonstrating versioned behavior
 pub async fn versioned_workflow_v1(

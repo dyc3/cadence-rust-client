@@ -10,12 +10,12 @@
 use crate::activities::*;
 use crate::types::*;
 use crate::utils::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use std::collections::HashMap;
 use std::time::Duration;
 use tracing::{error, info, instrument, warn};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Type-safe idempotent workflow
 #[instrument(skip(ctx, input))]
@@ -35,7 +35,7 @@ pub async fn idempotent_workflow(
             Some(serde_json::to_vec(&input).unwrap()),
             ActivityOptions {
                 start_to_close_timeout: Duration::from_secs(30),
-                retry_policy: Some(cadence_core::RetryPolicy {
+                retry_policy: Some(uber_cadence_core::RetryPolicy {
                     initial_interval: Duration::from_secs(1),
                     backoff_coefficient: 2.0,
                     maximum_interval: Duration::from_secs(30),

@@ -1,6 +1,6 @@
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {

@@ -5,11 +5,11 @@
 //! - Efficient data serialization
 //! - Connection reuse patterns
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{debug, info};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Batch processing input
 #[derive(Debug, Clone, Serialize, Deserialize)]

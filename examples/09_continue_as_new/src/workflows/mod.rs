@@ -4,10 +4,10 @@
 //! long-running workflows and large datasets.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use tracing::info;
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Maximum number of iterations before continuing as new
 const MAX_ITERATIONS: u32 = 5;

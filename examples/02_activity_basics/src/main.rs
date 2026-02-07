@@ -49,9 +49,9 @@ async fn main() -> anyhow::Result<()> {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::{TestWorkflowEnvironment, TestWorkflowContext};
-//     use cadence_workflow::context::WorkflowError;
-//     use cadence_core::ActivityOptions;
+//     use uber_cadence_testsuite::{TestWorkflowEnvironment, TestWorkflowContext};
+//     use uber_cadence_workflow::context::WorkflowError;
+//     use uber_cadence_core::ActivityOptions;
 //     use tracing::{info, error};
 //
 //     /// Test workflow wrapper that uses TestWorkflowContext

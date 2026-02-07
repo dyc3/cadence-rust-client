@@ -1,10 +1,10 @@
 //! Workflow implementations for activity basics example.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use tracing::{error, info};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Process order workflow that chains multiple activities
 pub async fn process_order_workflow(

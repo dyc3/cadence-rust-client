@@ -3,11 +3,11 @@
 //! This module demonstrates how to configure and set up workers with
 //! various options and patterns.
 
-use cadence_worker::registry::{Registry, WorkflowRegistry};
-use cadence_worker::worker::{NonDeterministicWorkflowPolicy, WorkerOptions};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_worker::registry::{Registry, WorkflowRegistry};
+use uber_cadence_worker::worker::{NonDeterministicWorkflowPolicy, WorkerOptions};
 
 /// Creates worker options with performance tuning
 pub fn create_high_performance_options() -> WorkerOptions {

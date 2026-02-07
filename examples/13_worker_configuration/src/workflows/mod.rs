@@ -4,12 +4,12 @@
 //! with workers.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Data processing workflow input
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ pub async fn data_processing_workflow(
         let activity_options = ActivityOptions {
             task_list: ctx.workflow_info().task_list.clone(),
             start_to_close_timeout: Duration::from_secs(60),
-            retry_policy: Some(cadence_core::RetryPolicy::default()),
+            retry_policy: Some(uber_cadence_core::RetryPolicy::default()),
             ..Default::default()
         };
 

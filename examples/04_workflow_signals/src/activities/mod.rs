@@ -2,10 +2,10 @@
 //!
 //! This example focuses on signals, so activities are minimal helpers.
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Input for notification activity
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,13 +1,13 @@
 [workspace]
 members = [
-    "cadence-proto",
-    "cadence-core",
-    "cadence-client",
-    "cadence-macros",
-    "cadence-worker",
-    "cadence-workflow",
-    "cadence-activity",
-    "cadence-testsuite",
+    "uber_cadence_proto",
+    "uber_cadence_core",
+    "uber_cadence_client",
+    "uber_cadence_macros",
+    "uber_cadence_worker",
+    "uber_cadence_workflow",
+    "uber_cadence_activity",
+    "uber_cadence_testsuite",
     "examples/examples-common",
     "examples/01_hello_workflow",
     "examples/02_activity_basics",
@@ -36,7 +36,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Carson McManus"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/uber/cadence-rust-client"
+repository = "https://github.com/dyc3/cadence-rust-client"
 
 [workspace.dependencies]
 # Async runtime

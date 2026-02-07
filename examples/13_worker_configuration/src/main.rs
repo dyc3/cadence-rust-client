@@ -16,8 +16,8 @@
 //! cargo run -p worker_configuration
 //! ```
 
-use cadence_worker::registry::WorkflowRegistry;
 use examples_common::tracing_setup::init_tracing;
+use uber_cadence_worker::registry::WorkflowRegistry;
 use worker_configuration::*;
 
 #[tokio::main]
@@ -130,7 +130,7 @@ fn demonstrate_worker_setup() {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::TestWorkflowEnvironment;
+//     use uber_cadence_testsuite::TestWorkflowEnvironment;
 //
 //     #[test]
 //     fn test_high_performance_options() {

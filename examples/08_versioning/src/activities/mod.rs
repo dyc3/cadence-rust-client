@@ -3,11 +3,11 @@
 //! This example demonstrates activities that may have different
 //! implementations across workflow versions.
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 use uuid::Uuid;
 
 /// API call input

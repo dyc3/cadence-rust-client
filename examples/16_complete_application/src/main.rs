@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::TestWorkflowEnvironment;
+//     use uber_cadence_testsuite::TestWorkflowEnvironment;
 //     use chrono::Utc;
 //
 //     fn create_test_user_input() -> UserRegistrationInput {

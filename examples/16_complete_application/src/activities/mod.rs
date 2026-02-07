@@ -8,11 +8,11 @@
 //! - Shipping coordination
 
 use crate::models::*;
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use chrono::Utc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 use uuid::Uuid;
 
 /// Register a new user

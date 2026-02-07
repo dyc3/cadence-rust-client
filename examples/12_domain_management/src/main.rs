@@ -16,11 +16,11 @@
 //! cargo run -p domain_management
 //! ```
 
-use cadence_client::domain::*;
 use domain_management::*;
 use examples_common::tracing_setup::init_tracing;
 use std::collections::HashMap;
 use std::time::Duration;
+use uber_cadence_client::domain::*;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

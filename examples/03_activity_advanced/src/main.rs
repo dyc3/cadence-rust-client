@@ -48,9 +48,9 @@ async fn main() -> anyhow::Result<()> {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::{TestWorkflowEnvironment, TestWorkflowContext};
-//     use cadence_workflow::context::WorkflowError;
-//     use cadence_core::ActivityOptions;
+//     use uber_cadence_testsuite::{TestWorkflowEnvironment, TestWorkflowContext};
+//     use uber_cadence_workflow::context::WorkflowError;
+//     use uber_cadence_core::ActivityOptions;
 //     use std::time::Duration;
 //     use tracing::info;
 //
@@ -160,7 +160,7 @@ async fn main() -> anyhow::Result<()> {
 //         ctx: &mut TestWorkflowContext,
 //         input: FileProcessingInput,
 //     ) -> Result<FileProcessingResult, WorkflowError> {
-//         use cadence_core::RetryPolicy;
+//         use uber_cadence_core::RetryPolicy;
 //
 //         info!(
 //             "Starting resilient processing workflow for: {}",

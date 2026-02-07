@@ -43,12 +43,12 @@ async fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use cadence_core::ActivityOptions;
-    use cadence_testsuite::{ActivityError, TestWorkflowContext, TestWorkflowEnvironment};
-    use cadence_workflow::context::WorkflowError;
     use chrono::{DateTime, Duration as ChronoDuration, Utc};
     use std::time::Duration;
     use time_and_sleep::{ReminderPriority, ReminderRequest, ReminderResult, TimeBoundResult};
+    use uber_cadence_core::ActivityOptions;
+    use uber_cadence_testsuite::{ActivityError, TestWorkflowContext, TestWorkflowEnvironment};
+    use uber_cadence_workflow::context::WorkflowError;
 
     // Workflow wrapper functions for tests
     async fn sleep_demo_workflow_wrapper(

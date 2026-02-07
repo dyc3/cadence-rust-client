@@ -5,13 +5,13 @@ edition = "2021"
 description = "Workflow signal handling patterns example"
 
 [dependencies]
-cadence-client = { path = "../../cadence-client" }
-cadence-worker = { path = "../../cadence-worker" }
-cadence-workflow = { path = "../../cadence-workflow" }
-cadence-activity = { path = "../../cadence-activity" }
-cadence-core = { path = "../../cadence-core" }
-cadence-testsuite = { path = "../../cadence-testsuite" }
-examples-common = { path = "../examples-common" }
+uber_cadence_client = { path = "../../uber_cadence_client", package = "uber_cadence_client" }
+uber_cadence_worker = { path = "../../uber_cadence_worker", package = "uber_cadence_worker" }
+uber_cadence_workflow = { path = "../../uber_cadence_workflow", package = "uber_cadence_workflow" }
+uber_cadence_activity = { path = "../../uber_cadence_activity", package = "uber_cadence_activity" }
+uber_cadence_core = { path = "../../uber_cadence_core", package = "uber_cadence_core" }
+uber_cadence_testsuite = { path = "../../uber_cadence_testsuite", package = "uber_cadence_testsuite" }
+examples_common = { path = "../examples-common", package = "examples_common" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

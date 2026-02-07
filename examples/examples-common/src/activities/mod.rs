@@ -3,7 +3,7 @@
 use crate::types::{
     ActivityError, ActivityResult, InventoryReservation, Notification, Order, Payment,
 };
-use cadence_activity::ActivityContext;
+use uber_cadence_activity::ActivityContext;
 
 /// Mock payment processing activity.
 pub async fn process_payment_activity(

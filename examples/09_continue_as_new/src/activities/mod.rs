@@ -3,11 +3,11 @@
 //! This example demonstrates activities for processing data in batches
 //! and managing long-running operations.
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Batch processing input
 #[derive(Debug, Clone, Serialize, Deserialize)]

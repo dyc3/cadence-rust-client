@@ -1,11 +1,11 @@
 //! Workflow implementations for the hello workflow example.
 
 use crate::activities::{HelloInput, HelloOutput};
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::{info, warn};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// A simple workflow that orchestrates a greeting activity
 pub async fn hello_workflow(

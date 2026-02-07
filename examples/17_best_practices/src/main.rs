@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::TestWorkflowEnvironment;
+//     use uber_cadence_testsuite::TestWorkflowEnvironment;
 //     use std::collections::HashMap;
 //
 //     #[tokio::test]

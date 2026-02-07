@@ -4,12 +4,12 @@
 //! in Cadence workflows.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 use tracing::{info, warn};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// A workflow that demonstrates basic sleep/timer functionality
 pub async fn sleep_demo_workflow(

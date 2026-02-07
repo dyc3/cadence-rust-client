@@ -63,8 +63,8 @@ async fn main() -> anyhow::Result<()> {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::{TestWorkflowEnvironment, TestWorkflowContext};
-//     use cadence_workflow::context::WorkflowError;
+//     use uber_cadence_testsuite::{TestWorkflowEnvironment, TestWorkflowContext};
+//     use uber_cadence_workflow::context::WorkflowError;
 //     use std::time::Duration;
 //
 //     // Test wrapper for hello_workflow that uses TestWorkflowContext
@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
 //         ctx: &mut TestWorkflowContext,
 //         input: HelloInput,
 //     ) -> Result<HelloOutput, WorkflowError> {
-//         use cadence_core::ActivityOptions;
+//         use uber_cadence_core::ActivityOptions;
 //         use tracing::{info};
 //
 //         info!("Starting hello_workflow for: {}", input.name);
@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
 //         ctx: &mut TestWorkflowContext,
 //         initial_input: HelloInput,
 //     ) -> Result<HelloOutput, WorkflowError> {
-//         use cadence_core::ActivityOptions;
+//         use uber_cadence_core::ActivityOptions;
 //         use tracing::{info, warn};
 //
 //         info!("Starting greeting_with_signal_workflow");

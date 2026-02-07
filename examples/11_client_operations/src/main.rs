@@ -16,11 +16,11 @@
 //! cargo run -p client_operations
 //! ```
 
-use cadence_client::client::StartWorkflowOptions;
-use cadence_core::WorkflowIdReusePolicy;
 use client_operations::*;
 use examples_common::tracing_setup::init_tracing;
 use std::time::Duration;
+use uber_cadence_client::client::StartWorkflowOptions;
+use uber_cadence_core::WorkflowIdReusePolicy;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -65,7 +65,7 @@ fn demonstrate_start_options() {
         task_start_to_close_timeout: Some(Duration::from_secs(10)),
         identity: Some("client-ops-example".to_string()),
         workflow_id_reuse_policy: WorkflowIdReusePolicy::AllowDuplicateFailedOnly,
-        retry_policy: Some(cadence_core::RetryPolicy::default()),
+        retry_policy: Some(uber_cadence_core::RetryPolicy::default()),
         cron_schedule: None,
         memo: None,
         search_attributes: None,
@@ -90,7 +90,7 @@ fn demonstrate_start_options() {
     );
 
     // Create options with retry policy
-    let retry_policy = cadence_core::RetryPolicy {
+    let retry_policy = uber_cadence_core::RetryPolicy {
         initial_interval: Duration::from_secs(1),
         backoff_coefficient: 2.0,
         maximum_interval: Duration::from_secs(60),
@@ -147,7 +147,7 @@ fn demonstrate_start_options() {
 async fn demonstrate_signal_patterns() {
     println!("\n--- Signal Patterns Demonstration ---\n");
 
-    use cadence_testsuite::{TestWorkflowContext, TestWorkflowEnvironment, WorkflowError};
+    use uber_cadence_testsuite::{TestWorkflowContext, TestWorkflowEnvironment, WorkflowError};
 
     let mut env = TestWorkflowEnvironment::new();
 
@@ -255,7 +255,7 @@ fn demonstrate_lifecycle_patterns() {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::TestWorkflowEnvironment;
+//     use uber_cadence_testsuite::TestWorkflowEnvironment;
 //
 //     #[tokio::test]
 //     async fn test_signal_workflow() {

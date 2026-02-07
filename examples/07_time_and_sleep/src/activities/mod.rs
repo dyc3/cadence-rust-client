@@ -3,12 +3,12 @@
 //! This example demonstrates time-related activities that can be used
 //! with workflow timers for time-based operations.
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Reminder request
 #[derive(Debug, Clone, Serialize, Deserialize)]

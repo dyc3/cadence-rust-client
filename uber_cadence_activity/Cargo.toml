@@ -1,0 +1,23 @@
+[package]
+name = "uber_cadence_activity"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Activity authoring SDK for Cadence"
+
+[dependencies]
+uber_cadence_proto = { path = "../uber_cadence_proto", package = "uber_cadence_proto" }
+uber_cadence_core = { path = "../uber_cadence_core", package = "uber_cadence_core" }
+cadence_macros = { path = "../uber_cadence_macros", package = "uber_cadence_macros" }
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mockall = { workspace = true }
+tokio-test = { workspace = true }

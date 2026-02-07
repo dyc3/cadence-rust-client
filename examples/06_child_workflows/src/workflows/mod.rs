@@ -4,12 +4,12 @@
 //! and parallel execution patterns.
 
 use crate::activities::*;
-use cadence_core::{ActivityOptions, ChildWorkflowOptions};
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{error, info};
+use uber_cadence_core::{ActivityOptions, ChildWorkflowOptions};
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Input for the parent workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]

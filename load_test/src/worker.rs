@@ -7,11 +7,11 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use cadence_client::GrpcWorkflowServiceClient;
-use cadence_core::CadenceError;
-use cadence_proto::workflow_service::{RegisterDomainRequest, WorkflowService};
-use cadence_worker::registry::Registry;
-use cadence_worker::{CadenceWorker, Worker, WorkerOptions};
+use uber_cadence_client::GrpcWorkflowServiceClient;
+use uber_cadence_core::CadenceError;
+use uber_cadence_proto::workflow_service::{RegisterDomainRequest, WorkflowService};
+use uber_cadence_worker::registry::Registry;
+use uber_cadence_worker::{CadenceWorker, Worker, WorkerOptions};
 use uuid::Uuid;
 
 use crate::activities::cpu_intensive::CpuIntensiveActivity;
@@ -44,7 +44,7 @@ pub async fn run_worker(
     register_domain_if_needed(&client, &domain).await?;
 
     // Create registry
-    let registry = Arc::new(cadence_worker::registry::WorkflowRegistry::new());
+    let registry = Arc::new(uber_cadence_worker::registry::WorkflowRegistry::new());
 
     // Register ALL load test workflows
     registry.register_workflow("noop_workflow", Box::new(NoopWorkflow));

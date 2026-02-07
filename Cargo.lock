@@ -7,20 +7,20 @@ name = "activity_advanced"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -29,20 +29,20 @@ name = "activity_basics"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -241,14 +241,8 @@ name = "best_practices"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "num_cpus",
  "once_cell",
  "rand",
@@ -259,6 +253,12 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -296,155 +296,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b35204fbdc0b3f4446b89fc1ac2cf84a8a68971995d0bf2e925ec7cd960f9cb3"
 
 [[package]]
-name = "cadence-activity"
-version = "0.1.0"
-dependencies = [
- "cadence-core",
- "cadence-macros",
- "cadence-proto",
- "chrono",
- "mockall",
- "serde",
- "thiserror 1.0.69",
- "tokio",
- "tokio-test",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "cadence-client"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "cadence-activity",
- "cadence-core",
- "cadence-proto",
- "cadence-worker",
- "cadence-workflow",
- "chrono",
- "futures",
- "jsonwebtoken",
- "mockall",
- "oauth2",
- "parking_lot",
- "rand",
- "rsa",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-test",
- "tonic",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "cadence-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cadence-proto",
- "chrono",
- "mockall",
- "once_cell",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio-test",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "cadence-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "cadence-proto"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "prost",
- "prost-types",
- "serde",
- "thiserror 1.0.69",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
-name = "cadence-testsuite"
-version = "0.1.0"
-dependencies = [
- "cadence-activity",
- "cadence-core",
- "cadence-proto",
- "cadence-workflow",
- "chrono",
- "futures",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-test",
- "uuid",
-]
-
-[[package]]
-name = "cadence-worker"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "cadence-activity",
- "cadence-core",
- "cadence-proto",
- "cadence-workflow",
- "chrono",
- "dashmap",
- "dyn-clone",
- "futures",
- "mockall",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-test",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "cadence-workflow"
-version = "0.1.0"
-dependencies = [
- "cadence-core",
- "cadence-macros",
- "cadence-proto",
- "chrono",
- "futures",
- "mockall",
- "once_cell",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-test",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -465,20 +316,20 @@ name = "channels_and_spawn"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
 ]
 
 [[package]]
@@ -486,20 +337,20 @@ name = "child_workflows"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -562,20 +413,20 @@ name = "client_operations"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -590,14 +441,8 @@ name = "complete_application"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -605,6 +450,12 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -619,20 +470,20 @@ name = "continue_as_new"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -765,20 +616,20 @@ name = "domain_management"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
 ]
 
 [[package]]
@@ -820,14 +671,8 @@ name = "error_handling"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -835,17 +680,18 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
 ]
 
 [[package]]
-name = "examples-common"
+name = "examples_common"
 version = "0.1.0"
 dependencies = [
- "cadence-activity",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
  "serde",
  "serde_json",
@@ -854,6 +700,11 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -1092,20 +943,20 @@ name = "hello_workflow"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
 ]
 
 [[package]]
@@ -1447,12 +1298,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-proto",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
  "clap",
  "dashmap",
@@ -1466,6 +1311,12 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_proto",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -1474,20 +1325,20 @@ name = "local_activities"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -1776,15 +1627,9 @@ name = "performance"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
  "dashmap",
- "examples-common",
+ "examples_common",
  "parking_lot",
  "serde",
  "serde_json",
@@ -1792,6 +1637,12 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -2471,20 +2322,20 @@ name = "time_and_sleep"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -2725,6 +2576,155 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
+name = "uber_cadence_activity"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "mockall",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uber_cadence_core",
+ "uber_cadence_macros",
+ "uber_cadence_proto",
+ "uuid",
+]
+
+[[package]]
+name = "uber_cadence_client"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "jsonwebtoken",
+ "mockall",
+ "oauth2",
+ "parking_lot",
+ "rand",
+ "rsa",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tonic",
+ "tracing",
+ "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_core",
+ "uber_cadence_proto",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
+ "uuid",
+]
+
+[[package]]
+name = "uber_cadence_core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "mockall",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio-test",
+ "tracing",
+ "uber_cadence_proto",
+ "uuid",
+]
+
+[[package]]
+name = "uber_cadence_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "uber_cadence_proto"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "prost",
+ "prost-types",
+ "serde",
+ "thiserror 1.0.69",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
+name = "uber_cadence_testsuite"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "uber_cadence_activity",
+ "uber_cadence_core",
+ "uber_cadence_proto",
+ "uber_cadence_workflow",
+ "uuid",
+]
+
+[[package]]
+name = "uber_cadence_worker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "dashmap",
+ "dyn-clone",
+ "futures",
+ "mockall",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uber_cadence_activity",
+ "uber_cadence_core",
+ "uber_cadence_proto",
+ "uber_cadence_workflow",
+ "uuid",
+]
+
+[[package]]
+name = "uber_cadence_workflow"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures",
+ "mockall",
+ "once_cell",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uber_cadence_core",
+ "uber_cadence_macros",
+ "uber_cadence_proto",
+ "uuid",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2790,20 +2790,20 @@ name = "versioning"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -3177,21 +3177,21 @@ name = "worker_configuration"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
  "dashmap",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
 ]
 
 [[package]]
@@ -3199,20 +3199,20 @@ name = "workflow_external"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "serde",
  "serde_json",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 
@@ -3221,14 +3221,8 @@ name = "workflow_signals"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cadence-activity",
- "cadence-client",
- "cadence-core",
- "cadence-testsuite",
- "cadence-worker",
- "cadence-workflow",
  "chrono",
- "examples-common",
+ "examples_common",
  "futures",
  "serde",
  "serde_json",
@@ -3236,6 +3230,12 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "uber_cadence_activity",
+ "uber_cadence_client",
+ "uber_cadence_core",
+ "uber_cadence_testsuite",
+ "uber_cadence_worker",
+ "uber_cadence_workflow",
  "uuid",
 ]
 

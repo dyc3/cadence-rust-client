@@ -3,11 +3,11 @@
 //! These workflows demonstrate local activity execution patterns.
 
 use crate::activities::*;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::{LocalActivityOptions, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{error, info};
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::{LocalActivityOptions, WorkflowContext};
 
 /// Input for data processing pipeline
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ pub async fn local_activity_pipeline_workflow(
 
     let local_activity_options = LocalActivityOptions {
         schedule_to_close_timeout: Duration::from_secs(5),
-        retry_policy: Some(cadence_core::RetryPolicy {
+        retry_policy: Some(uber_cadence_core::RetryPolicy {
             initial_interval: Duration::from_millis(100),
             backoff_coefficient: 1.5,
             maximum_interval: Duration::from_secs(1),

@@ -2,11 +2,11 @@
 //!
 //! These activities demonstrate various patterns that workers can execute.
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Simple computation activity
 #[derive(Debug, Clone, Serialize, Deserialize)]

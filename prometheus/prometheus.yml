@@ -25,7 +25,7 @@ scrape_configs:
         labels:
           service: "matching"
 
-  - job_name: "cadence-worker"
+  - job_name: "uber_cadence_worker"
     static_configs:
       - targets: ["cadence:8003"]
         labels:

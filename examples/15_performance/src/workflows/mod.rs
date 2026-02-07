@@ -7,11 +7,11 @@
 //! - Efficient data flow
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::{debug, info};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Process large dataset with batching and parallelization
 pub async fn high_throughput_workflow(
@@ -156,7 +156,7 @@ pub async fn ingestion_pipeline_workflow(
             ActivityOptions {
                 start_to_close_timeout: Duration::from_secs(600),
                 heartbeat_timeout: Duration::from_secs(60),
-                retry_policy: Some(cadence_core::RetryPolicy {
+                retry_policy: Some(uber_cadence_core::RetryPolicy {
                     initial_interval: Duration::from_secs(1),
                     backoff_coefficient: 2.0,
                     maximum_interval: Duration::from_secs(30),

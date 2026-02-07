@@ -1,11 +1,11 @@
 //! Workflow implementations for activity advanced example.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// Workflow that demonstrates activity heartbeats and resumption
 pub async fn file_processing_workflow(
@@ -126,7 +126,7 @@ pub async fn resilient_processing_workflow(
     );
 
     // Configure retry policy
-    let retry_policy = cadence_core::RetryPolicy {
+    let retry_policy = uber_cadence_core::RetryPolicy {
         initial_interval: Duration::from_secs(1),
         backoff_coefficient: 2.0,
         maximum_interval: Duration::from_secs(60),

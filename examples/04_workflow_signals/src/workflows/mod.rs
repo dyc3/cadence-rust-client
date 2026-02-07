@@ -3,12 +3,12 @@
 //! This example demonstrates various signal handling patterns.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::{SignalChannel, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::{SignalChannel, WorkflowContext};
 
 /// Signal to update order status
 #[derive(Debug, Clone, Serialize, Deserialize)]

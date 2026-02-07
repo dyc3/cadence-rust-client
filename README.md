@@ -2,7 +2,7 @@
 
 A Rust client library for [Cadence](https://cadenceworkflow.io/), Uber's distributed, scalable, durable, and highly available orchestration engine.
 
-This is a port of the official [Cadence Go client](https://github.com/uber-go/cadence-client) to Rust, providing idiomatic Rust APIs for workflow orchestration.
+This is a port of the official [Cadence Go client](https://github.com/uber-go/uber_cadence_client) to Rust, providing idiomatic Rust APIs for workflow orchestration.
 
 ## Overview
 
@@ -21,21 +21,21 @@ The project is organized as a Cargo workspace with the following crates:
 
 | Crate | Description |
 |-------|-------------|
-| `cadence-proto` | Protocol definitions (Thrift/Protobuf) and generated types |
-| `cadence-core` | Core types, error handling, and serialization |
-| `cadence-client` | Client implementation for workflow operations |
-| `cadence-worker` | Worker for hosting workflow and activity executions |
-| `cadence-workflow` | Workflow authoring SDK with deterministic execution |
-| `cadence-activity` | Activity authoring SDK |
-| `cadence-testsuite` | Testing utilities and workflow replayer |
+| `uber_cadence_proto` | Protocol definitions (Thrift/Protobuf) and generated types |
+| `uber_cadence_core` | Core types, error handling, and serialization |
+| `uber_cadence_client` | Client implementation for workflow operations |
+| `uber_cadence_worker` | Worker for hosting workflow and activity executions |
+| `uber_cadence_workflow` | Workflow authoring SDK with deterministic execution |
+| `uber_cadence_activity` | Activity authoring SDK |
+| `uber_cadence_testsuite` | Testing utilities and workflow replayer |
 
 ## Quick Start
 
 ### Setting up a Worker
 
 ```rust
-use cadence_worker::{CadenceWorker, WorkerOptions, WorkflowRegistry};
-use cadence_workflow::WorkflowContext;
+use uber_cadence_worker::{CadenceWorker, WorkerOptions, WorkflowRegistry};
+use uber_cadence_workflow::WorkflowContext;
 use std::sync::Arc;
 
 // Define a simple workflow
@@ -80,9 +80,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Macro-based Workflows and Activities
 
 ```rust
-use cadence_activity::{activity, ActivityContext};
-use cadence_worker::{CadenceWorker, WorkerOptions, WorkflowRegistry};
-use cadence_workflow::{call_activity, workflow, WorkflowContext};
+use uber_cadence_activity::{activity, ActivityContext};
+use uber_cadence_worker::{CadenceWorker, WorkerOptions, WorkflowRegistry};
+use uber_cadence_workflow::{call_activity, workflow, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,14 +101,14 @@ struct EmailRequest {
 }
 
 #[activity(name = "send_email")]
-async fn send_email(_ctx: &ActivityContext, input: EmailRequest) -> Result<(), cadence_worker::ActivityError> {
+async fn send_email(_ctx: &ActivityContext, input: EmailRequest) -> Result<(), uber_cadence_worker::ActivityError> {
     println!("Sending to {}", input.to);
     Ok(())
 }
 
 #[workflow(name = "welcome_flow")]
-async fn welcome_flow(ctx: WorkflowContext, input: WelcomeInput) -> Result<(), cadence_worker::WorkflowError> {
-    let options = cadence_core::ActivityOptions {
+async fn welcome_flow(ctx: WorkflowContext, input: WelcomeInput) -> Result<(), uber_cadence_worker::WorkflowError> {
+    let options = uber_cadence_core::ActivityOptions {
         schedule_to_close_timeout: Duration::from_secs(30),
         schedule_to_start_timeout: Duration::from_secs(30),
         start_to_close_timeout: Duration::from_secs(30),
@@ -126,13 +126,13 @@ async fn welcome_flow(ctx: WorkflowContext, input: WelcomeInput) -> Result<(), c
     Ok(())
 }
 
-fn register_all(registry: &dyn cadence_worker::Registry) {
+fn register_all(registry: &dyn uber_cadence_worker::Registry) {
     welcome_flow_cadence::register(registry);
     send_email_cadence::register(registry);
 }
 
 #[tokio::main]
-async fn main() -> Result<(), cadence_core::CadenceError> {
+async fn main() -> Result<(), uber_cadence_core::CadenceError> {
     let registry = Arc::new(WorkflowRegistry::new());
     register_all(registry.as_ref());
 
@@ -150,7 +150,7 @@ async fn main() -> Result<(), cadence_core::CadenceError> {
 ### Starting a Workflow
 
 ```rust
-use cadence_client::{Client, StartWorkflowOptions};
+use uber_cadence_client::{Client, StartWorkflowOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Testing Workflows
 
 ```rust
-use cadence_testsuite::{TestWorkflowEnvironment, TestActivityEnvironment};
+use uber_cadence_testsuite::{TestWorkflowEnvironment, TestActivityEnvironment};
 
 #[tokio::test]
 async fn test_hello_world_workflow() {
@@ -239,7 +239,7 @@ async fn test_hello_world_workflow() {
 ### Worker Options
 
 ```rust
-use cadence_worker::WorkerOptions;
+use uber_cadence_worker::WorkerOptions;
 use std::time::Duration;
 
 let options = WorkerOptions {
@@ -269,7 +269,7 @@ let options = WorkerOptions {
 ### Client Options
 
 ```rust
-use cadence_client::ClientOptions;
+use uber_cadence_client::ClientOptions;
 
 let options = ClientOptions {
     identity: "my-client".to_string(),
@@ -286,7 +286,7 @@ let options = ClientOptions {
 The client uses a comprehensive error system:
 
 ```rust
-use cadence_core::{CadenceError, CustomError, TimeoutError};
+use uber_cadence_core::{CadenceError, CustomError, TimeoutError};
 
 match result {
     Err(CadenceError::Custom(e)) => {
@@ -340,4 +340,4 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Acknowledgments
 
-This project is a port of the [Cadence Go Client](https://github.com/uber-go/cadence-client) by Uber.
+This project is a port of the [Cadence Go Client](https://github.com/uber-go/uber_cadence_client) by Uber.

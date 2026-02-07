@@ -9,11 +9,11 @@
 
 use crate::types::*;
 use crate::utils::*;
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{error, info, instrument, warn};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 
 /// Input for idempotent processing
 #[derive(Debug, Clone, Serialize, Deserialize)]

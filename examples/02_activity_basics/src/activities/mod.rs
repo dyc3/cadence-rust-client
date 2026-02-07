@@ -6,11 +6,11 @@
 //! 3. Process payment
 //! 4. Send confirmation
 
-use cadence_activity::ActivityContext;
-use cadence_worker::ActivityError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
+use uber_cadence_activity::ActivityContext;
+use uber_cadence_worker::ActivityError;
 use uuid::Uuid;
 
 /// Order item

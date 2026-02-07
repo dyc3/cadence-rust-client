@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-//     use cadence_testsuite::TestWorkflowEnvironment;
+//     use uber_cadence_testsuite::TestWorkflowEnvironment;
 //
 //     fn generate_test_items(count: usize) -> Vec<String> {
 //         (0..count)

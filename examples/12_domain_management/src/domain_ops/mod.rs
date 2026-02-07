@@ -3,10 +3,10 @@
 //! This module demonstrates domain lifecycle operations including
 //! registration, description, updates, and failover.
 
-use cadence_client::domain::*;
 use std::collections::HashMap;
 use std::time::Duration;
 use tracing::info;
+use uber_cadence_client::domain::*;
 
 /// Example: Register a new domain with full configuration
 pub fn create_domain_registration_request(name: &str, owner_email: &str) -> RegisterDomainRequest {

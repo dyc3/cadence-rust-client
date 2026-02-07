@@ -4,11 +4,11 @@
 //! including retry logic, error classification, and recovery strategies.
 
 use crate::activities::*;
-use cadence_core::ActivityOptions;
-use cadence_workflow::context::WorkflowError;
-use cadence_workflow::WorkflowContext;
 use std::time::Duration;
 use tracing::{error, info, warn};
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::WorkflowContext;
 
 /// A workflow that demonstrates error handling with retry logic
 pub async fn error_handling_workflow(
@@ -30,7 +30,7 @@ pub async fn error_handling_workflow(
         let activity_options = ActivityOptions {
             start_to_close_timeout: Duration::from_secs(30),
             schedule_to_close_timeout: Duration::from_secs(60),
-            retry_policy: Some(cadence_core::RetryPolicy {
+            retry_policy: Some(uber_cadence_core::RetryPolicy {
                 initial_interval: Duration::from_secs(1),
                 backoff_coefficient: 2.0,
                 maximum_interval: Duration::from_secs(30),
@@ -103,7 +103,7 @@ pub async fn fallback_workflow(
     // Try primary processing
     let primary_options = ActivityOptions {
         start_to_close_timeout: Duration::from_secs(10),
-        retry_policy: Some(cadence_core::RetryPolicy {
+        retry_policy: Some(uber_cadence_core::RetryPolicy {
             initial_interval: Duration::from_millis(100),
             backoff_coefficient: 1.5,
             maximum_interval: Duration::from_secs(5),
@@ -141,7 +141,7 @@ pub async fn fallback_workflow(
 
             let fallback_options = ActivityOptions {
                 start_to_close_timeout: Duration::from_secs(20),
-                retry_policy: Some(cadence_core::RetryPolicy {
+                retry_policy: Some(uber_cadence_core::RetryPolicy {
                     initial_interval: Duration::from_millis(500),
                     backoff_coefficient: 2.0,
                     maximum_interval: Duration::from_secs(10),

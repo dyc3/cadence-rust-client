@@ -1,7 +1,7 @@
 //! Custom assertion helpers for testing workflows and activities.
 
-use cadence_core::WorkflowExecution;
-use cadence_testsuite::TestWorkflowEnvironment;
+use uber_cadence_core::WorkflowExecution;
+use uber_cadence_testsuite::TestWorkflowEnvironment;
 
 /// Assert that a workflow completed successfully.
 pub fn assert_workflow_completed_ok(env: &TestWorkflowEnvironment, execution: &WorkflowExecution) {

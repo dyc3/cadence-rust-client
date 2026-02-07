@@ -1,8 +1,8 @@
-use cadence_core::ActivityOptions;
-use cadence_workflow::WorkflowContext;
-use cadence_workflow::WorkflowError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use uber_cadence_core::ActivityOptions;
+use uber_cadence_workflow::WorkflowContext;
+use uber_cadence_workflow::WorkflowError;
 
 use crate::activities::{Job, JobResult};
 
