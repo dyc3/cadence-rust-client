@@ -3,6 +3,7 @@ name = "examples_common"
 version = "0.1.0"
 edition = "2021"
 description = "Shared utilities and helpers for Cadence examples"
+publish = false
 
 [dependencies]
 uber_cadence_core = { path = "../../uber_cadence_core", package = "uber_cadence_core" }

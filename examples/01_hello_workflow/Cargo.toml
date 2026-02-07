@@ -3,6 +3,7 @@ name = "hello_workflow"
 version = "0.1.0"
 edition = "2021"
 description = "Hello World workflow example for Cadence"
+publish = false
 
 [dependencies]
 uber_cadence_client = { path = "../../uber_cadence_client", package = "uber_cadence_client" }

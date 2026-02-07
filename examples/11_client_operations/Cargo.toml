@@ -3,6 +3,7 @@ name = "client_operations"
 version = "0.1.0"
 edition = "2021"
 description = "Client API patterns - starting workflows, signals, queries, and management"
+publish = false
 
 [dependencies]
 uber_cadence_client = { path = "../../uber_cadence_client", package = "uber_cadence_client" }

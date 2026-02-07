@@ -3,6 +3,7 @@ name = "local_activities"
 version = "0.1.0"
 edition = "2021"
 description = "Local activity execution patterns"
+publish = false
 
 [dependencies]
 uber_cadence_client = { path = "../../uber_cadence_client", package = "uber_cadence_client" }

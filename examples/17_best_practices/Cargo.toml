@@ -3,6 +3,7 @@ name = "best_practices"
 version = "0.1.0"
 edition = "2021"
 description = "Idiomatic patterns and best practices"
+publish = false
 
 [dependencies]
 uber_cadence_client = { path = "../../uber_cadence_client", package = "uber_cadence_client" }

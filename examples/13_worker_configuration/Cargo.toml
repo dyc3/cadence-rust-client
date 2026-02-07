@@ -3,6 +3,7 @@ name = "worker_configuration"
 version = "0.1.0"
 edition = "2021"
 description = "Worker setup and tuning - configuration, registry, and options"
+publish = false
 
 [dependencies]
 uber_cadence_client = { path = "../../uber_cadence_client", package = "uber_cadence_client" }
