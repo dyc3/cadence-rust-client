@@ -109,10 +109,19 @@ pub fn decode_local_activity_marker(
 pub fn marker_data_to_result(
     data: LocalActivityMarkerData,
 ) -> Result<Vec<u8>, crate::future::WorkflowError> {
+    use crate::future::{ActivityFailureInfo, ActivityFailureType};
+
     if let Some(result) = data.result_json {
         Ok(result)
     } else if let Some(reason) = data.err_reason {
-        Err(crate::future::WorkflowError::ActivityFailed(reason))
+        Err(crate::future::WorkflowError::ActivityFailed(
+            ActivityFailureInfo {
+                failure_type: ActivityFailureType::ExecutionFailed,
+                message: reason,
+                details: data.err_json,
+                retryable: false,
+            },
+        ))
     } else {
         Err(crate::future::WorkflowError::Generic(
             "Local activity marker has no result or error".into(),

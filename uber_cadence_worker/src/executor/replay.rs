@@ -146,9 +146,26 @@ impl ReplayEngine {
                     let reason = attrs.reason.clone().unwrap_or_default();
                     let details = attrs.details.clone().unwrap_or_default();
 
-                    // Construct ActivityError
-                    let error =
-                        ActivityError::ExecutionFailed(format!("{}: {:?}", reason, details));
+                    // Parse reason to determine failure type and create appropriate ActivityError
+                    let error = if reason == "Cancelled" {
+                        ActivityError::Cancelled
+                    } else if reason.starts_with("Timeout") {
+                        ActivityError::Timeout(
+                            uber_cadence_proto::shared::TimeoutType::StartToClose,
+                        )
+                    } else if reason == "Retryable" {
+                        ActivityError::Retryable(String::from_utf8_lossy(&details).to_string())
+                    } else if reason == "NonRetryable" {
+                        ActivityError::NonRetryable(String::from_utf8_lossy(&details).to_string())
+                    } else if reason == "ApplicationError" {
+                        ActivityError::Application(String::from_utf8_lossy(&details).to_string())
+                    } else {
+                        ActivityError::ExecutionFailed(format!(
+                            "{}: {}",
+                            reason,
+                            String::from_utf8_lossy(&details)
+                        ))
+                    };
                     self.event_results.insert(scheduled_id, Err(error));
                 }
             }

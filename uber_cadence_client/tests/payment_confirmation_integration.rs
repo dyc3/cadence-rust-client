@@ -43,6 +43,7 @@ use uber_cadence_proto::workflow_service::{
 };
 use uber_cadence_worker::registry::{Activity, ActivityError, Registry, Workflow, WorkflowError};
 use uber_cadence_worker::{CadenceWorker, Worker, WorkerOptions};
+use uber_cadence_workflow::future::{ActivityFailureInfo, ActivityFailureType};
 use uber_cadence_workflow::WorkflowContext;
 use uuid::Uuid;
 
@@ -221,7 +222,14 @@ impl Workflow for PaymentConfirmationWorkflow {
                     options.clone(),
                 )
                 .await
-                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+                .map_err(|e| {
+                    WorkflowError::ActivityFailed(ActivityFailureInfo {
+                        failure_type: ActivityFailureType::ExecutionFailed,
+                        message: e.to_string(),
+                        details: None,
+                        retryable: false,
+                    })
+                })?;
 
             let payment_intent: PaymentIntent = serde_json::from_slice(&payment_intent_bytes)
                 .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
@@ -260,7 +268,12 @@ impl Workflow for PaymentConfirmationWorkflow {
 
                             ctx.execute_activity("send_receipt_email", Some(receipt_bytes), options.clone())
                                 .await
-                                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+                                .map_err(|e| WorkflowError::ActivityFailed(ActivityFailureInfo {
+                    failure_type: ActivityFailureType::ExecutionFailed,
+                    message: e.to_string(),
+                    details: None,
+                    retryable: false,
+                }))?;
 
                             println!("[WORKFLOW] Receipt sent, order confirmed");
 
@@ -298,7 +311,12 @@ impl Workflow for PaymentConfirmationWorkflow {
 
                             ctx.execute_activity("send_failure_notification", Some(failure_bytes), options.clone())
                                 .await
-                                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+                                .map_err(|e| WorkflowError::ActivityFailed(ActivityFailureInfo {
+                    failure_type: ActivityFailureType::ExecutionFailed,
+                    message: e.to_string(),
+                    details: None,
+                    retryable: false,
+                }))?;
 
                             println!("[WORKFLOW] Failure notification sent");
 
@@ -331,7 +349,12 @@ impl Workflow for PaymentConfirmationWorkflow {
 
                     ctx.execute_activity("send_failure_notification", Some(failure_bytes), options.clone())
                         .await
-                        .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+                        .map_err(|e| WorkflowError::ActivityFailed(ActivityFailureInfo {
+                    failure_type: ActivityFailureType::ExecutionFailed,
+                    message: e.to_string(),
+                    details: None,
+                    retryable: false,
+                }))?;
 
                     println!("[WORKFLOW] Timeout notification sent");
 

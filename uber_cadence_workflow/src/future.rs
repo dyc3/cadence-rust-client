@@ -1,5 +1,6 @@
 //! Workflow futures.
 
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -12,6 +13,55 @@ pub type ActivityFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityEr
 /// Future for timer
 pub type TimerFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
+/// Classification of activity failure types
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActivityFailureType {
+    ExecutionFailed,
+    Panic,
+    Retryable,
+    NonRetryable,
+    Application,
+    Cancelled,
+    Timeout(TimeoutType),
+}
+
+/// Timeout type for activity failures
+#[derive(Debug, Clone, PartialEq)]
+pub enum TimeoutType {
+    StartToClose,
+    ScheduleToStart,
+    ScheduleToClose,
+    Heartbeat,
+}
+
+/// Detailed information about an activity failure
+#[derive(Debug, Clone)]
+pub struct ActivityFailureInfo {
+    /// Classification of the error type
+    pub failure_type: ActivityFailureType,
+    /// Human-readable error message
+    pub message: String,
+    /// Structured error details/payload (optional)
+    pub details: Option<Vec<u8>>,
+    /// Whether this error is retryable
+    pub retryable: bool,
+}
+
+impl ActivityFailureInfo {
+    /// Convert details bytes to a string representation
+    pub fn details_as_string(&self) -> Option<String> {
+        self.details
+            .as_ref()
+            .map(|d| String::from_utf8_lossy(d).to_string())
+    }
+}
+
+impl fmt::Display for ActivityFailureInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
 /// Workflow error
 #[derive(Debug, thiserror::Error)]
 pub enum WorkflowError {
@@ -22,7 +72,7 @@ pub enum WorkflowError {
     #[error("Workflow panicked: {0}")]
     Panic(String),
     #[error("Activity failed: {0}")]
-    ActivityFailed(String),
+    ActivityFailed(ActivityFailureInfo),
     #[error("Child workflow failed: {0}")]
     ChildWorkflowFailed(String),
     #[error("Signal failed: {0}")]

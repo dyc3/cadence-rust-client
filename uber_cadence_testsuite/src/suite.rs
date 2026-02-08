@@ -17,6 +17,7 @@ use uber_cadence_core::{
     ActivityOptions, ChildWorkflowOptions, WorkflowExecution, WorkflowInfo, WorkflowType,
 };
 use uber_cadence_workflow::context::WorkflowError;
+use uber_cadence_workflow::future::{ActivityFailureInfo, ActivityFailureType};
 
 /// Type alias for boxed workflow functions
 type WorkflowFn = Box<
@@ -406,7 +407,12 @@ impl TestWorkflowContext {
         _options: ActivityOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
         let activity = self.activities.get(activity_type).ok_or_else(|| {
-            WorkflowError::ActivityFailed(format!("Activity '{}' not registered", activity_type))
+            WorkflowError::ActivityFailed(ActivityFailureInfo {
+                failure_type: ActivityFailureType::ExecutionFailed,
+                message: format!("Activity '{}' not registered", activity_type),
+                details: None,
+                retryable: false,
+            })
         })?;
 
         // Create ActivityInfo
@@ -426,9 +432,14 @@ impl TestWorkflowContext {
         let ctx = ActivityContext::new(activity_info, None);
         let input = args.unwrap_or_default();
 
-        activity(&ctx, input)
-            .await
-            .map_err(|e| WorkflowError::ActivityFailed(format!("{:?}", e)))
+        activity(&ctx, input).await.map_err(|e| {
+            WorkflowError::ActivityFailed(ActivityFailureInfo {
+                failure_type: ActivityFailureType::ExecutionFailed,
+                message: format!("{:?}", e),
+                details: None,
+                retryable: false,
+            })
+        })
     }
 
     /// Get a signal channel for receiving signals

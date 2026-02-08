@@ -22,11 +22,89 @@ use uber_cadence_proto::{QueryResultType, WorkflowQueryResult};
 use uber_cadence_workflow::commands::WorkflowCommand;
 use uber_cadence_workflow::context::{CommandSink, WorkflowContext};
 use uber_cadence_workflow::dispatcher::{WorkflowDispatcher, WorkflowTask};
-use uber_cadence_workflow::future::WorkflowError;
+use uber_cadence_workflow::future::{ActivityFailureInfo, ActivityFailureType, WorkflowError};
 use uber_cadence_workflow::state_machine::{
     ActivityDecisionStateMachine, ChildWorkflowDecisionStateMachine, DecisionId,
     StateMachineDecisionType, TimerDecisionStateMachine,
 };
+
+/// Convert ActivityError to ActivityFailureInfo
+fn activity_error_to_failure_info(error: &crate::registry::ActivityError) -> ActivityFailureInfo {
+    use crate::registry::ActivityError;
+
+    match error {
+        ActivityError::ExecutionFailed(msg) => ActivityFailureInfo {
+            failure_type: ActivityFailureType::ExecutionFailed,
+            message: msg.clone(),
+            details: None,
+            retryable: false,
+        },
+        ActivityError::Panic(msg) => ActivityFailureInfo {
+            failure_type: ActivityFailureType::Panic,
+            message: msg.clone(),
+            details: None,
+            retryable: false,
+        },
+        ActivityError::Retryable(msg) => ActivityFailureInfo {
+            failure_type: ActivityFailureType::Retryable,
+            message: msg.clone(),
+            details: None,
+            retryable: true,
+        },
+        ActivityError::NonRetryable(msg) => ActivityFailureInfo {
+            failure_type: ActivityFailureType::NonRetryable,
+            message: msg.clone(),
+            details: None,
+            retryable: false,
+        },
+        ActivityError::Application(msg) => ActivityFailureInfo {
+            failure_type: ActivityFailureType::Application,
+            message: msg.clone(),
+            details: None,
+            retryable: false,
+        },
+        ActivityError::RetryableWithDelay(msg, _delay) => ActivityFailureInfo {
+            failure_type: ActivityFailureType::Retryable,
+            message: msg.clone(),
+            details: None,
+            retryable: true,
+        },
+        ActivityError::Cancelled => ActivityFailureInfo {
+            failure_type: ActivityFailureType::Cancelled,
+            message: "Activity cancelled".to_string(),
+            details: None,
+            retryable: false,
+        },
+        ActivityError::Timeout(timeout_type) => {
+            let failure_type = match timeout_type {
+                uber_cadence_proto::shared::TimeoutType::StartToClose => {
+                    ActivityFailureType::Timeout(
+                        uber_cadence_workflow::future::TimeoutType::StartToClose,
+                    )
+                }
+                uber_cadence_proto::shared::TimeoutType::ScheduleToStart => {
+                    ActivityFailureType::Timeout(
+                        uber_cadence_workflow::future::TimeoutType::ScheduleToStart,
+                    )
+                }
+                uber_cadence_proto::shared::TimeoutType::ScheduleToClose => {
+                    ActivityFailureType::Timeout(
+                        uber_cadence_workflow::future::TimeoutType::ScheduleToClose,
+                    )
+                }
+                uber_cadence_proto::shared::TimeoutType::Heartbeat => ActivityFailureType::Timeout(
+                    uber_cadence_workflow::future::TimeoutType::Heartbeat,
+                ),
+            };
+            ActivityFailureInfo {
+                failure_type,
+                message: format!("Activity timed out: {:?}", timeout_type),
+                details: None,
+                retryable: false,
+            }
+        }
+    }
+}
 
 // Type alias to reduce complexity
 type LocalActivityWakers =
@@ -70,13 +148,13 @@ impl CommandSink for ReplayCommandSink {
                     debug!(activity_id = %cmd.activity_id, "scheduling activity");
 
                     // Check 1: Is the activity already completed?
-                    let already_completed = {
+                    let already_completed: Option<Result<Vec<u8>, crate::registry::ActivityError>> = {
                         let engine_lock = engine.lock().unwrap();
                         engine_lock
                             .get_activity_result(&cmd.activity_id)
                             .map(|r| match r {
                                 Ok(data) => Ok(data.clone()),
-                                Err(e) => Err(e.to_string()),
+                                Err(e) => Err(e.clone()),
                             })
                     };
 
@@ -84,7 +162,9 @@ impl CommandSink for ReplayCommandSink {
                         debug!(activity_id = %cmd.activity_id, "activity completed immediately from history");
                         return match result {
                             Ok(data) => Ok(data),
-                            Err(e) => Err(WorkflowError::ActivityFailed(e)),
+                            Err(e) => Err(WorkflowError::ActivityFailed(
+                                activity_error_to_failure_info(&e),
+                            )),
                         };
                     }
 
@@ -324,7 +404,9 @@ impl CommandSink for ReplayCommandSink {
                     {
                         return match result {
                             Ok(_) => Ok(Vec::new()),
-                            Err(e) => Err(WorkflowError::ActivityFailed(e.to_string())),
+                            Err(e) => Err(WorkflowError::ActivityFailed(
+                                activity_error_to_failure_info(e),
+                            )),
                         };
                     }
 
@@ -356,7 +438,9 @@ impl CommandSink for ReplayCommandSink {
                     {
                         return match result {
                             Ok(_) => Ok(Vec::new()),
-                            Err(e) => Err(WorkflowError::ActivityFailed(e.to_string())),
+                            Err(e) => Err(WorkflowError::ActivityFailed(
+                                activity_error_to_failure_info(e),
+                            )),
                         };
                     }
 
@@ -390,9 +474,19 @@ impl CommandSink for ReplayCommandSink {
                         if let Some(result) = marker_data.result_json {
                             return Ok(result);
                         } else if let Some(reason) = marker_data.err_reason {
-                            return Err(WorkflowError::ActivityFailed(reason));
+                            return Err(WorkflowError::ActivityFailed(ActivityFailureInfo {
+                                failure_type: ActivityFailureType::ExecutionFailed,
+                                message: reason,
+                                details: marker_data.err_json,
+                                retryable: false,
+                            }));
                         } else {
-                            return Err(WorkflowError::ActivityFailed("Unknown error".to_string()));
+                            return Err(WorkflowError::ActivityFailed(ActivityFailureInfo {
+                                failure_type: ActivityFailureType::ExecutionFailed,
+                                message: "Unknown error".to_string(),
+                                details: None,
+                                retryable: false,
+                            }));
                         }
                     }
 
@@ -421,9 +515,12 @@ impl CommandSink for ReplayCommandSink {
                     match result_rx.await {
                         Ok(result) => return result,
                         Err(_) => {
-                            return Err(WorkflowError::ActivityFailed(
-                                "Channel closed before result received".to_string(),
-                            ))
+                            return Err(WorkflowError::ActivityFailed(ActivityFailureInfo {
+                                failure_type: ActivityFailureType::ExecutionFailed,
+                                message: "Channel closed before result received".to_string(),
+                                details: None,
+                                retryable: false,
+                            }))
                         }
                     }
                 }
@@ -895,7 +992,9 @@ impl WorkflowExecutor {
                             if let Some(tx) = waker {
                                 let result_to_send = match result {
                                     Ok(bytes) => Ok(bytes),
-                                    Err(err) => Err(WorkflowError::ActivityFailed(err.to_string())),
+                                    Err(err) => Err(WorkflowError::ActivityFailed(
+                                        activity_error_to_failure_info(&err),
+                                    )),
                                 };
                                 let _ = tx.send(result_to_send);
                                 debug!(activity_id = %submission.activity_id, "sent result to workflow");
@@ -1065,8 +1164,7 @@ mod tests {
                 let activity_opts = uber_cadence_core::ActivityOptions::default();
                 let res = ctx
                     .execute_activity("test_activity", input, activity_opts)
-                    .await
-                    .map_err(|e| crate::registry::WorkflowError::ActivityFailed(e.to_string()))?;
+                    .await?;
                 Ok(res)
             })
         }

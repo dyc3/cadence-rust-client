@@ -17,6 +17,7 @@ use uber_cadence_proto::workflow_service::{
 };
 use uber_cadence_worker::registry::{Activity, ActivityError, Registry, Workflow, WorkflowError};
 use uber_cadence_worker::{CadenceWorker, Worker, WorkerOptions};
+use uber_cadence_workflow::future::{ActivityFailureInfo, ActivityFailureType};
 use uber_cadence_workflow::{LocalActivityOptions, WorkflowContext};
 use uuid::Uuid;
 
@@ -222,7 +223,14 @@ impl Workflow for OrderProcessingSagaWorkflow {
                     local_options,
                 )
                 .await
-                .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+                .map_err(|e| {
+                    WorkflowError::ActivityFailed(ActivityFailureInfo {
+                        failure_type: ActivityFailureType::ExecutionFailed,
+                        message: e.to_string(),
+                        details: None,
+                        retryable: false,
+                    })
+                })?;
 
             // Options for regular activities
             let options = ActivityOptions {
@@ -246,7 +254,14 @@ impl Workflow for OrderProcessingSagaWorkflow {
                 options.clone(),
             )
             .await
-            .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+            .map_err(|e| {
+                WorkflowError::ActivityFailed(ActivityFailureInfo {
+                    failure_type: ActivityFailureType::ExecutionFailed,
+                    message: e.to_string(),
+                    details: None,
+                    retryable: false,
+                })
+            })?;
 
             // Step 3: Process Payment (with Compensation)
             let payment_input = serde_json::to_vec(&(order.clone(), total))
@@ -263,7 +278,14 @@ impl Workflow for OrderProcessingSagaWorkflow {
                         .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
                     ctx.execute_activity("send_notification", Some(notif_bytes), options.clone())
                         .await
-                        .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+                        .map_err(|e| {
+                            WorkflowError::ActivityFailed(ActivityFailureInfo {
+                                failure_type: ActivityFailureType::ExecutionFailed,
+                                message: e.to_string(),
+                                details: None,
+                                retryable: false,
+                            })
+                        })?;
 
                     let output = OrderOutput {
                         order_id: Uuid::new_v4().to_string(),
@@ -284,7 +306,14 @@ impl Workflow for OrderProcessingSagaWorkflow {
                         options.clone(),
                     )
                     .await
-                    .map_err(|e| WorkflowError::ActivityFailed(e.to_string()))?;
+                    .map_err(|e| {
+                        WorkflowError::ActivityFailed(ActivityFailureInfo {
+                            failure_type: ActivityFailureType::ExecutionFailed,
+                            message: e.to_string(),
+                            details: None,
+                            retryable: false,
+                        })
+                    })?;
 
                     // Notify user of failure
                     let notification = "Order failed: payment declined".to_owned();
@@ -294,10 +323,12 @@ impl Workflow for OrderProcessingSagaWorkflow {
                         .execute_activity("send_notification", Some(notif_bytes), options.clone())
                         .await;
 
-                    Err(WorkflowError::ActivityFailed(format!(
-                        "Payment failed: {:?}",
-                        e
-                    )))
+                    Err(WorkflowError::ActivityFailed(ActivityFailureInfo {
+                        failure_type: ActivityFailureType::Application,
+                        message: format!("Payment failed: {:?}", e),
+                        details: None,
+                        retryable: false,
+                    }))
                 }
             }
         })
