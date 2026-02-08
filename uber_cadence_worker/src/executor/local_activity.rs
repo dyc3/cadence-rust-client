@@ -8,6 +8,7 @@ use crate::local_activity_queue::{LocalActivityQueue, LocalActivityTask};
 use crate::registry::{ActivityError, Registry};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tracing::{debug, error, info, warn};
 use uber_cadence_activity::ActivityContext;
 use uber_cadence_core::RetryPolicy;
 
@@ -32,19 +33,21 @@ impl LocalActivityExecutor {
     /// This method continuously polls for local activity tasks and executes them.
     /// It runs until the queue is closed (all senders dropped).
     pub async fn run(&self) {
-        println!("[LocalActivityExecutor] Starting executor loop");
+        info!("starting local activity executor loop");
 
         while let Some(task) = self.queue.recv().await {
-            println!(
-                "[LocalActivityExecutor] Received task: activity_id={}, activity_type={}, attempt={}",
-                task.activity_id, task.activity_type, task.attempt
+            info!(
+                activity_id = %task.activity_id,
+                activity_type = %task.activity_type,
+                attempt = task.attempt,
+                "received local activity task"
             );
 
             // Execute with retry - result is sent directly to the workflow via task.result_sender
             let _ = self.execute_with_retry(task).await;
         }
 
-        println!("[LocalActivityExecutor] Executor loop ended");
+        info!("local activity executor loop ended");
     }
 
     /// Execute a local activity with retry logic
@@ -59,9 +62,11 @@ impl LocalActivityExecutor {
         loop {
             // Check timeout before attempting execution
             if SystemTime::now() >= deadline {
-                println!(
-                    "[LocalActivityExecutor] Activity '{}' (id={}) timed out after {} attempts",
-                    task.activity_type, task.activity_id, attempt
+                warn!(
+                    activity_type = %task.activity_type,
+                    activity_id = %task.activity_id,
+                    attempt,
+                    "local activity timed out"
                 );
                 let error = ActivityError::Timeout(
                     uber_cadence_proto::shared::TimeoutType::ScheduleToClose,
@@ -75,25 +80,32 @@ impl LocalActivityExecutor {
 
             match result {
                 Ok(output) => {
-                    println!(
-                        "[LocalActivityExecutor] Activity '{}' (id={}) succeeded on attempt {}",
-                        task.activity_type, task.activity_id, attempt
+                    info!(
+                        activity_type = %task.activity_type,
+                        activity_id = %task.activity_id,
+                        attempt,
+                        "local activity succeeded"
                     );
                     let _ = task.result_sender.send(Ok(output.clone()));
                     return Ok(output);
                 }
                 Err(err) if !should_retry(&err, &retry_policy, attempt) => {
-                    println!(
-                        "[LocalActivityExecutor] Activity '{}' (id={}) failed permanently: {}",
-                        task.activity_type, task.activity_id, err
+                    error!(
+                        activity_type = %task.activity_type,
+                        activity_id = %task.activity_id,
+                        error = %err,
+                        "local activity failed permanently"
                     );
                     let _ = task.result_sender.send(Err(err.clone()));
                     return Err(err);
                 }
                 Err(err) => {
-                    println!(
-                        "[LocalActivityExecutor] Activity '{}' (id={}) failed on attempt {}: {}",
-                        task.activity_type, task.activity_id, attempt, err
+                    warn!(
+                        activity_type = %task.activity_type,
+                        activity_id = %task.activity_id,
+                        attempt,
+                        error = %err,
+                        "local activity failed, may retry"
                     );
 
                     // Calculate backoff and check if we have time to retry
@@ -101,9 +113,9 @@ impl LocalActivityExecutor {
                     let backoff_deadline = SystemTime::now() + backoff;
 
                     if backoff_deadline >= deadline {
-                        println!(
-                            "[LocalActivityExecutor] No time for backoff ({}ms), failing activity",
-                            backoff.as_millis()
+                        warn!(
+                            backoff_ms = backoff.as_millis(),
+                            "no time for backoff, failing activity"
                         );
                         let timeout_error = ActivityError::Timeout(
                             uber_cadence_proto::shared::TimeoutType::ScheduleToClose,
@@ -112,10 +124,10 @@ impl LocalActivityExecutor {
                         return Err(timeout_error);
                     }
 
-                    println!(
-                        "[LocalActivityExecutor] Retrying activity '{}' after {}ms backoff",
-                        task.activity_type,
-                        backoff.as_millis()
+                    info!(
+                        activity_type = %task.activity_type,
+                        backoff_ms = backoff.as_millis(),
+                        "retrying local activity after backoff"
                     );
 
                     // Wait for backoff
@@ -153,9 +165,11 @@ impl LocalActivityExecutor {
             task.scheduled_time,
         );
 
-        println!(
-            "[LocalActivityExecutor] Executing activity '{}' (id={}) attempt {}",
-            task.activity_type, task.activity_id, attempt
+        info!(
+            activity_type = %task.activity_type,
+            activity_id = %task.activity_id,
+            attempt,
+            "executing local activity"
         );
 
         // Calculate remaining time until deadline
@@ -194,10 +208,10 @@ fn should_retry(error: &ActivityError, retry_policy: &Option<RetryPolicy>, attem
 
     // Check max attempts (0 means unlimited)
     if policy.maximum_attempts > 0 && attempt >= policy.maximum_attempts - 1 {
-        println!(
-            "[LocalActivityExecutor] Max attempts reached: {} >= {}",
-            attempt + 1,
-            policy.maximum_attempts
+        warn!(
+            attempt = attempt + 1,
+            max_attempts = policy.maximum_attempts,
+            "max attempts reached, not retrying"
         );
         return false;
     }
@@ -205,26 +219,26 @@ fn should_retry(error: &ActivityError, retry_policy: &Option<RetryPolicy>, attem
     // Check error type - non-retryable errors should not be retried
     match error {
         ActivityError::NonRetryable(_) => {
-            println!("[LocalActivityExecutor] Error is explicitly non-retryable");
+            debug!("error is explicitly non-retryable");
             false
         }
         ActivityError::Cancelled => {
-            println!("[LocalActivityExecutor] Activity was cancelled, not retrying");
+            debug!("activity was cancelled, not retrying");
             false
         }
         ActivityError::Timeout(_) => {
-            println!("[LocalActivityExecutor] Timeout error, not retrying");
+            debug!("timeout error, not retrying");
             false
         }
         ActivityError::Retryable(_) | ActivityError::RetryableWithDelay(_, _) => {
-            println!("[LocalActivityExecutor] Error is retryable");
+            debug!("error is retryable");
             true
         }
         ActivityError::ExecutionFailed(_)
         | ActivityError::Panic(_)
         | ActivityError::Application(_) => {
             // TODO: Check against non_retryable_error_types in policy
-            println!("[LocalActivityExecutor] Execution error, retrying");
+            debug!("execution error, will retry");
             true
         }
     }
@@ -244,9 +258,9 @@ fn calculate_backoff(retry_policy: &Option<RetryPolicy>, attempt: i32) -> Durati
 
     // Cap at maximum interval
     if backoff > policy.maximum_interval {
-        println!(
-            "[LocalActivityExecutor] Backoff capped at maximum: {}ms",
-            policy.maximum_interval.as_millis()
+        debug!(
+            max_interval_ms = policy.maximum_interval.as_millis(),
+            "backoff capped at maximum"
         );
         policy.maximum_interval
     } else {

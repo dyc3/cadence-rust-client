@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, oneshot, Mutex};
+use tracing::{error, info, warn};
 use uber_cadence_core::CadenceError;
 use uber_cadence_proto::workflow_service::*;
 
@@ -53,14 +54,14 @@ impl ActivityTaskHandler {
         &self,
         task: PollForActivityTaskResponse,
     ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
-        println!(
-            "[ActivityTaskHandler] Received activity task. ActivityId={:?}",
-            task.activity_id
+        info!(
+            activity_id = ?task.activity_id,
+            "received activity task"
         );
 
         // Check if task has actual work (not an empty poll response)
         if task.task_token.is_empty() {
-            println!("[ActivityTaskHandler] Empty task token, skipping.");
+            warn!("empty task token, skipping activity task");
             return Err(CadenceError::Other("Empty task token received".to_string()));
         }
 
@@ -72,10 +73,7 @@ impl ActivityTaskHandler {
             .name
             .clone();
 
-        println!(
-            "[ActivityTaskHandler] Handling activity type: {}",
-            activity_type
-        );
+        info!(activity_type = %activity_type, "handling activity task");
 
         // Look up activity in registry
         let activity = match self.registry.get_activity(&activity_type) {
@@ -170,10 +168,7 @@ impl ActivityTaskHandler {
 
         // Execute activity with panic recovery
         let input = task.input.clone();
-        println!(
-            "[ActivityTaskHandler] Executing activity: {}",
-            activity_type
-        );
+        info!(activity_type = %activity_type, "executing activity");
         let context_ref = &context;
         let future = activity.execute(context_ref, input);
 
@@ -185,16 +180,14 @@ impl ActivityTaskHandler {
 
         let execution_result = match result {
             Ok(Ok(output)) => {
-                println!(
-                    "[ActivityTaskHandler] Activity execution SUCCESS: {}",
-                    activity_type
-                );
+                info!(activity_type = %activity_type, "activity execution succeeded");
                 Ok(output)
             }
             Ok(Err(e)) => {
-                println!(
-                    "[ActivityTaskHandler] Activity execution FAILED: {} - {:?}",
-                    activity_type, e
+                error!(
+                    activity_type = %activity_type,
+                    error = %e,
+                    "activity execution failed"
                 );
                 Err(e)
             }
@@ -204,9 +197,10 @@ impl ActivityTaskHandler {
                 } else {
                     format!("Activity task cancelled: {}", join_error)
                 };
-                println!(
-                    "[ActivityTaskHandler] Activity PANICKED: {} - {}",
-                    activity_type, panic_msg
+                error!(
+                    activity_type = %activity_type,
+                    panic_msg = %panic_msg,
+                    "activity panicked"
                 );
                 Err(ActivityError::Panic(panic_msg))
             }
@@ -215,10 +209,7 @@ impl ActivityTaskHandler {
         // Send response based on result
         match execution_result {
             Ok(output) => {
-                println!(
-                    "[ActivityTaskHandler] Sending Complete response for {}",
-                    activity_type
-                );
+                info!(activity_type = %activity_type, "sending activity complete response");
                 let response = self
                     .service
                     .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
@@ -268,7 +259,7 @@ impl ActivityTaskHandler {
                     })
                     .await?;
 
-                tracing::error!("Activity '{}' failed: {}", activity_type, err);
+                tracing::error!(activity_type, ?err, "Activity failed");
                 Err(CadenceError::Other(format!(
                     "Activity execution error: {}",
                     err

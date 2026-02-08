@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use tracing::{debug, warn};
 use uber_cadence_core::CadenceResult;
 use uber_cadence_proto::shared::{EventAttributes, EventType, HistoryEvent};
 use uber_cadence_workflow::local_activity::{
@@ -57,35 +58,31 @@ impl ReplayEngine {
     }
 
     fn process_event(&mut self, event: &HistoryEvent) -> CadenceResult<()> {
-        println!(
-            "[ReplayEngine] Processing event: ID={}, Type={:?}",
-            event.event_id, event.event_type
+        debug!(
+            event_id = event.event_id,
+            event_type = ?event.event_type,
+            "processing event"
         );
         match event.event_type {
             EventType::WorkflowExecutionStarted => {
                 // Capture workflow start time
                 self.workflow_start_time_nanos = Some(event.timestamp);
-                println!(
-                    "[ReplayEngine] Captured workflow start time: {}",
-                    event.timestamp
-                );
+                debug!(timestamp = event.timestamp, "captured workflow start time");
             }
             EventType::DecisionTaskStarted => {
                 // Capture decision task time (workflow "current time")
                 self.workflow_task_time_nanos = Some(event.timestamp);
-                println!(
-                    "[ReplayEngine] Captured decision task time: {}",
-                    event.timestamp
-                );
+                debug!(timestamp = event.timestamp, "captured decision task time");
             }
             EventType::ActivityTaskScheduled => {
                 if let Some(EventAttributes::ActivityTaskScheduledEventAttributes(attrs)) =
                     &event.attributes
                 {
                     let activity_id = &attrs.activity_id;
-                    println!(
-                        "[ReplayEngine] Mapping ActivityScheduled: ID={} ActivityID={}",
-                        event.event_id, activity_id
+                    debug!(
+                        event_id = event.event_id,
+                        activity_id = %activity_id,
+                        "mapping activity scheduled"
                     );
 
                     // Pre-create state machine in Initiated state (for replay)
@@ -98,7 +95,11 @@ impl ReplayEngine {
                         DecisionId::new(StateMachineDecisionType::Activity, activity_id),
                     );
                 } else {
-                    println!("[ReplayEngine] WARN: ActivityTaskScheduled event {} missing attributes or mismatch. Attributes: {:?}", event.event_id, event.attributes);
+                    warn!(
+                        event_id = event.event_id,
+                        attributes = ?event.attributes,
+                        "activity task scheduled event missing attributes or mismatch"
+                    );
                 }
             }
             EventType::ActivityTaskStarted => {
@@ -441,10 +442,7 @@ impl ReplayEngine {
                                 if let Ok((side_effect_id, result)) =
                                     decode_side_effect_details(details)
                                 {
-                                    println!(
-                                        "[ReplayEngine] Processing side effect marker: id={}",
-                                        side_effect_id
-                                    );
+                                    debug!(side_effect_id, "processing side effect marker");
                                     self.side_effect_results.insert(side_effect_id, result);
                                 }
                             }
@@ -453,9 +451,9 @@ impl ReplayEngine {
                                 if let Ok((id, result)) =
                                     decode_mutable_side_effect_details(details)
                                 {
-                                    println!(
-                                        "[ReplayEngine] Processing mutable side effect marker: id={}",
-                                        id
+                                    debug!(
+                                        id = %id,
+                                        "processing mutable side effect marker"
                                     );
                                     self.mutable_side_effects.insert(id, result);
                                 }
@@ -463,37 +461,35 @@ impl ReplayEngine {
                             uber_cadence_workflow::context::VERSION_MARKER_NAME => {
                                 // Decode version marker details
                                 if let Ok((change_id, version)) = decode_version_details(details) {
-                                    println!(
-                                        "[ReplayEngine] Processing version marker: changeID='{}', version={}",
-                                        change_id, version
+                                    debug!(
+                                        change_id = %change_id,
+                                        version,
+                                        "processing version marker"
                                     );
                                     self.change_versions.insert(change_id, version);
                                 } else {
-                                    println!(
-                                        "[ReplayEngine] Failed to decode version marker details"
-                                    );
+                                    warn!("failed to decode version marker details");
                                 }
                             }
                             uber_cadence_workflow::local_activity::LOCAL_ACTIVITY_MARKER_NAME => {
                                 // Decode local activity marker details
                                 if let Ok(marker_data) = decode_local_activity_marker(details) {
-                                    println!(
-                                        "[ReplayEngine] Processing local activity marker: id={}, type={}",
-                                        marker_data.activity_id, marker_data.activity_type
+                                    debug!(
+                                        activity_id = %marker_data.activity_id,
+                                        activity_type = %marker_data.activity_type,
+                                        "processing local activity marker"
                                     );
                                     self.local_activity_results
                                         .lock()
                                         .unwrap()
                                         .insert(marker_data.activity_id.clone(), marker_data);
                                 } else {
-                                    println!(
-                                        "[ReplayEngine] Failed to decode local activity marker details"
-                                    );
+                                    warn!("failed to decode local activity marker details");
                                 }
                             }
                             _ => {
                                 // Unknown marker type, ignore
-                                println!("[ReplayEngine] Unknown marker type: {}", marker_name);
+                                debug!(marker_name = %marker_name, "unknown marker type");
                             }
                         }
                     }
@@ -505,27 +501,24 @@ impl ReplayEngine {
     }
 
     pub fn get_activity_result(&self, activity_id: &str) -> Option<&EventResult> {
-        println!(
-            "[ReplayEngine] Looking up activity result for: {}",
-            activity_id
-        );
+        debug!(activity_id = %activity_id, "looking up activity result");
         for (sched_id, decision_id) in &self.scheduled_event_id_to_decision_id {
             if decision_id.decision_type == StateMachineDecisionType::Activity
                 && decision_id.id == activity_id
             {
                 let result = self.event_results.get(sched_id);
-                println!(
-                    "[ReplayEngine] Found activity result for {}: {:?}",
-                    activity_id,
-                    result.is_some()
+                debug!(
+                    activity_id = %activity_id,
+                    has_result = result.is_some(),
+                    "found activity result"
                 );
                 return result;
             }
         }
-        println!(
-            "[ReplayEngine] Activity result for {} NOT FOUND in {} mapped events",
-            activity_id,
-            self.scheduled_event_id_to_decision_id.len()
+        debug!(
+            activity_id = %activity_id,
+            mapped_event_count = self.scheduled_event_id_to_decision_id.len(),
+            "activity result not found"
         );
         None
     }
@@ -568,20 +561,17 @@ impl ReplayEngine {
     /// Local activities are recorded as markers and their results are cached
     /// for deterministic replay.
     pub fn get_local_activity_result(&self, activity_id: &str) -> Option<LocalActivityMarkerData> {
-        println!(
-            "[ReplayEngine] Looking up local activity result for: {}",
-            activity_id
-        );
+        debug!(activity_id = %activity_id, "looking up local activity result");
         let result = self
             .local_activity_results
             .lock()
             .unwrap()
             .get(activity_id)
             .cloned();
-        println!(
-            "[ReplayEngine] Local activity result for {}: {:?}",
-            activity_id,
-            result.is_some()
+        debug!(
+            activity_id = %activity_id,
+            has_result = result.is_some(),
+            "local activity result lookup complete"
         );
         result
     }

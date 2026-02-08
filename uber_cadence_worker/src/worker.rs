@@ -13,6 +13,7 @@ use crate::pollers::{ActivityTaskPoller, DecisionTaskPoller, PollerManager};
 use crate::registry::Registry;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing::{error, info};
 use uber_cadence_core::CadenceError;
 use uber_cadence_proto::workflow_service::WorkflowService;
 
@@ -347,11 +348,11 @@ impl Worker for CadenceWorker {
             rt.block_on(async {
                 match tokio::signal::ctrl_c().await {
                     Ok(_) => {
-                        println!("Received Ctrl+C, shutting down worker...");
+                        info!("Received Ctrl+C, shutting down worker...");
                         let _ = tx.send(());
                     }
                     Err(err) => {
-                        eprintln!("Unable to listen for shutdown signal: {}", err);
+                        error!(error = %err, "Unable to listen for shutdown signal");
                         // don't kill, just exit signal listener
                     }
                 }

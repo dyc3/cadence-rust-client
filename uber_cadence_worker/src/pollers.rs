@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
+use tracing::{debug, error, info};
 use uber_cadence_core::CadenceError;
 use uber_cadence_proto::workflow_service::*;
 
@@ -165,7 +166,7 @@ impl ActivityTaskPoller {
     async fn poll_activity_task(
         &self,
     ) -> Result<Option<PollForActivityTaskResponse>, CadenceError> {
-        println!("[ActivityTaskPoller] Polling task list: {}", self.task_list);
+        debug!(task_list = %self.task_list, "polling activity task list");
 
         let request = PollForActivityTaskRequest {
             domain: self.domain.clone(),
@@ -182,18 +183,19 @@ impl ActivityTaskPoller {
                 if response.task_token.is_empty() {
                     return Ok(None);
                 }
-                println!(
-                    "[ActivityTaskPoller] Received task on list {}: ActivityId={:?}",
-                    self.task_list, response.activity_id
+                info!(
+                    task_list = %self.task_list,
+                    activity_id = ?response.activity_id,
+                    "received activity task"
                 );
                 Ok(Some(response))
             }
             Err(e) => {
-                println!(
-                    "[ActivityTaskPoller] Error polling task list {}: {}",
-                    self.task_list, e
+                error!(
+                    task_list = %self.task_list,
+                    error = %e,
+                    "error polling activity task list"
                 );
-                tracing::error!("Error polling activity task: {}", e);
                 Ok(None)
             }
         }

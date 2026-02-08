@@ -12,6 +12,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use tracing::debug;
 
 /// Task state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,9 +187,9 @@ impl WorkflowDispatcher {
             {
                 let mut pending = self.pending_tasks.lock().unwrap();
                 if !pending.is_empty() {
-                    println!(
-                        "[Dispatcher] Adding {} pending spawned tasks",
-                        pending.len()
+                    debug!(
+                        pending_count = pending.len(),
+                        "adding pending spawned tasks"
                     );
                     self.tasks.append(&mut *pending);
                 }
@@ -205,42 +206,33 @@ impl WorkflowDispatcher {
                     }
                     TaskState::Ready | TaskState::Blocked => {
                         // Poll the task (it might have been woken by a channel operation)
-                        println!("[Dispatcher] Polling task {} ({})", task.id, task.name);
+                        debug!(task_id = task.id, task_name = %task.name, "polling task");
                         match task.poll(&waker) {
                             Poll::Ready(result) => {
                                 // Task completed
                                 if task.state != TaskState::Completed {
-                                    println!(
-                                        "[Dispatcher] Task {} ({}) COMPLETED",
-                                        task.id, task.name
-                                    );
+                                    debug!(task_id = task.id, task_name = %task.name, "task completed");
                                     task.state = TaskState::Completed;
                                     any_changed = true;
 
                                     // Store result
                                     let mut results = self.completed_results.lock().unwrap();
                                     results.insert(task.id, result);
-                                    println!(
-                                        "[Dispatcher] Stored result for task {} (now {} results)",
-                                        task.id,
-                                        results.len()
+                                    debug!(
+                                        task_id = task.id,
+                                        result_count = results.len(),
+                                        "stored task result"
                                     );
                                 }
                             }
                             Poll::Pending => {
                                 // Task is blocked
                                 if task.state != TaskState::Blocked {
-                                    println!(
-                                        "[Dispatcher] Task {} ({}) BLOCKED",
-                                        task.id, task.name
-                                    );
+                                    debug!(task_id = task.id, task_name = %task.name, "task blocked");
                                     task.state = TaskState::Blocked;
                                     any_changed = true;
                                 } else {
-                                    println!(
-                                        "[Dispatcher] Task {} ({}) still blocked",
-                                        task.id, task.name
-                                    );
+                                    debug!(task_id = task.id, task_name = %task.name, "task still blocked");
                                 }
                             }
                         }
@@ -249,13 +241,13 @@ impl WorkflowDispatcher {
             }
 
             // If nothing changed state, all tasks are stable (either blocked or completed)
-            println!(
-                "[Dispatcher] Loop iteration complete. any_changed={}, task_count={}",
+            debug!(
                 any_changed,
-                self.tasks.len()
+                task_count = self.tasks.len(),
+                "loop iteration complete"
             );
             if !any_changed {
-                println!("[Dispatcher] No state changes, exiting loop");
+                debug!("no state changes, exiting loop");
                 break;
             }
         }

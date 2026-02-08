@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, error, info, warn};
 use uber_cadence_core::{CadenceError, ReplayContext, WorkflowInfo};
 use uber_cadence_proto::shared::{
     ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType,
@@ -63,13 +64,10 @@ impl CommandSink for ReplayCommandSink {
         let local_activity_wakers = self.local_activity_wakers.clone();
 
         Box::pin(async move {
-            eprintln!("[CommandSink] Submitting command (stderr): {:?}", command);
+            debug!(?command, "submitting workflow command");
             match command {
                 WorkflowCommand::ScheduleActivity(cmd) => {
-                    eprintln!(
-                        "[CommandSink] Scheduling Activity (stderr): {}",
-                        cmd.activity_id
-                    );
+                    debug!(activity_id = %cmd.activity_id, "scheduling activity");
 
                     // Check 1: Is the activity already completed?
                     let already_completed = {
@@ -83,10 +81,7 @@ impl CommandSink for ReplayCommandSink {
                     };
 
                     if let Some(result) = already_completed {
-                        println!(
-                            "[CommandSink] Activity {} completed/failed immediately (from history)",
-                            cmd.activity_id
-                        );
+                        debug!(activity_id = %cmd.activity_id, "activity completed immediately from history");
                         return match result {
                             Ok(data) => Ok(data),
                             Err(e) => Err(WorkflowError::ActivityFailed(e)),
@@ -100,9 +95,10 @@ impl CommandSink for ReplayCommandSink {
                         cmd.options.task_list.clone()
                     };
 
-                    println!(
-                        "[CommandSink] Scheduling Activity '{}' on task list: '{}'",
-                        cmd.activity_id, task_list_name
+                    debug!(
+                        activity_id = %cmd.activity_id,
+                        task_list = %task_list_name,
+                        "scheduling activity on task list"
                     );
 
                     let attrs = ScheduleActivityTaskDecisionAttributes {
@@ -154,10 +150,7 @@ impl CommandSink for ReplayCommandSink {
                     if !added {
                         // Decision already exists (pre-created during replay)
                         // Activity is in progress, block until completed
-                        println!(
-                            "[CommandSink] Activity {} already scheduled, blocking until completion",
-                            cmd.activity_id
-                        );
+                        debug!(activity_id = %cmd.activity_id, "activity already scheduled, blocking until completion");
                         return std::future::pending().await;
                     }
 
@@ -191,10 +184,7 @@ impl CommandSink for ReplayCommandSink {
                     if !added {
                         // Decision already exists (pre-created during replay)
                         // Timer is in progress, block until fired
-                        println!(
-                            "[CommandSink] Timer {} already scheduled, blocking until fired",
-                            cmd.timer_id
-                        );
+                        debug!(timer_id = %cmd.timer_id, "timer already scheduled, blocking until fired");
                         return std::future::pending().await;
                     }
                 }
@@ -277,10 +267,7 @@ impl CommandSink for ReplayCommandSink {
                     if !added {
                         // Decision already exists (pre-created during replay)
                         // Child workflow is in progress, block until completed
-                        println!(
-                            "[CommandSink] Child workflow {} already initiated, blocking until completion",
-                            cmd.workflow_id
-                        );
+                        debug!(workflow_id = %cmd.workflow_id, "child workflow already initiated, blocking until completion");
                         return std::future::pending().await;
                     }
                 }
@@ -389,10 +376,7 @@ impl CommandSink for ReplayCommandSink {
                     drop(engine_lock);
                 }
                 WorkflowCommand::ScheduleLocalActivity(cmd) => {
-                    eprintln!(
-                        "[CommandSink] Scheduling Local Activity (stderr): {}",
-                        cmd.activity_id
-                    );
+                    debug!(activity_id = %cmd.activity_id, "scheduling local activity");
 
                     // Check if local activity result already exists in replay cache
                     let already_completed = {
@@ -401,10 +385,7 @@ impl CommandSink for ReplayCommandSink {
                     };
 
                     if let Some(marker_data) = already_completed {
-                        eprintln!(
-                            "[CommandSink] Local activity {} completed from replay cache",
-                            cmd.activity_id
-                        );
+                        debug!(activity_id = %cmd.activity_id, "local activity completed from replay cache");
                         // Return cached result from replay
                         if let Some(result) = marker_data.result_json {
                             return Ok(result);
@@ -416,10 +397,7 @@ impl CommandSink for ReplayCommandSink {
                     }
 
                     // Not in replay cache - record this as a pending submission
-                    eprintln!(
-                        "[CommandSink] Local activity {} not in cache, recording as pending",
-                        cmd.activity_id
-                    );
+                    debug!(activity_id = %cmd.activity_id, "local activity not in cache, recording as pending");
 
                     // Create a channel to receive the result when local activity completes
                     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
@@ -439,10 +417,7 @@ impl CommandSink for ReplayCommandSink {
                     }
 
                     // Wait for the result to be sent by the executor
-                    eprintln!(
-                        "[CommandSink] Local activity {} recorded as pending, awaiting result",
-                        cmd.activity_id
-                    );
+                    debug!(activity_id = %cmd.activity_id, "local activity recorded as pending, awaiting result");
                     match result_rx.await {
                         Ok(result) => return result,
                         Err(_) => {
@@ -453,10 +428,7 @@ impl CommandSink for ReplayCommandSink {
                     }
                 }
                 WorkflowCommand::RecordMarker(cmd) => {
-                    eprintln!(
-                        "[CommandSink] Recording Marker (stderr): {}",
-                        cmd.marker_name
-                    );
+                    debug!(marker_name = %cmd.marker_name, "recording marker");
 
                     let attrs = uber_cadence_proto::shared::RecordMarkerDecisionAttributes {
                         marker_name: cmd.marker_name.clone(),
@@ -486,7 +458,7 @@ impl CommandSink for ReplayCommandSink {
                     engine_lock.decisions_helper.add_decision(decision);
                     drop(engine_lock);
 
-                    println!("[CommandSink] Recorded marker: {}", marker_id);
+                    debug!(marker_id = %marker_id, "recorded marker");
 
                     // Return immediately since markers are synchronous
                     return Ok(Vec::new());
@@ -555,9 +527,10 @@ impl WorkflowExecutor {
             .map(|x| x.run_id.clone())
             .unwrap_or_default();
 
-        println!(
-            "[WorkflowExecutor] Executing decision task for workflow={} run={}",
-            workflow_id, run_id
+        info!(
+            workflow_id = %workflow_id,
+            run_id = %run_id,
+            "executing decision task"
         );
 
         let key = WorkflowExecutionKey {
@@ -574,18 +547,18 @@ impl WorkflowExecutor {
             (Arc::new(Mutex::new(engine)), false)
         };
 
-        println!(
-            "[WorkflowExecutor] Engine from cache: {}, last_processed_event_id: {}",
+        debug!(
             from_cache,
-            engine_arc.lock().unwrap().last_processed_event_id
+            last_processed_event_id = engine_arc.lock().unwrap().last_processed_event_id,
+            "engine state"
         );
 
         {
             let mut engine = engine_arc.lock().unwrap();
             engine.replay_history(&events)?;
-            println!(
-                "[WorkflowExecutor] After replay, last_processed_event_id: {}",
-                engine.last_processed_event_id
+            debug!(
+                last_processed_event_id = engine.last_processed_event_id,
+                "after replay"
             );
         }
 
@@ -716,21 +689,21 @@ impl WorkflowExecutor {
                 ),
             ) = &first_event.attributes
             {
-                println!(
-                    "[WorkflowExecutor] WorkflowStarted input length: {}",
-                    attrs.input.len()
-                );
+                debug!(input_len = attrs.input.len(), "workflow started event");
                 if attrs.input.is_empty() {
                     None
                 } else {
                     Some(attrs.input.clone())
                 }
             } else {
-                println!("[WorkflowExecutor] First event is NOT WorkflowExecutionStarted. Type: {:?}, Attrs: {:?}", first_event.event_type, first_event.attributes);
+                warn!(
+                    event_type = ?first_event.event_type,
+                    "first event is not WorkflowExecutionStarted"
+                );
                 None
             }
         } else {
-            println!("[WorkflowExecutor] No events in history");
+            warn!("no events in history");
             None
         };
 
@@ -749,7 +722,7 @@ impl WorkflowExecutor {
             disp.spawn_task(root_task);
         }
 
-        println!("[WorkflowExecutor] Starting workflow execution polling loop");
+        info!("starting workflow execution polling loop");
 
         // Main execution loop - execute dispatcher and process local activities
         loop {
@@ -762,7 +735,7 @@ impl WorkflowExecutor {
 
             // Check if root task (workflow) completed
             if all_done {
-                println!("[WorkflowExecutor] Workflow Completed!");
+                info!("workflow completed");
                 let mut engine = engine_arc.lock().unwrap();
 
                 // Get result from root task
@@ -772,24 +745,24 @@ impl WorkflowExecutor {
                     if let Ok(result) = result_any.downcast::<Result<Vec<u8>, WorkflowError>>() {
                         match *result {
                             Ok(output) => {
-                                println!("[WorkflowExecutor] Workflow Result: OK");
+                                info!("workflow completed successfully");
                                 engine.decisions_helper.complete_workflow_execution(output);
                             }
                             Err(e) => {
-                                println!("[WorkflowExecutor] Workflow Result: ERR - {:?}", e);
+                                error!(error = %e, "workflow failed");
                                 engine
                                     .decisions_helper
                                     .fail_workflow_execution(e.to_string(), "".to_string());
                             }
                         }
                     } else {
-                        println!("[WorkflowExecutor] Failed to downcast workflow result");
+                        error!("failed to downcast workflow result");
                         engine
                             .decisions_helper
                             .fail_workflow_execution("Type error".to_string(), "".to_string());
                     }
                 } else {
-                    println!("[WorkflowExecutor] Root task result not found");
+                    error!("root task result not found");
                     engine
                         .decisions_helper
                         .fail_workflow_execution("Missing result".to_string(), "".to_string());
@@ -797,7 +770,7 @@ impl WorkflowExecutor {
                 break; // Exit loop - workflow is done
             }
 
-            println!("[WorkflowExecutor] All tasks blocked");
+            debug!("all tasks blocked");
 
             // Check if there are pending local activity submissions
             let pending_submissions = {
@@ -811,17 +784,14 @@ impl WorkflowExecutor {
                     encode_local_activity_marker, LocalActivityMarkerData,
                 };
 
-                println!(
-                    "[WorkflowExecutor] Executing {} pending local activities",
-                    pending_submissions.len()
+                info!(
+                    count = pending_submissions.len(),
+                    "executing pending local activities"
                 );
 
                 // Execute each pending local activity
                 for submission in pending_submissions {
-                    println!(
-                        "[WorkflowExecutor] Executing local activity: {}",
-                        submission.activity_id
-                    );
+                    debug!(activity_id = %submission.activity_id, "executing local activity");
 
                     // Create oneshot channel for result
                     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
@@ -841,20 +811,17 @@ impl WorkflowExecutor {
 
                     // Submit task to queue
                     if self.local_activity_queue.send(task).is_err() {
-                        println!(
-                            "[WorkflowExecutor] Failed to submit local activity task: {}",
-                            submission.activity_id
-                        );
+                        error!(activity_id = %submission.activity_id, "failed to submit local activity task");
                         continue;
                     }
 
                     // Wait for result
                     match result_rx.await {
                         Ok(result) => {
-                            println!(
-                                "[WorkflowExecutor] Local activity {} completed: {:?}",
-                                submission.activity_id,
-                                result.as_ref().map(|r| r.len()).map_err(|e| e.to_string())
+                            debug!(
+                                activity_id = %submission.activity_id,
+                                result_size = result.as_ref().map(|r| r.len()).ok(),
+                                "local activity completed"
                             );
 
                             // Record marker with result
@@ -918,7 +885,7 @@ impl WorkflowExecutor {
                                 .insert(submission.activity_id.clone(), marker_data.clone());
                             drop(engine_lock);
 
-                            println!("[WorkflowExecutor] Recorded marker and cached result for local activity: {}", marker_id);
+                            debug!(marker_id = %marker_id, "recorded marker and cached result for local activity");
 
                             // Signal the workflow that this local activity is complete
                             let waker = local_activity_wakers
@@ -931,32 +898,23 @@ impl WorkflowExecutor {
                                     Err(err) => Err(WorkflowError::ActivityFailed(err.to_string())),
                                 };
                                 let _ = tx.send(result_to_send);
-                                println!(
-                                    "[WorkflowExecutor] Sent result to workflow for activity: {}",
-                                    submission.activity_id
-                                );
+                                debug!(activity_id = %submission.activity_id, "sent result to workflow");
                             } else {
-                                println!(
-                                    "[WorkflowExecutor] Warning: No waker found for activity: {}",
-                                    submission.activity_id
-                                );
+                                warn!(activity_id = %submission.activity_id, "no waker found for activity");
                             }
                         }
                         Err(e) => {
-                            println!(
-                                "[WorkflowExecutor] Local activity {} channel closed: {:?}",
-                                submission.activity_id, e
-                            );
+                            error!(activity_id = %submission.activity_id, error = %e, "local activity channel closed");
                         }
                     }
                 }
 
-                println!("[WorkflowExecutor] All pending local activities processed, re-polling workflow");
+                info!("all pending local activities processed, re-polling workflow");
                 // Continue loop to poll workflow again with the new results
                 continue;
             } else {
                 // No pending local activities, workflow is genuinely blocked (waiting for regular activities/timers)
-                println!("[WorkflowExecutor] No pending local activities, workflow blocked on external events");
+                debug!("no pending local activities, workflow blocked on external events");
                 break; // Exit loop
             }
         }
@@ -1044,9 +1002,10 @@ impl WorkflowExecutor {
             if let Err(non_deterministic_error) =
                 match_replay_with_history(&decisions, &new_history_events, &replay_context)
             {
-                println!(
-                    "[WorkflowExecutor] Non-determinism detected for workflow={}: {:?}",
-                    workflow_id, non_deterministic_error
+                error!(
+                    workflow_id = %workflow_id,
+                    error = %non_deterministic_error,
+                    "non-determinism detected"
                 );
 
                 // For now, we log the error and continue
@@ -1069,16 +1028,13 @@ impl WorkflowExecutor {
         // Mark decisions as sent to prevent them from being returned again
         engine.decisions_helper.mark_decisions_sent();
 
-        println!(
-            "[WorkflowExecutor] Generated {} decisions for workflow={}",
-            decisions.len(),
-            workflow_id
+        info!(
+            decision_count = decisions.len(),
+            workflow_id = %workflow_id,
+            "generated decisions for workflow"
         );
         if let Some(d) = decisions.first() {
-            println!(
-                "[WorkflowExecutor] First decision type: {:?}",
-                d.decision_type
-            );
+            debug!(decision_type = ?d.decision_type, "first decision type");
         }
 
         Ok((decisions, query_results))

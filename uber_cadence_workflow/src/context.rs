@@ -16,6 +16,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::Duration;
+use tracing::debug;
 use uber_cadence_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
 
 // Type aliases to reduce complexity
@@ -860,7 +861,7 @@ impl WorkflowContext {
     {
         let task_id = self.task_sequence.fetch_add(1, Ordering::SeqCst);
 
-        println!("[Context] Spawning task {}", task_id);
+        debug!(task_id, "spawning workflow task");
 
         // Create the task
         let task = WorkflowTask::new(task_id, format!("task-{}", task_id), f);
@@ -879,11 +880,12 @@ impl WorkflowContext {
         let pending_tasks_opt = self.pending_spawn_tasks.lock().unwrap();
         if let Some(pending_tasks_arc) = pending_tasks_opt.as_ref() {
             let mut pending = pending_tasks_arc.lock().unwrap();
+            let queue_len = pending.len();
             pending.push(task);
-            println!(
-                "[Context] Task {} added to pending queue (now {} pending)",
+            debug!(
                 task_id,
-                pending.len()
+                queue_len = queue_len + 1,
+                "task added to pending queue"
             );
         } else {
             panic!("Pending tasks queue not set on WorkflowContext. This is a bug.");
@@ -943,12 +945,12 @@ impl<T: Send + 'static> JoinHandle<T> {
     /// In the workflow execution model, this will poll until the task completes.
     /// The actual execution happens in execute_until_all_blocked().
     pub async fn join(self) -> Result<T, JoinError> {
-        println!("[JoinHandle] Waiting for task {} to complete", self.task_id);
+        debug!(task_id = self.task_id, "waiting for task to complete");
         // Poll until task is complete
         poll_fn(|_cx| {
             let results = self.completed_results.lock().unwrap();
             if results.contains_key(&self.task_id) {
-                println!("[JoinHandle] Task {} is complete", self.task_id);
+                debug!(task_id = self.task_id, "task is complete");
                 Poll::Ready(())
             } else {
                 Poll::Pending
@@ -957,19 +959,17 @@ impl<T: Send + 'static> JoinHandle<T> {
         .await;
 
         // Get the result
-        println!("[JoinHandle] Getting result for task {}", self.task_id);
+        debug!(task_id = self.task_id, "getting task result");
         let mut results = self.completed_results.lock().unwrap();
-        println!(
-            "[JoinHandle] Locked results, currently {} results",
-            results.len()
-        );
+        let results_count = results.len();
+        debug!(results_count, "locked results");
         let result = results
             .remove(&self.task_id)
             .ok_or(JoinError::TaskNotComplete(self.task_id))?;
-        println!(
-            "[JoinHandle] Removed task {} result, now {} results remaining",
-            self.task_id,
-            results.len()
+        let remaining_count = results.len();
+        debug!(
+            task_id = self.task_id,
+            remaining_count, "removed task result"
         );
 
         // Downcast to the expected type
@@ -1088,19 +1088,19 @@ struct ConsoleLogger;
 
 impl Logger for ConsoleLogger {
     fn debug(&self, msg: &str) {
-        println!("[DEBUG] {}", msg);
+        tracing::debug!("{}", msg);
     }
 
     fn info(&self, msg: &str) {
-        println!("[INFO] {}", msg);
+        tracing::info!("{}", msg);
     }
 
     fn warn(&self, msg: &str) {
-        println!("[WARN] {}", msg);
+        tracing::warn!("{}", msg);
     }
 
     fn error(&self, msg: &str) {
-        eprintln!("[ERROR] {}", msg);
+        tracing::error!("{}", msg);
     }
 }
 

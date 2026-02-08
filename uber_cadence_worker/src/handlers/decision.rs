@@ -1,6 +1,7 @@
 use crate::executor::workflow::WorkflowExecutor;
 use futures::FutureExt;
 use std::sync::Arc;
+use tracing::{error, info};
 use uber_cadence_core::CadenceError;
 use uber_cadence_proto::workflow_service::*;
 
@@ -52,7 +53,7 @@ impl DecisionTaskHandler {
                 } else {
                     "Unknown panic".to_string()
                 };
-                println!("[DecisionTaskHandler] Workflow PANICKED: {}", panic_msg);
+                error!(panic_msg = %panic_msg, "workflow panicked");
                 Err(CadenceError::Other(format!(
                     "Workflow panic: {}",
                     panic_msg
@@ -63,9 +64,9 @@ impl DecisionTaskHandler {
         match execution_result {
             Ok((decisions, query_results)) => {
                 // Respond with decisions
-                println!(
-                    "[DecisionTaskHandler] Responding with {} decisions",
-                    decisions.len()
+                info!(
+                    decision_count = decisions.len(),
+                    "responding with decisions"
                 );
                 let response = self
                     .service
@@ -85,11 +86,11 @@ impl DecisionTaskHandler {
 
                 match &response {
                     Ok(_) => {
-                        println!("[DecisionTaskHandler] Successfully responded to decision task")
+                        info!("successfully responded to decision task")
                     }
-                    Err(e) => println!(
-                        "[DecisionTaskHandler] FAILED to respond to decision task: {:?}",
-                        e
+                    Err(e) => error!(
+                        error = %e,
+                        "failed to respond to decision task"
                     ),
                 }
 
