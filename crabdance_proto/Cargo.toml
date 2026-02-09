@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Protocol definitions and generated code for Cadence client"
+keywords.workspace = true
 
 [features]
 default = []

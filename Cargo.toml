@@ -18,6 +18,7 @@ edition = "2021"
 authors = ["Carson McManus"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dyc3/cadence-rust-client"
+keywords = ["cadence", "temporal", "workflow", "orchestration"]
 
 [workspace.dependencies]
 # Async runtime

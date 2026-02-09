@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Testing utilities for Cadence workflows and activities"
+keywords.workspace = true
 
 [dependencies]
 crabdance_core = { workspace = true }
