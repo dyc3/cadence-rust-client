@@ -30,7 +30,7 @@ pub fn match_replay_with_history(
     decisions: &[Decision],
     history_events: &[HistoryEvent],
     context: &ReplayContext,
-) -> Result<(), NonDeterministicError> {
+) -> Result<(), Box<NonDeterministicError>> {
     // Filter to only decision-task-related history events
     let relevant_history_events: Vec<&HistoryEvent> = history_events
         .iter()
@@ -298,16 +298,16 @@ fn create_error(
     context: &ReplayContext,
     history_event: Option<&HistoryEvent>,
     decision: Option<&Decision>,
-) -> NonDeterministicError {
+) -> Box<NonDeterministicError> {
     let history_event_text = history_event.map(|e| format!("{:?}", e));
     let decision_text = decision.map(|d| format!("{:?}", d));
 
-    NonDeterministicError {
+    Box::new(NonDeterministicError {
         reason,
         context: context.clone(),
         history_event_text,
         decision_text,
-    }
+    })
 }
 
 #[cfg(test)]
