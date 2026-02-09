@@ -34,8 +34,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use uber_cadence_activity::ActivityContext;
-use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_client::error::TransportError;
+use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_core::{ActivityOptions, CadenceError};
 use uber_cadence_proto::shared::{
     EventAttributes, EventType, HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution,

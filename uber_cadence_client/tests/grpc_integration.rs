@@ -34,8 +34,8 @@
 //! This is different from the Thrift port (7933).
 
 use std::collections::HashMap;
-use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_client::error::TransportError;
+use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_proto::shared::{
     HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution, WorkflowType,
 };
@@ -90,9 +90,7 @@ async fn register_domain_and_wait(
         visibility_archival_uri: None,
     };
 
-    client
-        .register_domain(register_request)
-        .await?;
+    client.register_domain(register_request).await?;
 
     // Wait for domain to propagate in the cache (needs more time for distributed system)
     // Increased to 1500ms to handle cache propagation when running multiple tests

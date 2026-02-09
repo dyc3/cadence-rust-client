@@ -1338,9 +1338,7 @@ impl Client for WorkflowClient {
             // Assuming the result is JSON encoded value
             Ok(EncodedValue::new(result))
         } else {
-            Err(CadenceError::Other(
-                "Query returned no result".to_string(),
-            ))
+            Err(CadenceError::Other("Query returned no result".to_string()))
         }
     }
 
@@ -1534,33 +1532,46 @@ pub trait Logger: Send + Sync {
 /// DataConverter trait for serializing/deserializing workflow and activity arguments
 pub trait DataConverter: Send + Sync {
     /// Serialize a value to bytes
-    fn to_data(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, uber_cadence_core::EncodingError>;
+    fn to_data(
+        &self,
+        value: &dyn std::any::Any,
+    ) -> Result<Vec<u8>, uber_cadence_core::EncodingError>;
     /// Deserialize bytes into a target value
     #[expect(clippy::wrong_self_convention)]
-    fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> Result<(), uber_cadence_core::EncodingError>;
+    fn from_data(
+        &self,
+        data: &[u8],
+        target: &mut dyn std::any::Any,
+    ) -> Result<(), uber_cadence_core::EncodingError>;
 }
 
 /// JSON data converter implementation
 pub struct JsonDataConverter;
 
 impl DataConverter for JsonDataConverter {
-    fn to_data(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, uber_cadence_core::EncodingError> {
+    fn to_data(
+        &self,
+        value: &dyn std::any::Any,
+    ) -> Result<Vec<u8>, uber_cadence_core::EncodingError> {
         // Try to downcast to common serde-serializable types
         // For most use cases, users should pass serializable types
 
         // Handle String
         if let Some(s) = value.downcast_ref::<String>() {
-            return serde_json::to_vec(s).map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
+            return serde_json::to_vec(s)
+                .map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
         }
 
         // Handle &str (this won't work directly with Any, but document it)
         if let Some(s) = value.downcast_ref::<&str>() {
-            return serde_json::to_vec(s).map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
+            return serde_json::to_vec(s)
+                .map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
         }
 
         // Handle serde_json::Value directly
         if let Some(v) = value.downcast_ref::<serde_json::Value>() {
-            return serde_json::to_vec(v).map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
+            return serde_json::to_vec(v)
+                .map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
         }
 
         // Handle Vec<u8> - pass through as-is
@@ -1579,7 +1590,11 @@ impl DataConverter for JsonDataConverter {
         ))
     }
 
-    fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> Result<(), uber_cadence_core::EncodingError> {
+    fn from_data(
+        &self,
+        data: &[u8],
+        target: &mut dyn std::any::Any,
+    ) -> Result<(), uber_cadence_core::EncodingError> {
         // Try to downcast target to common deserializable types
 
         // Handle String
@@ -1696,9 +1711,7 @@ impl WorkflowRun for WorkflowRunImpl {
         // TODO: Implement timeout
         tokio::time::timeout(timeout, self.get())
             .await
-            .map_err(|_| {
-                CadenceError::Other("Timeout waiting for workflow result".to_string())
-            })?
+            .map_err(|_| CadenceError::Other("Timeout waiting for workflow result".to_string()))?
     }
 }
 

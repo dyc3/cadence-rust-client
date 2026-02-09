@@ -36,7 +36,8 @@ pub async fn run_worker(
     verbose: bool,
 ) -> Result<()> {
     // Create client
-    let client = GrpcWorkflowServiceClient::connect(&endpoint, &domain, None).await
+    let client = GrpcWorkflowServiceClient::connect(&endpoint, &domain, None)
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to connect: {}", e))?;
     let service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync> =
         Arc::new(client.clone());

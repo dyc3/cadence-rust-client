@@ -28,9 +28,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use uber_cadence_activity::{activity, ActivityContext};
-use uber_cadence_client::GrpcWorkflowServiceClient;
 use uber_cadence_client::error::TransportError;
-use uber_cadence_core::{ActivityOptions};
+use uber_cadence_client::GrpcWorkflowServiceClient;
+use uber_cadence_core::ActivityOptions;
 use uber_cadence_proto::shared::{
     EventAttributes, EventType, HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution,
     WorkflowType,
@@ -176,9 +176,7 @@ async fn register_domain_and_wait(
         visibility_archival_uri: None,
     };
 
-    client
-        .register_domain(register_request)
-        .await?;
+    client.register_domain(register_request).await?;
 
     // Wait for domain to propagate in the cache
     tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
