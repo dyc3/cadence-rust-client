@@ -1,6 +1,10 @@
 _default:
     just --list
 
+# Regenerate protobuf code from .proto files
+gen-proto:
+    cargo build -p uber_cadence_proto --features codegen
+
 test-grpc-integration:
     cargo test --test grpc_integration -- --ignored --test-threads=1
 
