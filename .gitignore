@@ -3,4 +3,4 @@ cadence-go-client/
 target/
 *.log
 .opencode/plans
-cadence
+/cadence
