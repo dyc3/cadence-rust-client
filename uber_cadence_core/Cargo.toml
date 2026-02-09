@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Core types and utilities for Cadence client"
 
 [dependencies]
-uber_cadence_proto = { path = "../uber_cadence_proto", package = "uber_cadence_proto" }
+uber_cadence_proto = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

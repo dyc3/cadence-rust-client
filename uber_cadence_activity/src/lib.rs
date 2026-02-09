@@ -5,5 +5,5 @@
 
 pub mod context;
 
-pub use cadence_macros::activity;
 pub use context::*;
+pub use uber_cadence_macros::activity;

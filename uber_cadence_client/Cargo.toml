@@ -8,8 +8,8 @@ repository.workspace = true
 description = "Cadence workflow client for Rust"
 
 [dependencies]
-uber_cadence_proto = { path = "../uber_cadence_proto", package = "uber_cadence_proto" }
-uber_cadence_core = { path = "../uber_cadence_core", package = "uber_cadence_core" }
+uber_cadence_proto = { workspace = true }
+uber_cadence_core = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
@@ -29,9 +29,9 @@ mockall = { workspace = true }
 tokio-test = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
-uber_cadence_worker = { path = "../uber_cadence_worker", package = "uber_cadence_worker" }
-uber_cadence_workflow = { path = "../uber_cadence_workflow", package = "uber_cadence_workflow" }
-uber_cadence_activity = { path = "../uber_cadence_activity", package = "uber_cadence_activity" }
+uber_cadence_worker = { workspace = true }
+uber_cadence_workflow = { workspace = true }
+uber_cadence_activity = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

@@ -58,6 +58,14 @@ mockall = "0.13"
 tempfile = "3.0"
 tokio-test = "0.4"
 
+uber_cadence_proto = { path = "./uber_cadence_proto", version = "0.1.0" }
+uber_cadence_core = { path = "./uber_cadence_core", version = "0.1.0" }
+uber_cadence_macros = { path = "./uber_cadence_macros", version = "0.1.0" }
+uber_cadence_client = { path = "./uber_cadence_client", version = "0.1.0" }
+uber_cadence_worker = { path = "./uber_cadence_worker", version = "0.1.0" }
+uber_cadence_workflow = { path = "./uber_cadence_workflow", version = "0.1.0" }
+uber_cadence_activity = { path = "./uber_cadence_activity", version = "0.1.0" }
+
 [profile.release]
 opt-level = 3
 lto = true

@@ -12,7 +12,6 @@ pub mod local_activity;
 pub mod side_effect_serialization;
 pub mod state_machine;
 
-pub use cadence_macros::{call_activity, workflow};
 pub use channel::*;
 pub use commands::*;
 pub use context::*;
@@ -21,3 +20,4 @@ pub use future::*;
 pub use local_activity::*;
 pub use side_effect_serialization::*;
 pub use state_machine::*;
+pub use uber_cadence_macros::{call_activity, workflow};

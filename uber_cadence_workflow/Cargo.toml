@@ -8,9 +8,9 @@ repository.workspace = true
 description = "Workflow authoring SDK for Cadence"
 
 [dependencies]
-uber_cadence_proto = { path = "../uber_cadence_proto", package = "uber_cadence_proto" }
-uber_cadence_core = { path = "../uber_cadence_core", package = "uber_cadence_core" }
-cadence_macros = { path = "../uber_cadence_macros", package = "uber_cadence_macros" }
+uber_cadence_proto = { workspace = true }
+uber_cadence_core = { workspace = true }
+uber_cadence_macros = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
