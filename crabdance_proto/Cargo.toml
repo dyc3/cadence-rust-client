@@ -1,0 +1,23 @@
+[package]
+name = "crabdance_proto"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Protocol definitions and generated code for Cadence client"
+
+[features]
+default = []
+codegen = ["dep:tonic-build"]
+
+[dependencies]
+tonic = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+serde = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+tonic-build = { workspace = true, optional = true }

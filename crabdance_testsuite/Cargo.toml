@@ -1,0 +1,25 @@
+[package]
+name = "crabdance_testsuite"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Testing utilities for Cadence workflows and activities"
+
+[dependencies]
+crabdance_proto = { workspace = true }
+crabdance_core = { workspace = true }
+crabdance_workflow = { workspace = true }
+crabdance_activity = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tempfile = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

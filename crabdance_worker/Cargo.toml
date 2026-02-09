@@ -1,0 +1,30 @@
+[package]
+name = "crabdance_worker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cadence worker implementation for Rust"
+
+[dependencies]
+crabdance_proto = { workspace = true }
+crabdance_core = { workspace = true }
+crabdance_workflow = { workspace = true }
+crabdance_activity = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+dyn-clone = { workspace = true }
+
+[dev-dependencies]
+mockall = { workspace = true }
+tokio-test = { workspace = true }
+serde_json = { workspace = true }

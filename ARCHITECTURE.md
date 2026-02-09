@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a complete Rust port of the [Uber Cadence Go client](https://github.com/uber-go/uber_cadence_client), providing workflow orchestration capabilities with idiomatic Rust APIs. The implementation follows the Go client's architecture while adapting to Rust's type system and async ecosystem.
+This is a complete Rust port of the [Uber Cadence Go client](https://github.com/uber-go/crabdance_client), providing workflow orchestration capabilities with idiomatic Rust APIs. The implementation follows the Go client's architecture while adapting to Rust's type system and async ecosystem.
 
 ## High-Level Architecture
 
@@ -15,18 +15,18 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
              │                                   │
              ▼                                   ▼
     ┌────────────────┐                  ┌────────────────┐
-    │ uber_cadence_client │                  │ uber_cadence_worker │
+    │ crabdance_client │                  │ crabdance_worker │
     └────────┬───────┘                  └────────┬───────┘
              │                                   │
              │    ┌──────────────────────┐       │
-             └───►│   uber_cadence_workflow   │◄──────┘
+             └───►│   crabdance_workflow   │◄──────┘
                   └──────────┬───────────┘
                              │
              ┌───────────────┼───────────────┐
              │               │               │
              ▼               ▼               ▼
     ┌────────────────┐ ┌─────────────┐ ┌────────────────┐
-    │ uber_cadence_core   │ │uber_cadence_proto│ │uber_cadence_activity│
+    │ crabdance_core   │ │crabdance_proto│ │crabdance_activity│
     └────────────────┘ └─────────────┘ └────────────────┘
                              │
                              ▼
@@ -38,7 +38,7 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
 
 ## Crate Responsibilities
 
-### `uber_cadence_proto`
+### `crabdance_proto`
 
 **Purpose**: Protocol layer for Cadence server communication
 
@@ -52,7 +52,7 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
 
 **Notes**: This crate bridges the gap between the raw protobuf definitions and idiomatic Rust types. The `generated` module is auto-generated during build via `build.rs` using `tonic-build`.
 
-### `uber_cadence_core`
+### `crabdance_core`
 
 **Purpose**: Foundational types, error handling, and serialization
 
@@ -71,7 +71,7 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
 
 **Notes**: This is the foundation layer - no dependencies on other Cadence crates.
 
-### `uber_cadence_client`
+### `crabdance_client`
 
 **Purpose**: Client API for starting and managing workflows
 
@@ -90,11 +90,11 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
 - List and scan workflows
 - Domain registration, update, describe, deprecate, failover
 
-**Dependencies**: `uber_cadence_proto`, `uber_cadence_core`, `tonic`, `tokio`
+**Dependencies**: `crabdance_proto`, `crabdance_core`, `tonic`, `tokio`
 
 **Notes**: Implements connection pooling, automatic retries, and error mapping from gRPC to `CadenceError`.
 
-### `uber_cadence_worker`
+### `crabdance_worker`
 
 **Purpose**: Worker infrastructure for executing workflows and activities
 
@@ -120,11 +120,11 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
 - **Registry**: Function registration maps workflow/activity names to implementations
 - **Replay**: Workflows are re-executed from history to reconstruct state
 
-**Dependencies**: `uber_cadence_client`, `uber_cadence_workflow`, `uber_cadence_activity`, `uber_cadence_core`, `tokio`
+**Dependencies**: `crabdance_client`, `crabdance_workflow`, `crabdance_activity`, `crabdance_core`, `tokio`
 
 **Notes**: This is the most complex crate, handling concurrent task execution, state caching, and deterministic replay.
 
-### `uber_cadence_workflow`
+### `crabdance_workflow`
 
 **Purpose**: SDK for authoring workflows
 
@@ -147,11 +147,11 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
   - Side effects (`side_effect`, `mutable_side_effect`)
   - Versioning (`get_version`)
 
-**Dependencies**: `uber_cadence_core`, `uber_cadence_proto`, `tokio`, `futures`
+**Dependencies**: `crabdance_core`, `crabdance_proto`, `tokio`, `futures`
 
 **Notes**: Workflows must be deterministic - the context ensures this by wrapping all non-deterministic operations.
 
-### `uber_cadence_activity`
+### `crabdance_activity`
 
 **Purpose**: SDK for authoring activities
 
@@ -161,11 +161,11 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
   - Record heartbeats
   - Handle cancellation
 
-**Dependencies**: `uber_cadence_core`, `tokio`
+**Dependencies**: `crabdance_core`, `tokio`
 
 **Notes**: Activities can be non-deterministic and perform side effects (database calls, API requests, etc.).
 
-### `uber_cadence_testsuite`
+### `crabdance_testsuite`
 
 **Purpose**: Testing framework for workflows and activities
 
@@ -175,7 +175,7 @@ The Cadence Rust Client is organized as a Cargo workspace with seven main crates
   - `TestActivityEnvironment` - Activity testing helpers
   - Mock implementations of workflow context
 
-**Dependencies**: `uber_cadence_workflow`, `uber_cadence_worker`, `uber_cadence_core`
+**Dependencies**: `crabdance_workflow`, `crabdance_worker`, `crabdance_core`
 
 **Notes**: Allows testing workflows without a running Cadence server using replay verification.
 
@@ -191,8 +191,8 @@ Workflows must be deterministic to enable reliable recovery and scaling. The rep
 4. **Side Effect Wrapping**: Non-deterministic ops (time, random, I/O) are wrapped
 
 **Implementation**:
-- `uber_cadence_workflow/state_machine.rs` tracks decision states
-- `uber_cadence_worker/executor/replay.rs` handles replay logic
+- `crabdance_workflow/state_machine.rs` tracks decision states
+- `crabdance_worker/executor/replay.rs` handles replay logic
 - `WorkflowContext` enforces determinism by caching side effects
 
 ### 2. Sticky Execution for Performance
@@ -200,7 +200,7 @@ Workflows must be deterministic to enable reliable recovery and scaling. The rep
 **Problem**: Replaying full history on every decision task is expensive
 
 **Solution**: Cache workflow state on workers
-- `uber_cadence_worker/executor/cache.rs` implements LRU cache (default 10K entries)
+- `crabdance_worker/executor/cache.rs` implements LRU cache (default 10K entries)
 - Cadence server dispatches subsequent tasks to the same worker
 - Only incremental history replay needed
 
@@ -218,13 +218,13 @@ Workers use long-polling to receive tasks:
 
 **Activity Task Flow**: Similar to decision tasks but for activities
 
-**Implementation**: `uber_cadence_worker/pollers.rs`
+**Implementation**: `crabdance_worker/pollers.rs`
 
 ### 4. Type-Safe Error Handling
 
 **Strategy**: Use `thiserror` for error definitions, `CadenceError` as unified error type
 
-**Error Categories** (`uber_cadence_core/error.rs`):
+**Error Categories** (`crabdance_core/error.rs`):
 - `Custom` - User-defined workflow errors
 - `Timeout` - Various timeout types (start-to-close, heartbeat, etc.)
 - `Canceled` - Workflow/activity cancellation
@@ -236,7 +236,7 @@ Workers use long-polling to receive tasks:
 
 ### 5. Pluggable Serialization
 
-**Abstraction**: `DataConverter` trait in `uber_cadence_core/encoded.rs`
+**Abstraction**: `DataConverter` trait in `crabdance_core/encoded.rs`
 
 **Default**: JSON serialization via `serde_json`
 
@@ -246,7 +246,7 @@ Workers use long-polling to receive tasks:
 
 **Strategy**: Pluggable auth via `AuthProvider` trait
 
-**Implementations** (`uber_cadence_client/auth/`):
+**Implementations** (`crabdance_client/auth/`):
 - `JwtAuthProvider` - JWT-based auth with automatic token refresh
 - `AuthInterceptor` - gRPC interceptor to inject auth headers
 
@@ -340,7 +340,7 @@ Shared state uses:
 
 ### Workflow Testing
 
-**Tool**: `uber_cadence_testsuite`
+**Tool**: `crabdance_testsuite`
 
 **Approach**: Replay-based testing without server
 - Execute workflow with mock context
@@ -388,6 +388,6 @@ Shared state uses:
 
 ## References
 
-- **Go Client**: [github.com/uber-go/uber_cadence_client](https://github.com/uber-go/uber_cadence_client) (reference implementation)
+- **Go Client**: [github.com/uber-go/crabdance_client](https://github.com/uber-go/crabdance_client) (reference implementation)
 - **Cadence Docs**: [cadenceworkflow.io](https://cadenceworkflow.io)
 - **Cadence Protocol**: `.proto` files in `proto/` directory

@@ -1,9 +1,9 @@
 // CPU-intensive activity
 
+use crabdance_activity::ActivityContext;
+use crabdance_worker::registry::{Activity, ActivityError};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
-use uber_cadence_activity::ActivityContext;
-use uber_cadence_worker::registry::{Activity, ActivityError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CpuInput {

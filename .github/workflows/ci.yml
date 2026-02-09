@@ -61,11 +61,11 @@ jobs:
         uses: arduino/setup-protoc@v3
 
       - name: Regenerate proto code
-        run: cargo build -p uber_cadence_proto --features codegen
+        run: cargo build -p crabdance_proto --features codegen
 
       - name: Check for uncommitted changes
         run: |
-          if ! git diff --exit-code uber_cadence_proto/src/generated/; then
+          if ! git diff --exit-code crabdance_proto/src/generated/; then
             echo "Error: Generated proto code is out of date!"
             echo "Please run 'just gen-proto' and commit the changes."
             exit 1

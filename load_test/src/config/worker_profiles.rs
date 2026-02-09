@@ -1,5 +1,5 @@
+use crabdance_worker::worker::{NonDeterministicWorkflowPolicy, WorkerOptions};
 use std::time::Duration;
-use uber_cadence_worker::worker::{NonDeterministicWorkflowPolicy, WorkerOptions};
 
 /// Get worker options by profile name
 pub fn get_worker_profile(profile: &str) -> WorkerOptions {

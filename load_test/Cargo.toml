@@ -9,12 +9,12 @@ publish = false
 
 [dependencies]
 # Workspace crates
-uber_cadence_client = { path = "../uber_cadence_client", package = "uber_cadence_client" }
-uber_cadence_worker = { path = "../uber_cadence_worker", package = "uber_cadence_worker" }
-uber_cadence_workflow = { path = "../uber_cadence_workflow", package = "uber_cadence_workflow" }
-uber_cadence_activity = { path = "../uber_cadence_activity", package = "uber_cadence_activity" }
-uber_cadence_core = { path = "../uber_cadence_core", package = "uber_cadence_core" }
-uber_cadence_proto = { path = "../uber_cadence_proto", package = "uber_cadence_proto" }
+crabdance_client = { workspace = true }
+crabdance_worker = { workspace = true }
+crabdance_workflow = { workspace = true }
+crabdance_activity = { workspace = true }
+crabdance_core = { workspace = true }
+crabdance_proto = { workspace = true }
 
 # CLI
 clap = { version = "4.5", features = ["derive", "env"] }

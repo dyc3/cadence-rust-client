@@ -1,0 +1,23 @@
+[package]
+name = "crabdance_activity"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Activity authoring SDK for Cadence"
+
+[dependencies]
+crabdance_proto = { workspace = true }
+crabdance_core = { workspace = true }
+crabdance_macros = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mockall = { workspace = true }
+tokio-test = { workspace = true }

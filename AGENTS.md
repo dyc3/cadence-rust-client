@@ -17,7 +17,7 @@ cargo build
 cargo build --release
 
 # Build a specific crate
-cargo build -p uber_cadence_core
+cargo build -p crabdance_core
 ```
 
 ### Testing
@@ -26,13 +26,13 @@ cargo build -p uber_cadence_core
 cargo test
 
 # Run tests for a specific crate
-cargo test -p uber_cadence_core
+cargo test -p crabdance_core
 
 # Run a specific test by name
 cargo test test_name_here
 
 # Run a specific test in a specific crate
-cargo test -p uber_cadence_client test_name_here
+cargo test -p crabdance_client test_name_here
 
 # Run tests in a specific test file
 cargo test --test grpc_integration
@@ -47,7 +47,7 @@ cargo test --test grpc_integration -- --ignored --test-threads=1
 cargo test --test grpc_integration -- --ignored --nocapture --test-threads=1
 
 # Run all integration tests in a crate
-cargo test -p uber_cadence_client -- --ignored --test-threads=1
+cargo test -p crabdance_client -- --ignored --test-threads=1
 
 # Run tests using just (alternative runner)
 just test-grpc-integration
@@ -90,7 +90,7 @@ cargo doc --all-features
 ### Imports Ordering
 1. Standard library imports (`std::`)
 2. Third-party crate imports (e.g., `tokio::`, `serde::`)
-3. Workspace crate imports (`uber_cadence_core::`, `uber_cadence_proto::`)
+3. Workspace crate imports (`crabdance_core::`, `crabdance_proto::`)
 4. Local module imports (`crate::`)
 
 Separate each group with a blank line. Use `cargo fmt` to automatically format imports.
@@ -106,8 +106,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use uber_cadence_core::{CadenceError, CadenceResult, WorkflowExecution};
-use uber_cadence_proto::shared::WorkflowType;
+use crabdance_core::{CadenceError, CadenceResult, WorkflowExecution};
+use crabdance_proto::shared::WorkflowType;
 
 use crate::registry::WorkflowRegistry;
 ```
@@ -118,7 +118,7 @@ use crate::registry::WorkflowRegistry;
 - **Constants**: UPPER_SNAKE_CASE (e.g., `QUERY_TYPE_STACK_TRACE`)
 - **Type parameters**: PascalCase, single letters preferred (e.g., `T`, `E`)
 - **Error types**: Suffix with `Error` (e.g., `CustomError`, `TimeoutError`)
-- **Result types**: Use `CadenceResult<T>` alias from `uber_cadence_core`
+- **Result types**: Use `CadenceResult<T>` alias from `crabdance_core`
 
 ### Types and Type Safety
 - Use strong typing: avoid `Box<dyn std::error::Error>`, use `CadenceError` instead
@@ -132,7 +132,7 @@ use crate::registry::WorkflowRegistry;
 - Use `CadenceError` as the primary error type throughout the codebase
 - Prefer `?` operator for error propagation
 - Provide context with `map_err()` when converting errors
-- Use error factory functions in `uber_cadence_core::error::factory` module
+- Use error factory functions in `crabdance_core::error::factory` module
 - Match on specific error types using helper functions (e.g., `is_custom_error()`)
 
 ### Async/Await
@@ -161,13 +161,13 @@ The project is organized as a Cargo workspace with these crates:
 
 | Crate | Purpose |
 |-------|---------|
-| `uber_cadence_proto` | Protocol definitions and generated types |
-| `uber_cadence_core` | Core types, errors, serialization |
-| `uber_cadence_client` | Client for workflow operations |
-| `uber_cadence_worker` | Worker for hosting workflows/activities |
-| `uber_cadence_workflow` | Workflow authoring SDK |
-| `uber_cadence_activity` | Activity authoring SDK |
-| `uber_cadence_testsuite` | Testing utilities |
+| `crabdance_proto` | Protocol definitions and generated types |
+| `crabdance_core` | Core types, errors, serialization |
+| `crabdance_client` | Client for workflow operations |
+| `crabdance_worker` | Worker for hosting workflows/activities |
+| `crabdance_workflow` | Workflow authoring SDK |
+| `crabdance_activity` | Activity authoring SDK |
+| `crabdance_testsuite` | Testing utilities |
 
 ## Development Environment
 

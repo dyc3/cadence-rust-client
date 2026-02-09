@@ -1,13 +1,13 @@
 [workspace]
 members = [
-    "uber_cadence_proto",
-    "uber_cadence_core",
-    "uber_cadence_client",
-    "uber_cadence_macros",
-    "uber_cadence_worker",
-    "uber_cadence_workflow",
-    "uber_cadence_activity",
-    "uber_cadence_testsuite",
+    "crabdance_proto",
+    "crabdance_core",
+    "crabdance_client",
+    "crabdance_macros",
+    "crabdance_worker",
+    "crabdance_workflow",
+    "crabdance_activity",
+    "crabdance_testsuite",
     "load_test",
 ]
 resolver = "2"
@@ -58,13 +58,13 @@ mockall = "0.13"
 tempfile = "3.0"
 tokio-test = "0.4"
 
-uber_cadence_proto = { path = "./uber_cadence_proto", version = "0.1.0" }
-uber_cadence_core = { path = "./uber_cadence_core", version = "0.1.0" }
-uber_cadence_macros = { path = "./uber_cadence_macros", version = "0.1.0" }
-uber_cadence_client = { path = "./uber_cadence_client", version = "0.1.0" }
-uber_cadence_worker = { path = "./uber_cadence_worker", version = "0.1.0" }
-uber_cadence_workflow = { path = "./uber_cadence_workflow", version = "0.1.0" }
-uber_cadence_activity = { path = "./uber_cadence_activity", version = "0.1.0" }
+crabdance_proto = { path = "./crabdance_proto", version = "0.1.0" }
+crabdance_core = { path = "./crabdance_core", version = "0.1.0" }
+crabdance_macros = { path = "./crabdance_macros", version = "0.1.0" }
+crabdance_client = { path = "./crabdance_client", version = "0.1.0" }
+crabdance_worker = { path = "./crabdance_worker", version = "0.1.0" }
+crabdance_workflow = { path = "./crabdance_workflow", version = "0.1.0" }
+crabdance_activity = { path = "./crabdance_activity", version = "0.1.0" }
 
 [profile.release]
 opt-level = 3
