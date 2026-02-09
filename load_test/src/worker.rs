@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use uber_cadence_client::GrpcWorkflowServiceClient;
-use uber_cadence_core::CadenceError;
+use uber_cadence_core::TransportError;
 use uber_cadence_proto::workflow_service::{RegisterDomainRequest, WorkflowService};
 use uber_cadence_worker::registry::Registry;
 use uber_cadence_worker::{CadenceWorker, Worker, WorkerOptions};
@@ -36,8 +36,9 @@ pub async fn run_worker(
     verbose: bool,
 ) -> Result<()> {
     // Create client
-    let client = GrpcWorkflowServiceClient::connect(&endpoint, &domain, None).await?;
-    let service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync> =
+    let client = GrpcWorkflowServiceClient::connect(&endpoint, &domain, None).await
+        .map_err(|e| anyhow::anyhow!("Failed to connect: {}", e))?;
+    let service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync> =
         Arc::new(client.clone());
 
     // Register domain if needed
@@ -107,7 +108,7 @@ pub async fn run_worker(
 async fn register_domain_if_needed(
     client: &GrpcWorkflowServiceClient,
     domain_name: &str,
-) -> Result<(), CadenceError> {
+) -> Result<(), TransportError> {
     let register_request = RegisterDomainRequest {
         name: domain_name.to_string(),
         description: Some("Load test domain".to_string()),

@@ -35,6 +35,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use uber_cadence_activity::ActivityContext;
 use uber_cadence_client::GrpcWorkflowServiceClient;
+use uber_cadence_client::error::TransportError;
 use uber_cadence_core::{ActivityOptions, CadenceError};
 use uber_cadence_proto::shared::{
     EventAttributes, EventType, HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution,
@@ -317,7 +318,7 @@ impl Workflow for ParallelWorkflow {
 // Helpers
 // ============================================================================
 
-async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, CadenceError> {
+async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, TransportError> {
     GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain, None).await
 }
 
@@ -537,7 +538,7 @@ async fn test_split_merge_workflow_with_channels_and_spawn() {
     );
 
     // Create service Arc
-    let service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync> =
+    let service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync> =
         Arc::new(client.clone());
 
     // Create and start worker
@@ -692,7 +693,7 @@ async fn test_parallel_workflow_with_spawn() {
     );
 
     // Create service Arc
-    let service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync> =
+    let service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync> =
         Arc::new(client.clone());
 
     // Create and start worker

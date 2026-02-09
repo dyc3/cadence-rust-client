@@ -7,12 +7,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tracing::{error, info, warn};
-use uber_cadence_core::CadenceError;
+use uber_cadence_core::{CadenceError, TransportError};
 use uber_cadence_proto::workflow_service::*;
 
 /// Activity task handler
 pub struct ActivityTaskHandler {
-    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     registry: Arc<dyn Registry>,
     heartbeat_manager: Arc<HeartbeatManager>,
     identity: String,
@@ -36,7 +36,7 @@ impl uber_cadence_activity::ActivityRuntime for ActivityRuntimeImpl {
 
 impl ActivityTaskHandler {
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
         registry: Arc<dyn Registry>,
         identity: String,
     ) -> Self {

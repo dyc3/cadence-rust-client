@@ -2285,6 +2285,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio-test",
+ "tonic",
  "tracing",
  "uber_cadence_proto",
  "uuid",

@@ -2,19 +2,19 @@ use crate::executor::workflow::WorkflowExecutor;
 use futures::FutureExt;
 use std::sync::Arc;
 use tracing::{error, info};
-use uber_cadence_core::CadenceError;
+use uber_cadence_core::{CadenceError, TransportError};
 use uber_cadence_proto::workflow_service::*;
 
 /// Decision task handler
 pub struct DecisionTaskHandler {
-    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     executor: Arc<WorkflowExecutor>,
     identity: String,
 }
 
 impl DecisionTaskHandler {
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
         executor: Arc<WorkflowExecutor>,
         identity: String,
     ) -> Self {

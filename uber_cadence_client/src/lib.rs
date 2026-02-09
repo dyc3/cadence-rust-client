@@ -6,6 +6,7 @@
 pub mod auth;
 pub mod client;
 pub mod domain;
+pub mod error;
 pub mod grpc;
 
 pub use auth::{AuthProvider, CustomClaims, JwtAuthProvider};

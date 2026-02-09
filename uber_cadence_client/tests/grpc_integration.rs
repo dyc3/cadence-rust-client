@@ -35,7 +35,7 @@
 
 use std::collections::HashMap;
 use uber_cadence_client::GrpcWorkflowServiceClient;
-use uber_cadence_core::CadenceError;
+use uber_cadence_client::error::TransportError;
 use uber_cadence_proto::shared::{
     HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution, WorkflowType,
 };
@@ -53,7 +53,7 @@ const CADENCE_GRPC_ENDPOINT: &str = "http://localhost:7833";
 const DEFAULT_DOMAIN: &str = "test-domain";
 
 /// Helper: Create a connected gRPC client
-async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, CadenceError> {
+async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, TransportError> {
     GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain, None).await
 }
 
@@ -72,7 +72,7 @@ fn generate_workflow_id() -> String {
 async fn register_domain_and_wait(
     client: &GrpcWorkflowServiceClient,
     domain_name: &str,
-) -> Result<(), CadenceError> {
+) -> Result<(), TransportError> {
     let register_request = RegisterDomainRequest {
         name: domain_name.to_string(),
         description: Some("Test domain".to_string()),
@@ -90,7 +90,9 @@ async fn register_domain_and_wait(
         visibility_archival_uri: None,
     };
 
-    client.register_domain(register_request).await?;
+    client
+        .register_domain(register_request)
+        .await?;
 
     // Wait for domain to propagate in the cache (needs more time for distributed system)
     // Increased to 1500ms to handle cache propagation when running multiple tests

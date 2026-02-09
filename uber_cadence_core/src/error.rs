@@ -4,9 +4,103 @@
 //! Cadence workflows and activities.
 
 use std::fmt;
+use std::time::Duration;
 use thiserror::Error;
+use tonic::Code;
 
 use crate::ReplayContext;
+
+/// Transport-layer errors for gRPC communication with Cadence server.
+///
+/// These errors represent network-level failures, connection issues,
+/// and gRPC protocol errors. They preserve the original gRPC status
+/// codes to enable precise error matching and retry logic.
+#[derive(Debug, Error)]
+pub enum TransportError {
+    /// Failed to establish connection to Cadence server
+    #[error("Connection failed to {endpoint}: {source}")]
+    ConnectionFailed {
+        endpoint: String,
+        #[source]
+        source: tonic::transport::Error,
+    },
+
+    /// Invalid endpoint URL provided
+    #[error("Invalid endpoint: {0}")]
+    InvalidEndpoint(String),
+
+    /// gRPC status error from server
+    ///
+    /// Preserves the gRPC status code, message, and binary details
+    /// for precise error handling and retry logic.
+    #[error("gRPC error [{code}]: {message}")]
+    GrpcStatus {
+        code: Code,
+        message: String,
+        details: Vec<u8>,
+    },
+
+    /// Request timed out
+    #[error("Request timeout after {0:?}")]
+    Timeout(Duration),
+
+    /// TLS/SSL configuration error
+    #[error("TLS error: {0}")]
+    TlsError(String),
+}
+
+impl From<tonic::Status> for TransportError {
+    fn from(status: tonic::Status) -> Self {
+        TransportError::GrpcStatus {
+            code: status.code(),
+            message: status.message().to_string(),
+            details: status.details().to_vec(),
+        }
+    }
+}
+
+impl From<tonic::transport::Error> for TransportError {
+    fn from(error: tonic::transport::Error) -> Self {
+        TransportError::ConnectionFailed {
+            endpoint: "unknown".to_string(),
+            source: error,
+        }
+    }
+}
+
+impl TransportError {
+    /// Create a connection failed error with a specific endpoint
+    pub fn connection_failed(endpoint: impl Into<String>, source: tonic::transport::Error) -> Self {
+        TransportError::ConnectionFailed {
+            endpoint: endpoint.into(),
+            source,
+        }
+    }
+
+    /// Check if this error is retryable (transient failure)
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            TransportError::GrpcStatus { code, .. } => matches!(
+                code,
+                Code::Unavailable
+                    | Code::ResourceExhausted
+                    | Code::Aborted
+                    | Code::DeadlineExceeded
+            ),
+            TransportError::Timeout(_) => true,
+            TransportError::ConnectionFailed { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// Get the gRPC status code if this is a gRPC error
+    pub fn grpc_code(&self) -> Option<Code> {
+        match self {
+            TransportError::GrpcStatus { code, .. } => Some(*code),
+            _ => None,
+        }
+    }
+}
 
 /// Custom error type for workflow-defined errors
 #[derive(Debug, Clone, Error)]
@@ -292,6 +386,9 @@ pub enum ServerError {
 #[derive(Debug, Error)]
 pub enum CadenceError {
     #[error(transparent)]
+    Transport(#[from] TransportError),
+
+    #[error(transparent)]
     Custom(#[from] CustomError),
 
     #[error(transparent)]
@@ -316,31 +413,10 @@ pub enum CadenceError {
     ContinueAsNew(#[from] ContinueAsNewError),
 
     #[error(transparent)]
-    NonDeterministic(#[from] NonDeterministicError),
+    NonDeterministic(Box<NonDeterministicError>),
 
     #[error(transparent)]
     Server(#[from] ServerError),
-
-    #[error("Serialization error: {0}")]
-    Serialization(String),
-
-    #[error("Transport error: {0}")]
-    Transport(String),
-
-    #[error("Invalid argument: {0}")]
-    InvalidArgument(String),
-
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Client error: {0}")]
-    ClientError(String),
-
-    #[error("Authentication error: {0}")]
-    Authentication(String),
-
-    #[error("Authorization failed: {0}")]
-    Unauthorized(String),
 
     #[error("Workflow execution failed: {0}, details: {1:?}")]
     WorkflowExecutionFailed(String, Vec<u8>),
@@ -354,8 +430,16 @@ pub enum CadenceError {
     #[error("Workflow execution terminated")]
     WorkflowExecutionTerminated,
 
+    /// Generic catch-all for other error types
+    /// This is used for compatibility and should be avoided in new code
     #[error("Other error: {0}")]
     Other(String),
+}
+
+impl From<NonDeterministicError> for CadenceError {
+    fn from(err: NonDeterministicError) -> Self {
+        CadenceError::NonDeterministic(Box::new(err))
+    }
 }
 
 pub type CadenceResult<T> = Result<T, CadenceError>;

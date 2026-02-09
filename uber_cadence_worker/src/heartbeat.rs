@@ -3,18 +3,18 @@
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex};
-use uber_cadence_core::CadenceError;
+use uber_cadence_core::TransportError;
 use uber_cadence_proto::workflow_service::*;
 
 /// Heartbeat manager for activities
 pub struct HeartbeatManager {
-    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     identity: String,
 }
 
 impl HeartbeatManager {
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
         identity: String,
     ) -> Self {
         Self { service, identity }

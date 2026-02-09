@@ -31,8 +31,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use uber_cadence_activity::ActivityContext;
+use uber_cadence_client::error::TransportError;
 use uber_cadence_client::GrpcWorkflowServiceClient;
-use uber_cadence_core::{ActivityOptions, CadenceError};
+use uber_cadence_core::{ActivityOptions};
 use uber_cadence_proto::shared::{
     EventAttributes, EventType, HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution,
     WorkflowType,
@@ -379,7 +380,7 @@ impl Workflow for PaymentConfirmationWorkflow {
 
 const CADENCE_GRPC_ENDPOINT: &str = "http://localhost:7833";
 
-async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, CadenceError> {
+async fn create_grpc_client(domain: &str) -> Result<GrpcWorkflowServiceClient, TransportError> {
     GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain, None).await
 }
 
@@ -398,7 +399,7 @@ fn generate_workflow_id() -> String {
 async fn register_domain_and_wait(
     client: &GrpcWorkflowServiceClient,
     domain_name: &str,
-) -> Result<(), CadenceError> {
+) -> Result<(), TransportError> {
     let register_request = RegisterDomainRequest {
         name: domain_name.to_string(),
         description: Some("Test domain for payment confirmation flow".to_string()),
@@ -477,7 +478,7 @@ async fn wait_for_workflow_completion(
     workflow_id: &str,
     run_id: &str,
     timeout: Duration,
-) -> Result<WorkflowCompletionResult, CadenceError> {
+) -> Result<WorkflowCompletionResult, TransportError> {
     let start = std::time::Instant::now();
     loop {
         if start.elapsed() > timeout {
@@ -543,7 +544,7 @@ async fn get_workflow_history(
     domain: &str,
     workflow_id: &str,
     run_id: &str,
-) -> Result<uber_cadence_proto::shared::History, CadenceError> {
+) -> Result<uber_cadence_proto::shared::History, TransportError> {
     let history_request = GetWorkflowExecutionHistoryRequest {
         domain: domain.to_string(),
         execution: Some(WorkflowExecution {
@@ -605,7 +606,7 @@ async fn test_payment_confirmation_success() {
 
     println!("✓ Domain registered: {}", domain_name);
 
-    let service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync> =
+    let service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync> =
         Arc::new(client.clone());
 
     // Setup registry
@@ -771,7 +772,7 @@ async fn test_payment_confirmation_failure() {
 
     println!("✓ Domain registered: {}", domain_name);
 
-    let service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync> =
+    let service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync> =
         Arc::new(client.clone());
 
     // Setup registry

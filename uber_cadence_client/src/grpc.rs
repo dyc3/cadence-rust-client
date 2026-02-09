@@ -6,7 +6,6 @@
 use async_trait::async_trait;
 use tonic::transport::Channel;
 use tonic::{metadata::MetadataValue, Request, Status};
-use uber_cadence_core::CadenceError;
 use uber_cadence_proto::generated::domain_api_client::DomainApiClient;
 use uber_cadence_proto::generated::visibility_api_client::VisibilityApiClient;
 use uber_cadence_proto::generated::worker_api_client::WorkerApiClient;
@@ -14,6 +13,7 @@ use uber_cadence_proto::generated::workflow_api_client::WorkflowApiClient;
 use uber_cadence_proto::workflow_service::*;
 
 use crate::auth::{AuthInterceptor, BoxedAuthProvider};
+use crate::error::TransportError;
 
 /// Library version sent to Cadence server in headers
 const LIBRARY_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -92,14 +92,14 @@ impl GrpcWorkflowServiceClient {
         endpoint: impl Into<String>,
         domain: impl Into<String>,
         auth_provider: Option<BoxedAuthProvider>,
-    ) -> Result<Self, CadenceError> {
+    ) -> Result<Self, TransportError> {
         let endpoint = endpoint.into();
 
         let channel = Channel::from_shared(endpoint.clone())
-            .map_err(|e| CadenceError::Transport(format!("Invalid endpoint: {}", e)))?
+            .map_err(|e| TransportError::InvalidEndpoint(format!("Invalid endpoint: {}", e)))?
             .connect()
             .await
-            .map_err(|e| CadenceError::Transport(e.to_string()))?;
+            .map_err(|e| TransportError::connection_failed(endpoint.clone(), e))?;
 
         // Layer 1: Auth interceptor (innermost)
         let auth_interceptor = AuthInterceptor::new(auth_provider);
@@ -134,7 +134,7 @@ impl GrpcWorkflowServiceClient {
 
 #[async_trait]
 impl WorkflowService for GrpcWorkflowServiceClient {
-    type Error = CadenceError;
+    type Error = TransportError;
 
     async fn start_workflow_execution(
         &self,
@@ -149,7 +149,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .start_workflow_execution(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         // Convert protobuf response back to our API type
         Ok(response.into_inner().into())
@@ -168,7 +168,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .signal_workflow_execution(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         // Convert protobuf response back to our API type
         Ok(response.into_inner().into())
@@ -185,7 +185,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .signal_with_start_workflow_execution(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -201,7 +201,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .request_cancel_workflow_execution(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -217,7 +217,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .terminate_workflow_execution(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -232,7 +232,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .query_workflow(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -247,7 +247,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .poll_for_decision_task(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -263,7 +263,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .respond_decision_task_completed(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -279,7 +279,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .respond_decision_task_failed(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -294,7 +294,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .poll_for_activity_task(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -310,7 +310,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .record_activity_task_heartbeat(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -326,7 +326,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .respond_activity_task_completed(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -342,7 +342,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .respond_activity_task_failed(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -358,7 +358,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .get_workflow_execution_history(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -374,7 +374,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .describe_workflow_execution(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
 
         Ok(response.into_inner().into())
     }
@@ -389,7 +389,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .list_open_workflow_executions(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -403,7 +403,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .list_closed_workflow_executions(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -413,7 +413,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         client
             .register_domain(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(())
     }
 
@@ -426,7 +426,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .describe_domain(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -439,7 +439,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .update_domain(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -452,7 +452,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         client
             .failover_domain(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(FailoverDomainResponse {})
     }
 
@@ -466,7 +466,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .respond_activity_task_completed_by_id(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -480,7 +480,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .respond_activity_task_failed_by_id(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -494,7 +494,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .respond_activity_task_canceled_by_id(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -508,7 +508,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .record_activity_task_heartbeat_by_id(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -522,7 +522,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .scan_workflow_executions(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -536,7 +536,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .count_workflow_executions(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -549,7 +549,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .get_search_attributes(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -563,7 +563,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .reset_workflow_execution(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -576,7 +576,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .describe_task_list(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 
@@ -589,7 +589,7 @@ impl WorkflowService for GrpcWorkflowServiceClient {
         let response = client
             .refresh_workflow_tasks(pb_request)
             .await
-            .map_err(|e| CadenceError::Transport(format!("gRPC error: {}", e)))?;
+            .map_err(TransportError::from)?;
         Ok(response.into_inner().into())
     }
 }

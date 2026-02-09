@@ -14,7 +14,7 @@ use crate::registry::Registry;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::{error, info};
-use uber_cadence_core::CadenceError;
+use uber_cadence_core::{CadenceError, TransportError};
 use uber_cadence_proto::workflow_service::WorkflowService;
 
 /// Worker trait for hosting workflows and activities
@@ -197,7 +197,7 @@ pub struct CadenceWorker {
     task_list: String,
     options: WorkerOptions,
     registry: Arc<dyn Registry>,
-    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     poller_manager: Arc<Mutex<Option<PollerManager>>>,
 }
 
@@ -207,7 +207,7 @@ impl CadenceWorker {
         task_list: impl Into<String>,
         options: WorkerOptions,
         registry: Arc<dyn Registry>,
-        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     ) -> Self {
         Self {
             domain: domain.into(),

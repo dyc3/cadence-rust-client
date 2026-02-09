@@ -25,6 +25,7 @@ use uber_cadence_proto::{
 use uuid::Uuid;
 
 use crate::auth::BoxedAuthProvider;
+use crate::error::ClientError;
 
 /// Query type constants
 pub const QUERY_TYPE_STACK_TRACE: &str = "__stack_trace";
@@ -359,7 +360,7 @@ impl HistoryEventIterator {
                 .service
                 .get_workflow_execution_history(request)
                 .await
-                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+                .map_err(|e| CadenceError::Other(e.to_string()))?;
 
             if let Some(history) = response.history {
                 self.events = history.events;
@@ -556,15 +557,15 @@ pub struct PollersInfo {
 
 /// Client implementation
 pub struct WorkflowClient {
-    pub(crate) service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    pub(crate) service: Arc<crate::grpc::GrpcWorkflowServiceClient>,
     pub(crate) domain: String,
     pub(crate) options: ClientOptions,
 }
 
 impl WorkflowClient {
-    /// Create a new WorkflowClient from an existing service
+    /// Create a new WorkflowClient from an existing gRPC service
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        service: Arc<crate::grpc::GrpcWorkflowServiceClient>,
         domain: String,
         options: ClientOptions,
     ) -> Self {
@@ -585,7 +586,7 @@ impl WorkflowClient {
         endpoint: impl Into<String>,
         domain: impl Into<String>,
         options: ClientOptions,
-    ) -> CadenceResult<Self> {
+    ) -> Result<Self, ClientError> {
         let domain_str = domain.into();
         let service = Arc::new(
             crate::grpc::GrpcWorkflowServiceClient::connect(
@@ -715,7 +716,7 @@ impl Client for WorkflowClient {
             .service
             .start_workflow_execution(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(WorkflowExecutionAsync {
             workflow_id: options.id,
@@ -771,7 +772,7 @@ impl Client for WorkflowClient {
             .service
             .start_workflow_execution(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(Box::new(WorkflowRunImpl {
             client: Arc::new(WorkflowClient {
@@ -819,7 +820,7 @@ impl Client for WorkflowClient {
         self.service
             .signal_workflow_execution(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
         Ok(())
     }
 
@@ -869,7 +870,7 @@ impl Client for WorkflowClient {
             .service
             .signal_with_start_workflow_execution(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(WorkflowExecution::new(workflow_id, response.run_id))
     }
@@ -919,7 +920,7 @@ impl Client for WorkflowClient {
         self.service
             .request_cancel_workflow_execution(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
         Ok(())
     }
 
@@ -944,7 +945,7 @@ impl Client for WorkflowClient {
         self.service
             .terminate_workflow_execution(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
         Ok(())
     }
 
@@ -973,7 +974,7 @@ impl Client for WorkflowClient {
             .service
             .get_workflow_execution_history(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(HistoryEventIterator::new(
             response.history.map(|h| h.events).unwrap_or_default(),
@@ -1011,7 +1012,7 @@ impl Client for WorkflowClient {
             .service
             .get_workflow_execution_history(req)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(HistoryEventIterator::new(
             response.history.map(|h| h.events).unwrap_or_default(),
@@ -1043,7 +1044,7 @@ impl Client for WorkflowClient {
             self.service
                 .respond_activity_task_failed(request)
                 .await
-                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+                .map_err(|e| CadenceError::Other(e.to_string()))?;
         } else {
             let request = RespondActivityTaskCompletedRequest {
                 task_token: task_token.to_vec(),
@@ -1053,7 +1054,7 @@ impl Client for WorkflowClient {
             self.service
                 .respond_activity_task_completed(request)
                 .await
-                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+                .map_err(|e| CadenceError::Other(e.to_string()))?;
         }
         Ok(())
     }
@@ -1080,7 +1081,7 @@ impl Client for WorkflowClient {
             self.service
                 .respond_activity_task_failed_by_id(request)
                 .await
-                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+                .map_err(|e| CadenceError::Other(e.to_string()))?;
         } else {
             let request = RespondActivityTaskCompletedByIdRequest {
                 domain: domain.to_string(),
@@ -1093,7 +1094,7 @@ impl Client for WorkflowClient {
             self.service
                 .respond_activity_task_completed_by_id(request)
                 .await
-                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+                .map_err(|e| CadenceError::Other(e.to_string()))?;
         }
         Ok(())
     }
@@ -1112,7 +1113,7 @@ impl Client for WorkflowClient {
             .service
             .record_activity_task_heartbeat(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
         Ok(response.cancel_requested)
     }
 
@@ -1136,7 +1137,7 @@ impl Client for WorkflowClient {
             .service
             .record_activity_task_heartbeat_by_id(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
         Ok(response.cancel_requested)
     }
 
@@ -1170,7 +1171,7 @@ impl Client for WorkflowClient {
             .service
             .list_closed_workflow_executions(req)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(ListWorkflowExecutionsResponse {
             executions: response
@@ -1211,7 +1212,7 @@ impl Client for WorkflowClient {
             .service
             .list_open_workflow_executions(req)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(ListWorkflowExecutionsResponse {
             executions: response
@@ -1248,7 +1249,7 @@ impl Client for WorkflowClient {
             .service
             .scan_workflow_executions(req)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(ListWorkflowExecutionsResponse {
             executions: response
@@ -1273,7 +1274,7 @@ impl Client for WorkflowClient {
             .service
             .count_workflow_executions(req)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(CountWorkflowExecutionsResponse {
             count: response.count,
@@ -1286,7 +1287,7 @@ impl Client for WorkflowClient {
             .service
             .get_search_attributes(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         // Convert IndexedValueType enum to string representation
         let keys = response
@@ -1323,11 +1324,11 @@ impl Client for WorkflowClient {
             .service
             .query_workflow(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         // TODO: Handle query_rejected
         if let Some(rejected) = response.query_rejected {
-            return Err(CadenceError::ClientError(format!(
+            return Err(CadenceError::Other(format!(
                 "Query rejected: {:?}",
                 rejected
             )));
@@ -1337,7 +1338,7 @@ impl Client for WorkflowClient {
             // Assuming the result is JSON encoded value
             Ok(EncodedValue::new(result))
         } else {
-            Err(CadenceError::ClientError(
+            Err(CadenceError::Other(
                 "Query returned no result".to_string(),
             ))
         }
@@ -1387,7 +1388,7 @@ impl Client for WorkflowClient {
             .service
             .reset_workflow_execution(req)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(ResetWorkflowExecutionResponse {
             run_id: response.run_id,
@@ -1411,7 +1412,7 @@ impl Client for WorkflowClient {
             .service
             .describe_workflow_execution(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(DescribeWorkflowExecutionResponse {
             execution_configuration: convert_execution_configuration(
@@ -1460,7 +1461,7 @@ impl Client for WorkflowClient {
             .service
             .describe_task_list(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         // Convert proto response to client response
         Ok(DescribeTaskListResponse {
@@ -1499,7 +1500,7 @@ impl Client for WorkflowClient {
         self.service
             .refresh_workflow_tasks(request)
             .await
-            .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
 
         Ok(())
     }
@@ -1533,33 +1534,33 @@ pub trait Logger: Send + Sync {
 /// DataConverter trait for serializing/deserializing workflow and activity arguments
 pub trait DataConverter: Send + Sync {
     /// Serialize a value to bytes
-    fn to_data(&self, value: &dyn std::any::Any) -> CadenceResult<Vec<u8>>;
+    fn to_data(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, uber_cadence_core::EncodingError>;
     /// Deserialize bytes into a target value
     #[expect(clippy::wrong_self_convention)]
-    fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> CadenceResult<()>;
+    fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> Result<(), uber_cadence_core::EncodingError>;
 }
 
 /// JSON data converter implementation
 pub struct JsonDataConverter;
 
 impl DataConverter for JsonDataConverter {
-    fn to_data(&self, value: &dyn std::any::Any) -> CadenceResult<Vec<u8>> {
+    fn to_data(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, uber_cadence_core::EncodingError> {
         // Try to downcast to common serde-serializable types
         // For most use cases, users should pass serializable types
 
         // Handle String
         if let Some(s) = value.downcast_ref::<String>() {
-            return serde_json::to_vec(s).map_err(|e| CadenceError::Serialization(e.to_string()));
+            return serde_json::to_vec(s).map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
         }
 
         // Handle &str (this won't work directly with Any, but document it)
         if let Some(s) = value.downcast_ref::<&str>() {
-            return serde_json::to_vec(s).map_err(|e| CadenceError::Serialization(e.to_string()));
+            return serde_json::to_vec(s).map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
         }
 
         // Handle serde_json::Value directly
         if let Some(v) = value.downcast_ref::<serde_json::Value>() {
-            return serde_json::to_vec(v).map_err(|e| CadenceError::Serialization(e.to_string()));
+            return serde_json::to_vec(v).map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()));
         }
 
         // Handle Vec<u8> - pass through as-is
@@ -1572,26 +1573,26 @@ impl DataConverter for JsonDataConverter {
         // 1. Serialize to serde_json::Value first
         // 2. Serialize to Vec<u8> first
         // 3. Use the generic encode function from uber_cadence_core
-        Err(CadenceError::Serialization(
+        Err(uber_cadence_core::EncodingError::Serialization(
             "Cannot serialize type - use serde_json::Value or Vec<u8> for dynamic types"
                 .to_string(),
         ))
     }
 
-    fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> CadenceResult<()> {
+    fn from_data(&self, data: &[u8], target: &mut dyn std::any::Any) -> Result<(), uber_cadence_core::EncodingError> {
         // Try to downcast target to common deserializable types
 
         // Handle String
         if let Some(s) = target.downcast_mut::<String>() {
             *s = serde_json::from_slice(data)
-                .map_err(|e| CadenceError::Serialization(e.to_string()))?;
+                .map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()))?;
             return Ok(());
         }
 
         // Handle serde_json::Value
         if let Some(v) = target.downcast_mut::<serde_json::Value>() {
             *v = serde_json::from_slice(data)
-                .map_err(|e| CadenceError::Serialization(e.to_string()))?;
+                .map_err(|e| uber_cadence_core::EncodingError::Serialization(e.to_string()))?;
             return Ok(());
         }
 
@@ -1602,7 +1603,7 @@ impl DataConverter for JsonDataConverter {
         }
 
         // For other types, we can't deserialize without knowing the concrete type
-        Err(CadenceError::Serialization(
+        Err(uber_cadence_core::EncodingError::Serialization(
             "Cannot deserialize type - use serde_json::Value or Vec<u8> for dynamic types"
                 .to_string(),
         ))
@@ -1648,7 +1649,7 @@ impl WorkflowRun for WorkflowRunImpl {
                 .service
                 .get_workflow_execution_history(request)
                 .await
-                .map_err(|e| CadenceError::ClientError(e.to_string()))?;
+                .map_err(|e| CadenceError::Other(e.to_string()))?;
 
             if let Some(history) = response.history {
                 for event in history.events {
@@ -1696,7 +1697,7 @@ impl WorkflowRun for WorkflowRunImpl {
         tokio::time::timeout(timeout, self.get())
             .await
             .map_err(|_| {
-                CadenceError::ClientError("Timeout waiting for workflow result".to_string())
+                CadenceError::Other("Timeout waiting for workflow result".to_string())
             })?
     }
 }
@@ -1859,7 +1860,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            CadenceError::Serialization(_)
+            uber_cadence_core::EncodingError::Serialization(_)
         ));
     }
 }

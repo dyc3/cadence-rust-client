@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
 use tracing::{debug, error, info};
-use uber_cadence_core::CadenceError;
+use uber_cadence_core::{CadenceError, TransportError};
 use uber_cadence_proto::workflow_service::*;
 
 /// Task poller trait
@@ -20,7 +20,7 @@ pub trait TaskPoller: Send + Sync {
     type Response: Send;
 
     /// Poll for a new task
-    async fn poll(&self) -> Result<Option<Self::Task>, CadenceError>;
+    async fn poll(&self) -> Result<Option<Self::Task>, TransportError>;
 
     /// Process a task
     async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError>;
@@ -28,7 +28,7 @@ pub trait TaskPoller: Send + Sync {
 
 /// Decision task poller
 pub struct DecisionTaskPoller {
-    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     domain: String,
     task_list: String,
     identity: String,
@@ -39,7 +39,7 @@ pub struct DecisionTaskPoller {
 
 impl DecisionTaskPoller {
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
         domain: impl Into<String>,
         task_list: impl Into<String>,
         identity: impl Into<String>,
@@ -69,7 +69,7 @@ impl DecisionTaskPoller {
     /// Poll for decision task with sticky execution support
     async fn poll_decision_task(
         &self,
-    ) -> Result<Option<PollForDecisionTaskResponse>, CadenceError> {
+    ) -> Result<Option<PollForDecisionTaskResponse>, TransportError> {
         // Try sticky task list first if available
         if let Some(ref sticky) = self.sticky_task_list {
             let request = PollForDecisionTaskRequest {
@@ -127,7 +127,7 @@ impl TaskPoller for DecisionTaskPoller {
     type Task = PollForDecisionTaskResponse;
     type Response = RespondDecisionTaskCompletedResponse;
 
-    async fn poll(&self) -> Result<Option<Self::Task>, CadenceError> {
+    async fn poll(&self) -> Result<Option<Self::Task>, TransportError> {
         self.poll_decision_task().await
     }
 
@@ -138,7 +138,7 @@ impl TaskPoller for DecisionTaskPoller {
 
 /// Activity task poller
 pub struct ActivityTaskPoller {
-    service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+    service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     domain: String,
     task_list: String,
     identity: String,
@@ -147,7 +147,7 @@ pub struct ActivityTaskPoller {
 
 impl ActivityTaskPoller {
     pub fn new(
-        service: Arc<dyn WorkflowService<Error = CadenceError> + Send + Sync>,
+        service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
         domain: impl Into<String>,
         task_list: impl Into<String>,
         identity: impl Into<String>,
@@ -165,7 +165,7 @@ impl ActivityTaskPoller {
     /// Poll for activity task
     async fn poll_activity_task(
         &self,
-    ) -> Result<Option<PollForActivityTaskResponse>, CadenceError> {
+    ) -> Result<Option<PollForActivityTaskResponse>, TransportError> {
         debug!(task_list = %self.task_list, "polling activity task list");
 
         let request = PollForActivityTaskRequest {
@@ -207,7 +207,7 @@ impl TaskPoller for ActivityTaskPoller {
     type Task = PollForActivityTaskResponse;
     type Response = RespondActivityTaskCompletedResponse;
 
-    async fn poll(&self) -> Result<Option<Self::Task>, CadenceError> {
+    async fn poll(&self) -> Result<Option<Self::Task>, TransportError> {
         self.poll_activity_task().await
     }
 
@@ -342,7 +342,7 @@ impl<P: TaskPoller> TaskPoller for RateLimitedPoller<P> {
     type Task = P::Task;
     type Response = P::Response;
 
-    async fn poll(&self) -> Result<Option<Self::Task>, CadenceError> {
+    async fn poll(&self) -> Result<Option<Self::Task>, TransportError> {
         let _permit = self.rate_limiter.acquire().await.unwrap();
         self.inner.poll().await
     }
