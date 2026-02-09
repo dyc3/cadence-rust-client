@@ -37,26 +37,18 @@ tonic-build = "0.12"
 
 # Observability
 tracing = "0.1"
-opentelemetry = "0.27"
 
 # Utilities
 uuid = { version = "1.11", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 anyhow = "1.0"
-once_cell = "1.20"
 parking_lot = "0.12"
 dashmap = "6.1"
 dyn-clone = "1.0"
 
 # Auth
 jsonwebtoken = "9"
-oauth2 = { version = "5.0", default-features = false }
-
-# Testing
-mockall = "0.13"
-tempfile = "3.0"
-tokio-test = "0.4"
 
 crabdance_proto = { path = "./crabdance_proto", version = "0.1.0" }
 crabdance_core = { path = "./crabdance_core", version = "0.1.0" }

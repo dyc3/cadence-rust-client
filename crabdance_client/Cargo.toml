@@ -13,20 +13,15 @@ crabdance_core = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
-futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
-tracing = { workspace = true }
 jsonwebtoken = { workspace = true }
-oauth2 = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]
-mockall = { workspace = true }
-tokio-test = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 crabdance_worker = { workspace = true }
