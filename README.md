@@ -1,10 +1,12 @@
-# Cadence Rust Client
+# Crabdance - A Rust Client for Cadence
 
 A Rust client library for [Cadence](https://cadenceworkflow.io/), Uber's distributed, scalable, durable, and highly available orchestration engine.
 
 This is a port of the official [Cadence Go client](https://github.com/uber-go/crabdance_client) to Rust, providing idiomatic Rust APIs for workflow orchestration.
 
 ## Overview
+
+This project is in very early stages of development. Use it at your own risk and expect breaking changes. 
 
 The Cadence Rust Client provides:
 
