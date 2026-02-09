@@ -31,8 +31,14 @@ cargo test -p uber_cadence_core
 # Run a specific test by name
 cargo test test_name_here
 
+# Run a specific test in a specific crate
+cargo test -p uber_cadence_client test_name_here
+
 # Run tests in a specific test file
 cargo test --test grpc_integration
+
+# Run a specific test within an integration test file
+cargo test --test grpc_integration test_grpc_connection -- --nocapture
 
 # Run integration tests (requires running Cadence server)
 cargo test --test grpc_integration -- --ignored --test-threads=1
@@ -40,9 +46,13 @@ cargo test --test grpc_integration -- --ignored --test-threads=1
 # Run integration tests with output
 cargo test --test grpc_integration -- --ignored --nocapture --test-threads=1
 
+# Run all integration tests in a crate
+cargo test -p uber_cadence_client -- --ignored --test-threads=1
+
 # Run tests using just (alternative runner)
 just test-grpc-integration
 just test-ecommerce-saga
+just test-all-integration
 ```
 
 ### Linting and Formatting
