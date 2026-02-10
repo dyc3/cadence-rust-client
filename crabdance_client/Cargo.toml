@@ -25,12 +25,7 @@ parking_lot = { workspace = true }
 [dev-dependencies]
 uuid = { workspace = true }
 chrono = { workspace = true }
-crabdance_worker = { workspace = true }
-crabdance_workflow = { workspace = true }
-crabdance_activity = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rsa = { version = "0.9", features = ["pem"] }
 rand = { version = "0.8" }
