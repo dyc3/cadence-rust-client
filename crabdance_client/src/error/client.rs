@@ -19,19 +19,17 @@ use super::TransportError;
 ///
 /// ```no_run
 /// use crabdance_client::error::ClientError;
+/// use crabdance_core::CadenceResult;
 ///
-/// // Match on specific error types
-/// match result {
-///     Err(ClientError::InvalidWorkflowId(id)) => {
-///         eprintln!("Invalid workflow ID: {}", id);
-///     },
-///     Err(ClientError::WorkflowNotFound { workflow_id, .. }) => {
-///         eprintln!("Workflow not found: {}", workflow_id);
-///     },
-///     Err(ClientError::QueryRejected { reason, .. }) => {
-///         eprintln!("Query rejected: {}", reason);
-///     },
-///     _ => {}
+/// fn handle_error(result: CadenceResult<()>) {
+///     // Match on specific error types
+///     match result {
+///         Err(e) => {
+///             // Note: CadenceError wraps ClientError
+///             eprintln!("Error: {}", e);
+///         },
+///         Ok(_) => println!("Success"),
+///     }
 /// }
 /// ```
 #[derive(Debug, Error)]

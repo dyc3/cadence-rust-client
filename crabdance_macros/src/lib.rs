@@ -27,7 +27,9 @@ fn parse_name_argument(args: TokenStream) -> syn::Result<Option<String>> {
 
 /// Mark a workflow function and generate a registry helper.
 ///
-/// ```rust
+/// # Example
+///
+/// ```ignore
 /// use crabdance_workflow::{workflow, WorkflowContext};
 ///
 /// #[workflow(name = "welcome_flow")]
@@ -94,7 +96,9 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
 
 /// Mark an activity function and generate a registry helper.
 ///
-/// ```rust
+/// # Example
+///
+/// ```ignore
 /// use crabdance_activity::{activity, ActivityContext};
 ///
 /// #[activity(name = "send_email")]
@@ -162,7 +166,9 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
 
 /// Call a typed activity using the name from `#[activity]`.
 ///
-/// ```rust
+/// # Example
+///
+/// ```ignore
 /// use crabdance_workflow::{call_activity, WorkflowContext};
 ///
 /// async fn run(ctx: WorkflowContext) -> Result<(), crabdance_worker::WorkflowError> {

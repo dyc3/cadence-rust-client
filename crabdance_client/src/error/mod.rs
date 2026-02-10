@@ -19,21 +19,21 @@
 //! # Example
 //!
 //! ```no_run
-//! use crabdance_client::{WorkflowClient, error::{ClientError, TransportError}};
-//! use tonic::Code;
+//! use crabdance_client::error::{ClientError, TransportError};
 //!
-//! async fn handle_workflow_start(client: &WorkflowClient) {
-//!     match client.start_workflow(/* ... */).await {
-//!         Ok(execution) => println!("Started: {:?}", execution),
-//!         Err(ClientError::InvalidWorkflowId(id)) => {
+//! // Example of matching on error types
+//! fn handle_error(error: ClientError) {
+//!     match error {
+//!         ClientError::InvalidWorkflowId(id) => {
 //!             eprintln!("Invalid workflow ID: {}", id);
 //!         },
-//!         Err(ClientError::Transport(TransportError::GrpcStatus {
-//!             code: Code::AlreadyExists, ..
-//!         })) => {
-//!             eprintln!("Workflow already exists");
+//!         ClientError::WorkflowNotFound { workflow_id, .. } => {
+//!             eprintln!("Workflow not found: {}", workflow_id);
 //!         },
-//!         Err(e) => eprintln!("Error: {}", e),
+//!         ClientError::Transport(transport_err) => {
+//!             eprintln!("Transport error: {}", transport_err);
+//!         },
+//!         e => eprintln!("Error: {}", e),
 //!     }
 //! }
 //! ```
