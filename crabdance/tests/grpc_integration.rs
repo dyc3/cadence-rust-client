@@ -33,12 +33,12 @@
 //! The tests connect to `http://localhost:7833` (gRPC port).
 //! This is different from the Thrift port (7933).
 
-use crabdance_client::error::TransportError;
-use crabdance_client::GrpcWorkflowServiceClient;
-use crabdance_proto::shared::{
+use crabdance::client::error::TransportError;
+use crabdance::client::GrpcWorkflowServiceClient;
+use crabdance::proto::shared::{
     HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution, WorkflowType,
 };
-use crabdance_proto::workflow_service::{
+use crabdance::proto::workflow_service::{
     DescribeDomainRequest, GetWorkflowExecutionHistoryRequest, ListOpenWorkflowExecutionsRequest,
     QueryWorkflowRequest, RegisterDomainRequest, SignalWorkflowExecutionRequest, StartTimeFilter,
     StartWorkflowExecutionRequest, WorkflowQuery, WorkflowService,
@@ -339,12 +339,12 @@ async fn test_get_workflow_execution_history() {
     let has_workflow_started = history
         .events
         .iter()
-        .any(|e| e.event_type == crabdance_proto::shared::EventType::WorkflowExecutionStarted);
+        .any(|e| e.event_type == crabdance::proto::shared::EventType::WorkflowExecutionStarted);
 
     let has_decision_scheduled = history
         .events
         .iter()
-        .any(|e| e.event_type == crabdance_proto::shared::EventType::DecisionTaskScheduled);
+        .any(|e| e.event_type == crabdance::proto::shared::EventType::DecisionTaskScheduled);
 
     assert!(
         has_workflow_started,

@@ -1,18 +1,18 @@
-use crabdance_activity::ActivityContext;
-use crabdance_client::GrpcWorkflowServiceClient;
-use crabdance_core::{ActivityOptions, TransportError};
-use crabdance_proto::shared::{
+use crabdance::activity::ActivityContext;
+use crabdance::client::GrpcWorkflowServiceClient;
+use crabdance::core::{ActivityOptions, TransportError};
+use crabdance::proto::shared::{
     EventAttributes, EventType, HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution,
     WorkflowType,
 };
-use crabdance_proto::workflow_service::{
+use crabdance::proto::workflow_service::{
     GetWorkflowExecutionHistoryRequest, RegisterDomainRequest, StartWorkflowExecutionRequest,
     WorkflowService,
 };
-use crabdance_worker::registry::{Activity, ActivityError, Registry, Workflow, WorkflowError};
-use crabdance_worker::{CadenceWorker, Worker, WorkerOptions};
-use crabdance_workflow::future::{ActivityFailureInfo, ActivityFailureType};
-use crabdance_workflow::{LocalActivityOptions, WorkflowContext};
+use crabdance::worker::registry::{Activity, ActivityError, Registry, Workflow, WorkflowError};
+use crabdance::worker::{CadenceWorker, Worker, WorkerOptions};
+use crabdance::workflow::future::{ActivityFailureInfo, ActivityFailureType};
+use crabdance::workflow::{LocalActivityOptions, WorkflowContext};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -505,7 +505,7 @@ async fn get_workflow_history(
     domain: &str,
     workflow_id: &str,
     run_id: &str,
-) -> Result<crabdance_proto::shared::History, TransportError> {
+) -> Result<crabdance::proto::shared::History, TransportError> {
     let history_request = GetWorkflowExecutionHistoryRequest {
         domain: domain.to_string(),
         execution: Some(WorkflowExecution {
@@ -525,11 +525,11 @@ async fn get_workflow_history(
         .await?;
     Ok(response
         .history
-        .unwrap_or_else(|| crabdance_proto::shared::History { events: vec![] }))
+        .unwrap_or_else(|| crabdance::proto::shared::History { events: vec![] }))
 }
 
 fn assert_local_activity_executed(
-    history: &crabdance_proto::shared::History,
+    history: &crabdance::proto::shared::History,
     activity_type: &str,
 ) -> bool {
     history.events.iter().any(|e| {
@@ -551,7 +551,7 @@ fn assert_local_activity_executed(
 }
 
 fn assert_activity_executed(
-    history: &crabdance_proto::shared::History,
+    history: &crabdance::proto::shared::History,
     activity_type: &str,
 ) -> bool {
     // Check for regular activity
@@ -610,7 +610,7 @@ async fn test_order_saga_payment_failure_with_compensation() {
         Arc::new(client.clone());
 
     // Setup registry
-    let registry = Arc::new(crabdance_worker::registry::WorkflowRegistry::new());
+    let registry = Arc::new(crabdance::worker::registry::WorkflowRegistry::new());
     Registry::register_workflow(
         registry.as_ref(),
         "order_processing_saga",
@@ -776,7 +776,7 @@ async fn test_order_saga_success_path() {
         Arc::new(client.clone());
 
     // Setup registry
-    let registry = Arc::new(crabdance_worker::registry::WorkflowRegistry::new());
+    let registry = Arc::new(crabdance::worker::registry::WorkflowRegistry::new());
     registry.register_workflow(
         "order_processing_saga",
         Box::new(OrderProcessingSagaWorkflow),

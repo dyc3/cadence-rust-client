@@ -1,0 +1,28 @@
+[package]
+name = "crabdance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+description = "A Rust client for Uber Cadence workflow engine"
+
+[dependencies]
+crabdance_proto = { workspace = true }
+crabdance_core = { workspace = true }
+crabdance_macros = { workspace = true }
+crabdance_client = { workspace = true }
+crabdance_worker = { workspace = true }
+crabdance_workflow = { workspace = true }
+crabdance_activity = { workspace = true }
+crabdance_testsuite = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures = { workspace = true }

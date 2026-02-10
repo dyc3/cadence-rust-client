@@ -8,6 +8,7 @@ members = [
     "crabdance_workflow",
     "crabdance_activity",
     "crabdance_testsuite",
+    "crabdance",
     "load_test",
 ]
 resolver = "2"
@@ -58,6 +59,7 @@ crabdance_client = { path = "./crabdance_client", version = "0.1.0" }
 crabdance_worker = { path = "./crabdance_worker", version = "0.1.0" }
 crabdance_workflow = { path = "./crabdance_workflow", version = "0.1.0" }
 crabdance_activity = { path = "./crabdance_activity", version = "0.1.0" }
+crabdance_testsuite = { path = "./crabdance_testsuite", version = "0.1.0" }
 
 [profile.release]
 opt-level = 3

@@ -27,23 +27,23 @@
 //!
 //! The test connects to `http://localhost:7833` (gRPC port).
 
-use crabdance_activity::ActivityContext;
-use crabdance_client::error::TransportError;
-use crabdance_client::GrpcWorkflowServiceClient;
-use crabdance_core::{ActivityOptions, CadenceError};
-use crabdance_proto::shared::{
+use crabdance::activity::ActivityContext;
+use crabdance::client::error::TransportError;
+use crabdance::client::GrpcWorkflowServiceClient;
+use crabdance::core::{ActivityOptions, CadenceError};
+use crabdance::proto::shared::{
     EventAttributes, EventType, HistoryEventFilterType, TaskList, TaskListKind, WorkflowExecution,
     WorkflowType,
 };
-use crabdance_proto::workflow_service::{
+use crabdance::proto::workflow_service::{
     GetWorkflowExecutionHistoryRequest, RegisterDomainRequest, StartWorkflowExecutionRequest,
     WorkflowService,
 };
-use crabdance_worker::registry::{
+use crabdance::worker::registry::{
     Activity, ActivityError, Registry, Workflow, WorkflowError, WorkflowRegistry,
 };
-use crabdance_worker::{CadenceWorker, Worker, WorkerOptions};
-use crabdance_workflow::WorkflowContext;
+use crabdance::worker::{CadenceWorker, Worker, WorkerOptions};
+use crabdance::workflow::WorkflowContext;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
