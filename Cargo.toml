@@ -23,12 +23,12 @@ keywords = ["cadence", "temporal", "workflow", "orchestration"]
 
 [workspace.dependencies]
 # Async runtime
-tokio = { version = "1.43", features = ["full"] }
+tokio = "1.43"
 futures = "0.3"
 async-trait = "0.1"
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
+serde = "1.0"
 serde_json = "1.0"
 
 # Protocol
@@ -41,8 +41,8 @@ tonic-build = "0.12"
 tracing = "0.1"
 
 # Utilities
-uuid = { version = "1.11", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+uuid = "1.11"
+chrono = "0.4"
 thiserror = "1.0"
 anyhow = "1.0"
 proc-macro-crate = "3.2"
@@ -50,11 +50,19 @@ parking_lot = "0.12"
 dashmap = "6.1"
 dyn-clone = "1.0"
 deadpool-sqlite = "0.10"
-rusqlite = { version = "0.33", features = ["bundled"] }
+rusqlite = "0.33"
 sqlx = { version = "0.8", default-features = false }
 
 # Auth
 jsonwebtoken = "9"
+tracing-subscriber = "0.3"
+quote = "1"
+syn = "2"
+rsa = "0.9"
+rand = "0.8"
+clap = "4.5"
+hdrhistogram = "7.5"
+sysinfo = "0.31"
 
 crabdance_proto = { path = "./crabdance_proto", version = "0.2.1" }
 crabdance_core = { path = "./crabdance_core", version = "0.2.1" }

@@ -11,8 +11,8 @@ keywords.workspace = true
 [dependencies]
 crabdance_core = { workspace = true }
 crabdance_macros = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 thiserror = { workspace = true }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]

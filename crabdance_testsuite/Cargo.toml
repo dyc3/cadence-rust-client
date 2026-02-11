@@ -14,10 +14,10 @@ crabdance_workflow = { workspace = true }
 crabdance_activity = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-chrono = { workspace = true }
-uuid = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]
