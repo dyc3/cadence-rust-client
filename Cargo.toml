@@ -14,7 +14,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Carson McManus"]
 license = "MIT OR Apache-2.0"
@@ -55,14 +55,14 @@ sqlx = { version = "0.8", default-features = false }
 # Auth
 jsonwebtoken = "9"
 
-crabdance_proto = { path = "./crabdance_proto", version = "0.1.0" }
-crabdance_core = { path = "./crabdance_core", version = "0.1.0" }
-crabdance_macros = { path = "./crabdance_macros", version = "0.1.0" }
-crabdance_client = { path = "./crabdance_client", version = "0.1.0" }
-crabdance_worker = { path = "./crabdance_worker", version = "0.1.0" }
-crabdance_workflow = { path = "./crabdance_workflow", version = "0.1.0" }
-crabdance_activity = { path = "./crabdance_activity", version = "0.1.0" }
-crabdance_testsuite = { path = "./crabdance_testsuite", version = "0.1.0" }
+crabdance_proto = { path = "./crabdance_proto", version = "0.2.0" }
+crabdance_core = { path = "./crabdance_core", version = "0.2.0" }
+crabdance_macros = { path = "./crabdance_macros", version = "0.2.0" }
+crabdance_client = { path = "./crabdance_client", version = "0.2.0" }
+crabdance_worker = { path = "./crabdance_worker", version = "0.2.0" }
+crabdance_workflow = { path = "./crabdance_workflow", version = "0.2.0" }
+crabdance_activity = { path = "./crabdance_activity", version = "0.2.0" }
+crabdance_testsuite = { path = "./crabdance_testsuite", version = "0.2.0" }
 
 [profile.release]
 opt-level = 3
