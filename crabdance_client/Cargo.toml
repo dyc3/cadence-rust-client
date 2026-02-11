@@ -12,20 +12,20 @@ keywords.workspace = true
 crabdance_proto = { workspace = true }
 crabdance_core = { workspace = true }
 async-trait = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 tonic = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+chrono = { workspace = true, features = ["serde"] }
 jsonwebtoken = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]
-uuid = { workspace = true }
-chrono = { workspace = true }
-serde = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+chrono = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-rsa = { version = "0.9", features = ["pem"] }
-rand = { version = "0.8" }
+rsa = { workspace = true, features = ["pem"] }
+rand = { workspace = true }

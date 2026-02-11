@@ -13,5 +13,5 @@ proc-macro = true
 
 [dependencies]
 proc-macro-crate = { workspace = true }
-quote = "1"
-syn = { version = "2", features = ["full"] }
+quote = { workspace = true }
+syn = { workspace = true, features = ["full"] }
