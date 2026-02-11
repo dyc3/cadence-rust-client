@@ -17,6 +17,7 @@ crabdance_worker = { workspace = true }
 crabdance_workflow = { workspace = true }
 crabdance_activity = { workspace = true }
 crabdance_testsuite = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }

@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
@@ -25,25 +26,35 @@ fn parse_name_argument(args: TokenStream) -> syn::Result<Option<String>> {
     Ok(None)
 }
 
+fn crabdance_crate_ident() -> Ident {
+    match crate_name("crabdance") {
+        Ok(FoundCrate::Itself) => format_ident!("crate"),
+        Ok(FoundCrate::Name(name)) => format_ident!("{}", name),
+        Err(_) => format_ident!("crabdance"),
+    }
+}
+
 /// Mark a workflow function and generate a registry helper.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use crabdance_workflow::{workflow, WorkflowContext};
+/// use crabdance::macros::workflow;
+/// use crabdance::workflow::WorkflowContext;
 ///
 /// #[workflow(name = "welcome_flow")]
-/// async fn welcome_flow(ctx: WorkflowContext, input: String) -> Result<(), crabdance_worker::WorkflowError> {
+/// async fn welcome_flow(ctx: WorkflowContext, input: String) -> Result<(), crabdance::worker::WorkflowError> {
 ///     println!("Hello {}", input);
 ///     Ok(())
 /// }
 ///
-/// fn register_all(registry: &dyn crabdance_worker::Registry) {
+/// fn register_all(registry: &dyn crabdance::worker::Registry) {
 ///     welcome_flow_cadence::register(registry);
 /// }
 /// ```
 #[proc_macro_attribute]
 pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
+    let crabdance = crabdance_crate_ident();
     let name_value = match parse_name_argument(args) {
         Ok(value) => value,
         Err(err) => return err.to_compile_error().into(),
@@ -86,21 +97,21 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
         let name = &arg.ident;
         let ty = &arg.ty;
         quote! {
-            let #name = <#ty as crabdance_core::FromResources>::get(
+            let #name = <#ty as ::#crabdance::core::FromResources>::get(
                 #ctx_ident
                     .resource_context()
-                    .ok_or_else(|| crabdance_worker::registry::WorkflowError::ExecutionFailed("resources not configured".to_string()))?
+                    .ok_or_else(|| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed("resources not configured".to_string()))?
             )
             .await
-            .map_err(|e| crabdance_worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
+            .map_err(|e| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
         }
     });
 
     let input_decode = args.input_arg.as_ref().map(|_| {
         quote! {
-            let input_data = input.ok_or_else(|| crabdance_worker::registry::WorkflowError::ExecutionFailed("Missing input".to_string()))?;
-            let decoded = serde_json::from_slice(&input_data)
-                .map_err(|e| crabdance_worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
+            let input_data = input.ok_or_else(|| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+            let decoded = ::#crabdance::serde_json::from_slice(&input_data)
+                .map_err(|e| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
         }
     });
 
@@ -118,20 +129,20 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
         #[allow(non_camel_case_types)]
         #vis struct #wrapper_ident;
 
-        impl crabdance_worker::registry::Workflow for #wrapper_ident {
+        impl ::#crabdance::worker::registry::Workflow for #wrapper_ident {
             fn execute(
                 &self,
-                ctx: crabdance_workflow::WorkflowContext,
+                ctx: ::#crabdance::workflow::WorkflowContext,
                 input: Option<Vec<u8>>,
-            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, crabdance_worker::registry::WorkflowError>> + Send>> {
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, ::#crabdance::worker::registry::WorkflowError>> + Send>> {
                 Box::pin(async move {
                     let #ctx_ident = #ctx_binding;
                     #input_decode
                     #(#guard_bindings)*
                     #input_binding
                     let output = #ident(#(#call_args),*).await?;
-                    serde_json::to_vec(&output)
-                        .map_err(|e| crabdance_worker::registry::WorkflowError::ExecutionFailed(e.to_string()))
+                    ::#crabdance::serde_json::to_vec(&output)
+                        .map_err(|e| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed(e.to_string()))
                 })
             }
         }
@@ -139,7 +150,7 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
         #vis mod #module_ident {
             pub const NAME: &str = #name_literal;
 
-            pub fn register(registry: &dyn crabdance_worker::registry::Registry) {
+            pub fn register(registry: &dyn ::#crabdance::worker::registry::Registry) {
                 registry.register_workflow(NAME, Box::new(super::#wrapper_ident));
             }
         }
@@ -153,20 +164,22 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Example
 ///
 /// ```ignore
-/// use crabdance_activity::{activity, ActivityContext};
+/// use crabdance::activity::ActivityContext;
+/// use crabdance::macros::activity;
 ///
 /// #[activity(name = "send_email")]
-/// async fn send_email(_ctx: &ActivityContext, input: String) -> Result<(), crabdance_worker::ActivityError> {
+/// async fn send_email(_ctx: &ActivityContext, input: String) -> Result<(), crabdance::worker::ActivityError> {
 ///     println!("Send {}", input);
 ///     Ok(())
 /// }
 ///
-/// fn register_all(registry: &dyn crabdance_worker::Registry) {
+/// fn register_all(registry: &dyn crabdance::worker::Registry) {
 ///     send_email_cadence::register(registry);
 /// }
 /// ```
 #[proc_macro_attribute]
 pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
+    let crabdance = crabdance_crate_ident();
     let name_value = match parse_name_argument(args) {
         Ok(value) => value,
         Err(err) => return err.to_compile_error().into(),
@@ -209,21 +222,21 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
         let name = &arg.ident;
         let ty = &arg.ty;
         quote! {
-            let #name = <#ty as crabdance_core::FromResources>::get(
+            let #name = <#ty as ::#crabdance::core::FromResources>::get(
                 #ctx_ident
                     .resource_context()
-                    .ok_or_else(|| crabdance_worker::registry::ActivityError::Retryable("resources not configured".to_string()))?
+                    .ok_or_else(|| ::#crabdance::worker::registry::ActivityError::Retryable("resources not configured".to_string()))?
             )
             .await
-            .map_err(|e| crabdance_worker::registry::ActivityError::Retryable(e.to_string()))?;
+            .map_err(|e| ::#crabdance::worker::registry::ActivityError::Retryable(e.to_string()))?;
         }
     });
 
     let input_decode = args.input_arg.as_ref().map(|_| {
         quote! {
-            let input_data = input.ok_or_else(|| crabdance_worker::registry::ActivityError::ExecutionFailed("Missing input".to_string()))?;
-            let decoded = serde_json::from_slice(&input_data)
-                .map_err(|e| crabdance_worker::registry::ActivityError::ExecutionFailed(e.to_string()))?;
+            let input_data = input.ok_or_else(|| ::#crabdance::worker::registry::ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let decoded = ::#crabdance::serde_json::from_slice(&input_data)
+                .map_err(|e| ::#crabdance::worker::registry::ActivityError::ExecutionFailed(e.to_string()))?;
         }
     });
 
@@ -241,12 +254,12 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
         #[allow(non_camel_case_types)]
         #vis struct #wrapper_ident;
 
-        impl crabdance_worker::registry::Activity for #wrapper_ident {
+        impl ::#crabdance::worker::registry::Activity for #wrapper_ident {
             fn execute(
                 &self,
-                ctx: &crabdance_activity::ActivityContext,
+                ctx: &::#crabdance::activity::ActivityContext,
                 input: Option<Vec<u8>>,
-            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, crabdance_worker::registry::ActivityError>> + Send>> {
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, ::#crabdance::worker::registry::ActivityError>> + Send>> {
                 let ctx = ctx.clone();
                 Box::pin(async move {
                     let #ctx_ident = #ctx_binding;
@@ -254,8 +267,8 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
                     #(#guard_bindings)*
                     #input_binding
                     let output = #ident(#(#call_args),*).await?;
-                    serde_json::to_vec(&output)
-                        .map_err(|e| crabdance_worker::registry::ActivityError::ExecutionFailed(e.to_string()))
+                    ::#crabdance::serde_json::to_vec(&output)
+                        .map_err(|e| ::#crabdance::worker::registry::ActivityError::ExecutionFailed(e.to_string()))
                 })
             }
         }
@@ -263,7 +276,7 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
         #vis mod #module_ident {
             pub const NAME: &str = #name_literal;
 
-            pub fn register(registry: &dyn crabdance_worker::registry::Registry) {
+            pub fn register(registry: &dyn ::#crabdance::worker::registry::Registry) {
                 registry.register_activity(NAME, Box::new(super::#wrapper_ident));
             }
         }
@@ -277,16 +290,18 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Example
 ///
 /// ```ignore
-/// use crabdance_workflow::{call_activity, WorkflowContext};
+/// use crabdance::macros::call_activity;
+/// use crabdance::workflow::WorkflowContext;
 ///
-/// async fn run(ctx: WorkflowContext) -> Result<(), crabdance_worker::WorkflowError> {
-///     let options = crabdance_core::ActivityOptions::default();
+/// async fn run(ctx: WorkflowContext) -> Result<(), crabdance::worker::WorkflowError> {
+///     let options = crabdance::core::ActivityOptions::default();
 ///     let _: () = call_activity!(ctx, send_email, "hello".to_string(), options).await?;
 ///     Ok(())
 /// }
 /// ```
 #[proc_macro]
 pub fn call_activity(input: TokenStream) -> TokenStream {
+    let crabdance = crabdance_crate_ident();
     let args = parse_macro_input!(input as CallActivityArgs);
     let ctx = args.ctx;
     let payload = args.payload;
@@ -301,8 +316,8 @@ pub fn call_activity(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         async {
-            let bytes = serde_json::to_vec(&#payload)
-                .map_err(|e| crabdance_workflow::WorkflowError::ExecutionFailed(e.to_string()))?;
+            let bytes = ::#crabdance::serde_json::to_vec(&#payload)
+                .map_err(|e| ::#crabdance::workflow::WorkflowError::ExecutionFailed(e.to_string()))?;
             let result_bytes = #ctx
                 .execute_activity(
                     #name_path,
@@ -310,8 +325,8 @@ pub fn call_activity(input: TokenStream) -> TokenStream {
                     #options,
                 )
                 .await?;
-            serde_json::from_slice(&result_bytes)
-                .map_err(|e| crabdance_workflow::WorkflowError::ExecutionFailed(e.to_string()))
+            ::#crabdance::serde_json::from_slice(&result_bytes)
+                .map_err(|e| ::#crabdance::workflow::WorkflowError::ExecutionFailed(e.to_string()))
         }
     };
 
