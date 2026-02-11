@@ -3,7 +3,7 @@ _default:
 
 # Regenerate protobuf code from .proto files
 gen-proto:
-    cargo build -p crabdance_proto --features codegen
+    cargo build -p crabdance_proto
 
 # Run gRPC integration tests
 test-grpc-integration:

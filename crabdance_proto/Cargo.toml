@@ -10,7 +10,6 @@ keywords.workspace = true
 
 [features]
 default = []
-codegen = ["dep:tonic-build"]
 
 [dependencies]
 tonic = { workspace = true }
@@ -20,4 +19,4 @@ serde = { workspace = true }
 async-trait = { workspace = true }
 
 [build-dependencies]
-tonic-build = { workspace = true, optional = true }
+tonic-build = { workspace = true }
