@@ -16,6 +16,7 @@ pub struct ActivityTaskHandler {
     registry: Arc<dyn Registry>,
     heartbeat_manager: Arc<HeartbeatManager>,
     identity: String,
+    resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 struct ActivityRuntimeImpl {
@@ -39,6 +40,7 @@ impl ActivityTaskHandler {
         service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
         registry: Arc<dyn Registry>,
         identity: String,
+        resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
     ) -> Self {
         let heartbeat_manager = Arc::new(HeartbeatManager::new(service.clone(), identity.clone()));
         Self {
@@ -46,6 +48,7 @@ impl ActivityTaskHandler {
             registry,
             heartbeat_manager,
             identity,
+            resources,
         }
     }
 
@@ -145,7 +148,14 @@ impl ActivityTaskHandler {
         };
 
         // Create activity context
-        let context = crabdance_activity::ActivityContext::new(activity_info, Some(runtime));
+        let context = match &self.resources {
+            Some(resources) => crabdance_activity::ActivityContext::with_resources(
+                activity_info,
+                Some(runtime),
+                resources.clone(),
+            ),
+            None => crabdance_activity::ActivityContext::new(activity_info, Some(runtime)),
+        };
 
         // TODO: Pass worker stop channel to context if available
 

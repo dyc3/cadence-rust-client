@@ -27,6 +27,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::channel::{channel, Receiver, Sender};
 use crate::dispatcher::{WorkflowDispatcher, WorkflowTask};
+use crabdance_core::ResourceContext;
 
 /// Marker names for side effects
 pub const SIDE_EFFECT_MARKER_NAME: &str = "SideEffect";
@@ -120,6 +121,7 @@ impl WorkflowContextBuilder {
             self.mutable_side_effects,
             self.change_versions,
             self.local_activity_results,
+            None,
         )
     }
 }
@@ -174,6 +176,7 @@ pub struct WorkflowContext {
     task_sequence: Arc<AtomicU64>,
     // Channel sequence counter
     channel_sequence: Arc<AtomicU64>,
+    resources: Option<Arc<dyn Any + Send + Sync>>,
 }
 
 impl WorkflowContext {
@@ -200,6 +203,7 @@ impl WorkflowContext {
             // Start task_sequence at 1 because root workflow task is ID 0
             task_sequence: Arc::new(AtomicU64::new(1)),
             channel_sequence: Arc::new(AtomicU64::new(0)),
+            resources: None,
         }
     }
 
@@ -215,6 +219,7 @@ impl WorkflowContext {
         local_activity_results: Arc<
             Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>,
         >,
+        resources: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Self {
         // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
@@ -238,7 +243,13 @@ impl WorkflowContext {
             // Start task_sequence at 1 because root workflow task is ID 0
             task_sequence: Arc::new(AtomicU64::new(1)),
             channel_sequence: Arc::new(AtomicU64::new(0)),
+            resources,
         }
+    }
+
+    pub fn with_resources(mut self, resources: Option<Arc<dyn Any + Send + Sync>>) -> Self {
+        self.resources = resources;
+        self
     }
 
     /// Set replay mode
@@ -922,6 +933,20 @@ impl WorkflowContext {
     /// Get the dispatcher (for workflow executor)
     pub fn get_dispatcher(&self) -> Option<Arc<Mutex<WorkflowDispatcher>>> {
         self.dispatcher.lock().unwrap().clone()
+    }
+
+    pub fn resources<R: 'static>(&self) -> Option<&R> {
+        self.resources
+            .as_ref()
+            .and_then(|resources| resources.downcast_ref::<R>())
+    }
+
+    pub fn resource_context(&self) -> Option<ResourceContext<'_>> {
+        self.resources
+            .as_ref()
+            .map(|resources| ResourceContext::Workflow {
+                resources: resources.as_ref(),
+            })
     }
 }
 

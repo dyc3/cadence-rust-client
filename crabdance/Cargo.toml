@@ -19,7 +19,12 @@ crabdance_activity = { workspace = true }
 crabdance_testsuite = { workspace = true }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 tokio = { workspace = true }
+deadpool-sqlite = { workspace = true }
+rusqlite = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros"] }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

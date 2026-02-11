@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
-use syn::{parse_macro_input, Expr, ItemFn, Lit, Meta, Token};
+use syn::{parse_macro_input, Expr, FnArg, Ident, ItemFn, Lit, Meta, Pat, PatType, Token, Type};
 
 fn parse_name_argument(args: TokenStream) -> syn::Result<Option<String>> {
     if args.is_empty() {
@@ -58,6 +58,59 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
     let module_ident = format_ident!("{}_cadence", ident);
     let name_literal = name_value.unwrap_or_else(|| ident.to_string());
 
+    let args = match extract_fn_args(sig) {
+        Ok(args) => args,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
+    let ctx_ident = match args.ctx_ident {
+        Some(id) => id,
+        None => {
+            return syn::Error::new_spanned(
+                sig,
+                "workflow function must accept a context argument",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+
+    let call_args = args.call_args.clone();
+    let ctx_binding = if args.ctx_by_ref {
+        quote! { &ctx }
+    } else {
+        quote! { ctx }
+    };
+
+    let guard_bindings = args.guard_args.iter().map(|arg| {
+        let name = &arg.ident;
+        let ty = &arg.ty;
+        quote! {
+            let #name = <#ty as crabdance_core::FromResources>::get(
+                #ctx_ident
+                    .resource_context()
+                    .ok_or_else(|| crabdance_worker::registry::WorkflowError::ExecutionFailed("resources not configured".to_string()))?
+            )
+            .await
+            .map_err(|e| crabdance_worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
+        }
+    });
+
+    let input_decode = args.input_arg.as_ref().map(|_| {
+        quote! {
+            let input_data = input.ok_or_else(|| crabdance_worker::registry::WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+            let decoded = serde_json::from_slice(&input_data)
+                .map_err(|e| crabdance_worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
+        }
+    });
+
+    let input_binding = args.input_arg.as_ref().map(|input| {
+        let name = &input.ident;
+        quote! {
+            let #name = decoded;
+        }
+    });
+
     let expanded = quote! {
         #vis #sig #block
 
@@ -72,10 +125,11 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
                 input: Option<Vec<u8>>,
             ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, crabdance_worker::registry::WorkflowError>> + Send>> {
                 Box::pin(async move {
-                    let input_data = input.ok_or_else(|| crabdance_worker::registry::WorkflowError::ExecutionFailed("Missing input".to_string()))?;
-                    let decoded = serde_json::from_slice(&input_data)
-                        .map_err(|e| crabdance_worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
-                    let output = #ident(ctx, decoded).await?;
+                    let #ctx_ident = #ctx_binding;
+                    #input_decode
+                    #(#guard_bindings)*
+                    #input_binding
+                    let output = #ident(#(#call_args),*).await?;
                     serde_json::to_vec(&output)
                         .map_err(|e| crabdance_worker::registry::WorkflowError::ExecutionFailed(e.to_string()))
                 })
@@ -127,6 +181,59 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
     let module_ident = format_ident!("{}_cadence", ident);
     let name_literal = name_value.unwrap_or_else(|| ident.to_string());
 
+    let args = match extract_fn_args(sig) {
+        Ok(args) => args,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
+    let ctx_ident = match args.ctx_ident {
+        Some(id) => id,
+        None => {
+            return syn::Error::new_spanned(
+                sig,
+                "activity function must accept a context argument",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+
+    let call_args = args.call_args.clone();
+    let ctx_binding = if args.ctx_by_ref {
+        quote! { &ctx }
+    } else {
+        quote! { ctx }
+    };
+
+    let guard_bindings = args.guard_args.iter().map(|arg| {
+        let name = &arg.ident;
+        let ty = &arg.ty;
+        quote! {
+            let #name = <#ty as crabdance_core::FromResources>::get(
+                #ctx_ident
+                    .resource_context()
+                    .ok_or_else(|| crabdance_worker::registry::ActivityError::Retryable("resources not configured".to_string()))?
+            )
+            .await
+            .map_err(|e| crabdance_worker::registry::ActivityError::Retryable(e.to_string()))?;
+        }
+    });
+
+    let input_decode = args.input_arg.as_ref().map(|_| {
+        quote! {
+            let input_data = input.ok_or_else(|| crabdance_worker::registry::ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let decoded = serde_json::from_slice(&input_data)
+                .map_err(|e| crabdance_worker::registry::ActivityError::ExecutionFailed(e.to_string()))?;
+        }
+    });
+
+    let input_binding = args.input_arg.as_ref().map(|input| {
+        let name = &input.ident;
+        quote! {
+            let #name = decoded;
+        }
+    });
+
     let expanded = quote! {
         #vis #sig #block
 
@@ -142,10 +249,11 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
             ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, crabdance_worker::registry::ActivityError>> + Send>> {
                 let ctx = ctx.clone();
                 Box::pin(async move {
-                    let input_data = input.ok_or_else(|| crabdance_worker::registry::ActivityError::ExecutionFailed("Missing input".to_string()))?;
-                    let decoded = serde_json::from_slice(&input_data)
-                        .map_err(|e| crabdance_worker::registry::ActivityError::ExecutionFailed(e.to_string()))?;
-                    let output = #ident(&ctx, decoded).await?;
+                    let #ctx_ident = #ctx_binding;
+                    #input_decode
+                    #(#guard_bindings)*
+                    #input_binding
+                    let output = #ident(#(#call_args),*).await?;
                     serde_json::to_vec(&output)
                         .map_err(|e| crabdance_worker::registry::ActivityError::ExecutionFailed(e.to_string()))
                 })
@@ -215,6 +323,69 @@ struct CallActivityArgs {
     activity: syn::Path,
     payload: Expr,
     options: Expr,
+}
+
+struct FunctionArgs {
+    ctx_ident: Option<Ident>,
+    ctx_by_ref: bool,
+    guard_args: Vec<ArgBinding>,
+    input_arg: Option<ArgBinding>,
+    call_args: Vec<Ident>,
+}
+
+#[derive(Clone)]
+struct ArgBinding {
+    ident: Ident,
+    ty: Type,
+}
+
+fn extract_fn_args(sig: &syn::Signature) -> syn::Result<FunctionArgs> {
+    let mut ctx_ident = None;
+    let mut ctx_by_ref = false;
+    let mut guard_args = Vec::new();
+    let mut input_arg = None;
+    let mut call_args = Vec::new();
+
+    for (index, arg) in sig.inputs.iter().enumerate() {
+        let FnArg::Typed(PatType { pat, ty, .. }) = arg else {
+            return Err(syn::Error::new_spanned(arg, "expected a typed argument"));
+        };
+
+        let Pat::Ident(pat_ident) = pat.as_ref() else {
+            return Err(syn::Error::new_spanned(
+                pat,
+                "expected an identifier argument",
+            ));
+        };
+
+        let ident = pat_ident.ident.clone();
+        if index == 0 {
+            if let Type::Reference(_) = &**ty {
+                ctx_by_ref = true;
+            }
+            ctx_ident = Some(ident.clone());
+            call_args.push(ident);
+            continue;
+        }
+
+        guard_args.push(ArgBinding {
+            ident: ident.clone(),
+            ty: *ty.clone(),
+        });
+        call_args.push(ident);
+    }
+
+    if let Some(last_guard) = guard_args.pop() {
+        input_arg = Some(last_guard);
+    }
+
+    Ok(FunctionArgs {
+        ctx_ident,
+        ctx_by_ref,
+        guard_args,
+        input_arg,
+        call_args,
+    })
 }
 
 impl Parse for CallActivityArgs {

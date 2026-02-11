@@ -573,6 +573,7 @@ pub struct WorkflowExecutor {
     options: WorkerOptions,
     task_list: String,
     local_activity_queue: LocalActivityQueue,
+    resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 /// Workflow execution state
@@ -588,6 +589,7 @@ impl WorkflowExecutor {
         options: WorkerOptions,
         task_list: String,
         local_activity_queue: LocalActivityQueue,
+        resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
     ) -> Self {
         Self {
             registry,
@@ -595,6 +597,7 @@ impl WorkflowExecutor {
             options,
             task_list,
             local_activity_queue,
+            resources,
         }
     }
 
@@ -759,6 +762,7 @@ impl WorkflowExecutor {
             mutable_side_effects_arc,
             change_versions_arc,
             local_activity_results_arc,
+            self.resources.clone(),
         );
 
         // Set deterministic current time
@@ -1201,6 +1205,7 @@ mod tests {
             options,
             "test-list".to_string(),
             local_activity_queue,
+            None,
         );
 
         // Define timestamps in nanoseconds
@@ -1465,6 +1470,7 @@ mod tests {
             options,
             "test-list".to_string(),
             local_activity_queue,
+            None,
         );
 
         // Create history with started event + activity scheduled/completed

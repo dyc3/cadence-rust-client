@@ -20,12 +20,21 @@ use tracing::{debug, error, info, warn};
 pub struct LocalActivityExecutor {
     registry: Arc<dyn Registry>,
     queue: LocalActivityQueue,
+    resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 impl LocalActivityExecutor {
     /// Create a new local activity executor
-    pub fn new(registry: Arc<dyn Registry>, queue: LocalActivityQueue) -> Self {
-        Self { registry, queue }
+    pub fn new(
+        registry: Arc<dyn Registry>,
+        queue: LocalActivityQueue,
+        resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    ) -> Self {
+        Self {
+            registry,
+            queue,
+            resources,
+        }
     }
 
     /// Run the executor loop
@@ -156,13 +165,23 @@ impl LocalActivityExecutor {
             })?;
 
         // Create activity context for local activity
-        let ctx = ActivityContext::new_for_local_activity(
-            task.workflow_info.clone(),
-            task.activity_type.clone(),
-            task.activity_id.clone(),
-            attempt,
-            task.scheduled_time,
-        );
+        let ctx = match &self.resources {
+            Some(resources) => ActivityContext::new_for_local_activity_with_resources(
+                task.workflow_info.clone(),
+                task.activity_type.clone(),
+                task.activity_id.clone(),
+                attempt,
+                task.scheduled_time,
+                resources.clone(),
+            ),
+            None => ActivityContext::new_for_local_activity(
+                task.workflow_info.clone(),
+                task.activity_type.clone(),
+                task.activity_id.clone(),
+                attempt,
+                task.scheduled_time,
+            ),
+        };
 
         info!(
             activity_type = %task.activity_type,
@@ -332,7 +351,7 @@ mod tests {
         registry.register_activity("SuccessActivity", Box::new(SuccessActivity));
 
         let queue = LocalActivityQueue::new();
-        let executor = LocalActivityExecutor::new(registry, queue.clone());
+        let executor = LocalActivityExecutor::new(registry, queue.clone(), None);
 
         let (result_tx, result_rx) = oneshot::channel();
         let task = LocalActivityTask {
@@ -377,7 +396,7 @@ mod tests {
         registry.register_activity("FailActivity", Box::new(FailActivity));
 
         let queue = LocalActivityQueue::new();
-        let executor = LocalActivityExecutor::new(registry, queue.clone());
+        let executor = LocalActivityExecutor::new(registry, queue.clone(), None);
 
         let (result_tx, result_rx) = oneshot::channel();
         let task = LocalActivityTask {
@@ -420,7 +439,7 @@ mod tests {
         // Don't register any activity
 
         let queue = LocalActivityQueue::new();
-        let executor = LocalActivityExecutor::new(registry, queue.clone());
+        let executor = LocalActivityExecutor::new(registry, queue.clone(), None);
 
         let (result_tx, result_rx) = oneshot::channel();
         let task = LocalActivityTask {
@@ -501,7 +520,7 @@ mod tests {
         );
 
         let queue = LocalActivityQueue::new();
-        let executor = LocalActivityExecutor::new(registry, queue.clone());
+        let executor = LocalActivityExecutor::new(registry, queue.clone(), None);
 
         let (result_tx, result_rx) = oneshot::channel();
         let task = LocalActivityTask {

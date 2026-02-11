@@ -40,7 +40,7 @@ async fn test_local_activity_queue_and_executor() {
 
     // Create queue and executor
     let queue = LocalActivityQueue::new();
-    let executor = LocalActivityExecutor::new(registry, queue.clone());
+    let executor = LocalActivityExecutor::new(registry, queue.clone(), None);
 
     // Start executor in background
     let executor_handle = tokio::spawn(async move {
@@ -115,7 +115,7 @@ async fn test_local_activity_not_found() {
 
     // Create queue and executor
     let queue = LocalActivityQueue::new();
-    let executor = LocalActivityExecutor::new(registry, queue.clone());
+    let executor = LocalActivityExecutor::new(registry, queue.clone(), None);
 
     // Start executor
     let executor_handle = tokio::spawn(async move {
@@ -233,7 +233,7 @@ async fn test_local_activity_execution_count() {
     let registry = Arc::new(registry);
 
     let queue = LocalActivityQueue::new();
-    let executor = LocalActivityExecutor::new(registry, queue.clone());
+    let executor = LocalActivityExecutor::new(registry, queue.clone(), None);
 
     let executor_handle = tokio::spawn(async move {
         executor.run().await;

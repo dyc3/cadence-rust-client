@@ -11,6 +11,8 @@ pub mod local_activity_queue;
 pub mod pollers;
 pub mod registry;
 pub mod replay_verifier;
+#[cfg(test)]
+mod resource_tests;
 pub mod worker;
 
 pub use local_activity_queue::*;
