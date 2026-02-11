@@ -5,8 +5,10 @@
 
 pub mod encoded;
 pub mod error;
+pub mod resources;
 pub mod types;
 
 pub use encoded::*;
 pub use error::*;
+pub use resources::*;
 pub use types::*;

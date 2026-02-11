@@ -117,6 +117,7 @@ async fn test_signal_handling() {
         WorkerOptions::default(),
         "test-task-list".to_string(),
         crabdance_worker::local_activity_queue::LocalActivityQueue::new(),
+        None,
     );
 
     // 4. Create History
@@ -207,6 +208,7 @@ async fn test_query_handling() {
         WorkerOptions::default(),
         "test-task-list".to_string(),
         crabdance_worker::local_activity_queue::LocalActivityQueue::new(),
+        None,
     );
 
     // 4. Create History

@@ -199,6 +199,7 @@ pub struct CadenceWorker {
     registry: Arc<dyn Registry>,
     service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     poller_manager: Arc<Mutex<Option<PollerManager>>>,
+    resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 impl CadenceWorker {
@@ -216,7 +217,16 @@ impl CadenceWorker {
             registry,
             service,
             poller_manager: Arc::new(Mutex::new(None)),
+            resources: None,
         }
+    }
+
+    pub fn with_resources<R>(mut self, resources: R) -> Self
+    where
+        R: Send + Sync + 'static,
+    {
+        self.resources = Some(Arc::new(resources));
+        self
     }
 }
 
@@ -234,8 +244,11 @@ impl Worker for CadenceWorker {
 
         // Create local activity queue and executor
         let local_activity_queue = LocalActivityQueue::new();
-        let local_activity_executor =
-            LocalActivityExecutor::new(self.registry.clone(), local_activity_queue.clone());
+        let local_activity_executor = LocalActivityExecutor::new(
+            self.registry.clone(),
+            local_activity_queue.clone(),
+            self.resources.clone(),
+        );
 
         // Create executor
         let executor = Arc::new(WorkflowExecutor::new(
@@ -244,6 +257,7 @@ impl Worker for CadenceWorker {
             self.options.clone(),
             self.task_list.clone(),
             local_activity_queue,
+            self.resources.clone(),
         ));
 
         // Create decision handler
@@ -258,6 +272,7 @@ impl Worker for CadenceWorker {
             self.service.clone(),
             self.registry.clone(),
             self.options.identity.clone(),
+            self.resources.clone(),
         ));
 
         // Create decision pollers

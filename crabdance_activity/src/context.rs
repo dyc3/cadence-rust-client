@@ -3,7 +3,8 @@
 //! This module provides the API for implementing activities including
 //! heartbeats, context access, and activity information.
 
-use crabdance_core::RetryPolicy;
+use crabdance_core::{ResourceContext, RetryPolicy};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Activity runtime trait for interacting with the worker
@@ -22,6 +23,7 @@ pub struct ActivityContext {
     deadline: Option<Instant>,
     worker_stop_channel: Option<tokio::sync::watch::Receiver<bool>>,
     runtime: Option<std::sync::Arc<dyn ActivityRuntime>>,
+    resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 impl ActivityContext {
@@ -34,6 +36,7 @@ impl ActivityContext {
             worker_stop_channel: None,
             activity_info,
             runtime,
+            resources: None,
         }
     }
 
@@ -81,6 +84,40 @@ impl ActivityContext {
             worker_stop_channel: None,
             activity_info,
             runtime: None, // Local activities don't have runtime
+            resources: None,
+        }
+    }
+
+    pub fn new_for_local_activity_with_resources(
+        workflow_info: crabdance_core::WorkflowInfo,
+        activity_type: String,
+        activity_id: String,
+        attempt: i32,
+        scheduled_time: std::time::SystemTime,
+        resources: Arc<dyn std::any::Any + Send + Sync>,
+    ) -> Self {
+        let mut ctx = Self::new_for_local_activity(
+            workflow_info,
+            activity_type,
+            activity_id,
+            attempt,
+            scheduled_time,
+        );
+        ctx.resources = Some(resources);
+        ctx
+    }
+
+    pub fn with_resources(
+        activity_info: ActivityInfo,
+        runtime: Option<std::sync::Arc<dyn ActivityRuntime>>,
+        resources: Arc<dyn std::any::Any + Send + Sync>,
+    ) -> Self {
+        Self {
+            deadline: activity_info.deadline,
+            worker_stop_channel: None,
+            activity_info,
+            runtime,
+            resources: Some(resources),
         }
     }
 
@@ -150,6 +187,20 @@ impl ActivityContext {
     /// Get metrics scope for activity
     pub fn get_metrics_scope(&self) -> Box<dyn MetricsScope> {
         Box::new(NoopMetricsScope)
+    }
+
+    pub fn resources<R: 'static>(&self) -> Option<&R> {
+        self.resources
+            .as_ref()
+            .and_then(|resources| resources.downcast_ref::<R>())
+    }
+
+    pub fn resource_context(&self) -> Option<ResourceContext<'_>> {
+        self.resources
+            .as_ref()
+            .map(|resources| ResourceContext::Activity {
+                resources: resources.as_ref(),
+            })
     }
 }
 

@@ -82,7 +82,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Macro-based Workflows and Activities
 
 ```rust
+use async_trait::async_trait;
 use crabdance_activity::{activity, ActivityContext};
+use crabdance_core::{FromResources, ResourceContext, ResourceError};
 use crabdance_worker::{CadenceWorker, WorkerOptions, WorkflowRegistry};
 use crabdance_workflow::{call_activity, workflow, WorkflowContext};
 use serde::{Deserialize, Serialize};
@@ -103,13 +105,21 @@ struct EmailRequest {
 }
 
 #[activity(name = "send_email")]
-async fn send_email(_ctx: &ActivityContext, input: EmailRequest) -> Result<(), crabdance_worker::ActivityError> {
+async fn send_email(
+    _ctx: &ActivityContext,
+    _cfg: AppConfig,
+    input: EmailRequest,
+) -> Result<(), crabdance_worker::ActivityError> {
     println!("Sending to {}", input.to);
     Ok(())
 }
 
 #[workflow(name = "welcome_flow")]
-async fn welcome_flow(ctx: WorkflowContext, input: WelcomeInput) -> Result<(), crabdance_worker::WorkflowError> {
+async fn welcome_flow(
+    ctx: WorkflowContext,
+    _cfg: AppConfig,
+    input: WelcomeInput,
+) -> Result<(), crabdance_worker::WorkflowError> {
     let options = crabdance_core::ActivityOptions {
         schedule_to_close_timeout: Duration::from_secs(30),
         schedule_to_start_timeout: Duration::from_secs(30),
@@ -133,17 +143,43 @@ fn register_all(registry: &dyn crabdance_worker::Registry) {
     send_email_cadence::register(registry);
 }
 
+#[derive(Clone)]
+struct Resources {
+    config: AppConfig,
+}
+
+#[derive(Clone)]
+struct AppConfig {
+    environment: String,
+}
+
+#[async_trait]
+impl FromResources for AppConfig {
+    async fn get(ctx: ResourceContext<'_>) -> Result<Self, ResourceError> {
+        ctx.resources::<Resources>()
+            .map(|resources| resources.config.clone())
+            .ok_or_else(|| ResourceError::new("resources not configured"))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), crabdance_core::CadenceError> {
     let registry = Arc::new(WorkflowRegistry::new());
     register_all(registry.as_ref());
+
+    let resources = Resources {
+        config: AppConfig {
+            environment: "dev".to_string(),
+        },
+    };
 
     let worker = CadenceWorker::new(
         "my-domain",
         "my-task-list",
         WorkerOptions::default(),
         registry,
-    );
+    )
+    .with_resources(resources);
     worker.start()?;
     Ok(())
 }

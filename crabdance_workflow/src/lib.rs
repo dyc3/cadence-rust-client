@@ -15,6 +15,7 @@ pub mod state_machine;
 pub use channel::*;
 pub use commands::*;
 pub use context::*;
+pub use crabdance_core::FromResources;
 pub use crabdance_macros::{call_activity, workflow};
 pub use dispatcher::*;
 pub use future::*;

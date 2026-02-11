@@ -6,4 +6,5 @@
 pub mod context;
 
 pub use context::*;
+pub use crabdance_core::FromResources;
 pub use crabdance_macros::activity;

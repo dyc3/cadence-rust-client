@@ -87,6 +87,12 @@ cargo doc --all-features
 
 ## Code Style Guidelines
 
+### Managing Dependencies
+
+- All dependencies MUST be added to the root `Cargo.toml` with only the default features enabled. Do not add dependencies with version numbers to individual crate `Cargo.toml` files.
+- If you need to enable a feature for a dependency in a specific crate, do so in that crate's `Cargo.toml` by specifying the feature under the dependency (e.g., `serde = { workspace = true, features = ["derive"] }`).
+- To reiterate, all dependencies must be workspace dependencies. Crates must use `workspace = true` in their `Cargo.toml` to reference dependencies from the root.
+
 ### Imports Ordering
 1. Standard library imports (`std::`)
 2. Third-party crate imports (e.g., `tokio::`, `serde::`)
