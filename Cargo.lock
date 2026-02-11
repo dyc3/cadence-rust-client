@@ -348,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_activity"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "crabdance_core",
@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_client"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -404,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_macros"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "proc-macro-crate",
  "quote",
@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_proto"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "prost",
@@ -437,7 +437,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_testsuite"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "crabdance_activity",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_worker"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "crabdance_workflow"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "crabdance_core",
@@ -1383,7 +1383,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "load_test"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "clap",
