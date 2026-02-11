@@ -39,3 +39,4 @@ pub use crabdance_proto as proto;
 pub use crabdance_testsuite as testsuite;
 pub use crabdance_worker as worker;
 pub use crabdance_workflow as workflow;
+pub use serde_json;
