@@ -1,0 +1,100 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      cassandra:
+        image: cassandra:4.1
+        ports:
+          - 9042:9042
+        options: >-
+          -e HEAP_NEWSIZE=1M
+          -e MAX_HEAP_SIZE=2048M
+        healthcheck:
+          test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+          interval: 15s
+          timeout: 10s
+          retries: 20
+
+      cadence:
+        image: ubercadence/server:master-auto-setup
+        ports:
+          - 7833:7833
+          - 7933:7933
+          - 7934:7934
+          - 7935:7935
+          - 7939:7939
+        env:
+          - CASSANDRA_SEEDS=cassandra
+          - ENABLE_ES=false
+          - POD_NAME=cadence
+          - SERVICES=history,matching,frontend,worker
+          - LOG_LEVEL=debug
+        options: >-
+          -e CASSANDRA_SEEDS=cassandra
+          -e ENABLE_ES=false
+          -e POD_NAME=cadence
+          -e SERVICES=history,matching,frontend,worker
+          -e LOG_LEVEL=debug
+          -e PROMETHEUS_ENDPOINT_0=0.0.0.0:8000
+          -e PROMETHEUS_ENDPOINT_1=0.0.0.0:8001
+          -e PROMETHEUS_ENDPOINT_2=0.0.0.0:8002
+          -e PROMETHEUS_ENDPOINT_3=0.0.0.0:8003
+        healthcheck:
+          test: ["CMD-SHELL", "cadence --address localhost:7933 admin cluster get"]
+          interval: 15s
+          timeout: 10s
+          retries: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Wait for Cassandra to be healthy
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 30
+          command: |
+            docker exec ${{ job.services.cassandra.id }} cqlsh -e "describe keyspaces"
+          shell: bash
+
+      - name: Wait for Cadence to be ready
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 30
+          command: |
+            docker exec ${{ job.services.cadence.id }} cadence --address localhost:7933 admin cluster get
+          shell: bash
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "21.12"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run integration tests
+        run: cargo test -p crabdance --tests -- --ignored --test-threads=1
+
+      - name: Show Cadence logs on failure
+        if: failure()
+        run: docker logs ${{ job.services.cadence.id }}
