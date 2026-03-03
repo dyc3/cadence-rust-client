@@ -32,9 +32,9 @@ impl Workflow for FailingWorkflow {
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
             let input: FailingWorkflowInput = serde_json::from_slice(&input_bytes)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             // Execute failing activity with retries
             let activity_input = crate::activities::failing::FailingInput {
@@ -65,9 +65,8 @@ impl Workflow for FailingWorkflow {
             let workflow_output = match result {
                 Ok(data) => {
                     let output: crate::activities::failing::FailingOutput =
-                        serde_json::from_slice(&data).map_err(|e| {
-                            WorkflowError::ExecutionFailed(format!("Failed to parse result: {}", e))
-                        })?;
+                        serde_json::from_slice(&data)
+                            .map_err(WorkflowError::execution_failed_error)?;
                     FailingWorkflowOutput {
                         id: output.id,
                         attempt: output.attempt,
@@ -81,8 +80,7 @@ impl Workflow for FailingWorkflow {
                 },
             };
 
-            serde_json::to_vec(&workflow_output)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&workflow_output).map_err(WorkflowError::execution_failed_error)
         })
     }
 }

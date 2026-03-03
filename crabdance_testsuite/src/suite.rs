@@ -47,6 +47,16 @@ pub enum ActivityError {
     Generic(String),
 }
 
+impl ActivityError {
+    pub fn execution_failed(message: impl Into<String>) -> Self {
+        Self::Generic(message.into())
+    }
+
+    pub fn execution_failed_error<E: std::error::Error>(error: E) -> Self {
+        Self::Generic(error.to_string())
+    }
+}
+
 /// Test suite for running workflow and activity tests
 pub struct TestSuite;
 
@@ -120,7 +130,7 @@ impl TestWorkflowEnvironment {
                     Ok(i) => i,
                     Err(e) => {
                         return Box::pin(async move {
-                            Err(WorkflowError::Generic(format!(
+                            Err(WorkflowError::execution_failed(format!(
                                 "Input deserialization failed: {}",
                                 e
                             )))
@@ -132,9 +142,8 @@ impl TestWorkflowEnvironment {
                 let future = workflow(ctx, input);
                 Box::pin(async move {
                     let (ctx, output) = future.await?;
-                    let output_bytes = serde_json::to_vec(&output).map_err(|e| {
-                        WorkflowError::Generic(format!("Output serialization failed: {}", e))
-                    })?;
+                    let output_bytes = serde_json::to_vec(&output)
+                        .map_err(WorkflowError::execution_failed_error)?;
                     Ok((ctx, output_bytes))
                 })
             },
@@ -179,7 +188,7 @@ impl TestWorkflowEnvironment {
                 Ok(i) => i,
                 Err(e) => {
                     return Box::pin(async move {
-                        Err(ActivityError::Generic(format!(
+                        Err(ActivityError::execution_failed(format!(
                             "Input deserialization failed: {}",
                             e
                         )))
@@ -190,9 +199,7 @@ impl TestWorkflowEnvironment {
             let result = activity(ctx, input);
             Box::pin(async move {
                 let output = result.await?;
-                serde_json::to_vec(&output).map_err(|e| {
-                    ActivityError::Generic(format!("Output serialization failed: {}", e))
-                })
+                serde_json::to_vec(&output).map_err(ActivityError::execution_failed_error)
             }) as Pin<Box<dyn Future<Output = _> + Send>>
         });
 
@@ -222,14 +229,13 @@ impl TestWorkflowEnvironment {
         O: for<'de> Deserialize<'de>,
     {
         // Serialize input
-        let input_bytes = serde_json::to_vec(&input)
-            .map_err(|e| WorkflowError::Generic(format!("Input serialization failed: {}", e)))?;
+        let input_bytes =
+            serde_json::to_vec(&input).map_err(WorkflowError::execution_failed_error)?;
 
         // Look up workflow
-        let workflow = self
-            .registered_workflows
-            .get(name)
-            .ok_or_else(|| WorkflowError::Generic(format!("Workflow '{}' not registered", name)))?;
+        let workflow = self.registered_workflows.get(name).ok_or_else(|| {
+            WorkflowError::execution_failed(format!("Workflow '{}' not registered", name))
+        })?;
 
         // Create test context
         let activities = self.registered_activities.clone();
@@ -255,8 +261,7 @@ impl TestWorkflowEnvironment {
         let (_ctx, result_bytes) = workflow(ctx, input_bytes).await?;
 
         // Deserialize output
-        serde_json::from_slice(&result_bytes)
-            .map_err(|e| WorkflowError::Generic(format!("Output deserialization failed: {}", e)))
+        serde_json::from_slice(&result_bytes).map_err(WorkflowError::execution_failed_error)
     }
 
     /// Execute an activity directly for testing (without workflow)
@@ -281,13 +286,12 @@ impl TestWorkflowEnvironment {
         I: Serialize,
         O: for<'de> Deserialize<'de>,
     {
-        let input_bytes = serde_json::to_vec(&input)
-            .map_err(|e| ActivityError::Generic(format!("Input serialization: {}", e)))?;
+        let input_bytes =
+            serde_json::to_vec(&input).map_err(ActivityError::execution_failed_error)?;
 
-        let activity = self
-            .registered_activities
-            .get(name)
-            .ok_or_else(|| ActivityError::Generic(format!("Activity '{}' not registered", name)))?;
+        let activity = self.registered_activities.get(name).ok_or_else(|| {
+            ActivityError::execution_failed(format!("Activity '{}' not registered", name))
+        })?;
 
         // Create ActivityInfo
         let activity_info = ActivityInfo {
@@ -307,8 +311,7 @@ impl TestWorkflowEnvironment {
 
         let result_bytes = activity(&ctx, input_bytes).await?;
 
-        serde_json::from_slice(&result_bytes)
-            .map_err(|e| ActivityError::Generic(format!("Output deserialization: {}", e)))
+        serde_json::from_slice(&result_bytes).map_err(ActivityError::execution_failed_error)
     }
 
     /// Queue a signal to be sent to the workflow when it starts
@@ -476,8 +479,8 @@ impl TestWorkflowContext {
         _options: ChildWorkflowOptions,
     ) -> Result<Vec<u8>, WorkflowError> {
         // TODO: Implement child workflow execution
-        Err(WorkflowError::Generic(
-            "Child workflow execution not yet implemented in test environment".to_string(),
+        Err(WorkflowError::execution_failed(
+            "Child workflow execution not yet implemented in test environment",
         ))
     }
 

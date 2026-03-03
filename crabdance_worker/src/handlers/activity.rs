@@ -212,7 +212,9 @@ impl ActivityTaskHandler {
                     panic_msg = %panic_msg,
                     "activity panicked"
                 );
-                Err(ActivityError::Panic(panic_msg))
+                Err(ActivityError::Panic(
+                    crabdance_workflow::future::boxed_error(panic_msg),
+                ))
             }
         };
 
@@ -234,26 +236,28 @@ impl ActivityTaskHandler {
             }
             Err(err) => {
                 let (reason, details) = match &err {
-                    ActivityError::ExecutionFailed(msg) => {
-                        ("ExecutionFailed".to_string(), Some(msg.as_bytes().to_vec()))
-                    }
-                    ActivityError::Panic(msg) => (
+                    ActivityError::ExecutionFailed(err) => (
+                        "ExecutionFailed".to_string(),
+                        Some(err.to_string().into_bytes()),
+                    ),
+                    ActivityError::Panic(err) => (
                         "Panic".to_string(),
-                        Some(format!("Activity panicked: {}", msg).into_bytes()),
+                        Some(format!("Activity panicked: {}", err).into_bytes()),
                     ),
-                    ActivityError::Retryable(msg) => {
-                        ("Retryable".to_string(), Some(msg.as_bytes().to_vec()))
+                    ActivityError::Retryable(err) => {
+                        ("Retryable".to_string(), Some(err.to_string().into_bytes()))
                     }
-                    ActivityError::NonRetryable(msg) => {
-                        ("NonRetryable".to_string(), Some(msg.as_bytes().to_vec()))
-                    }
-                    ActivityError::Application(msg) => (
+                    ActivityError::NonRetryable(err) => (
+                        "NonRetryable".to_string(),
+                        Some(err.to_string().into_bytes()),
+                    ),
+                    ActivityError::Application(err) => (
                         "ApplicationError".to_string(),
-                        Some(msg.as_bytes().to_vec()),
+                        Some(err.to_string().into_bytes()),
                     ),
-                    ActivityError::RetryableWithDelay(msg, _delay) => (
+                    ActivityError::RetryableWithDelay(err, _delay) => (
                         "RetryableWithDelay".to_string(),
-                        Some(msg.as_bytes().to_vec()),
+                        Some(err.to_string().into_bytes()),
                     ),
                     ActivityError::Cancelled => ("Cancelled".to_string(), None),
                     ActivityError::Timeout(t) => (format!("Timeout: {:?}", t), None),
@@ -270,10 +274,7 @@ impl ActivityTaskHandler {
                     .await?;
 
                 tracing::error!(activity_type, ?err, "Activity failed");
-                Err(CadenceError::Other(format!(
-                    "Activity execution error: {}",
-                    err
-                )))
+                Err(CadenceError::Other(err.to_string()))
             }
         }
     }

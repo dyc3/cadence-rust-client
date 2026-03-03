@@ -35,7 +35,7 @@ impl Activity for FastActivity {
                 return Ok(vec![]);
             }
             let input: FastInput = serde_json::from_slice(&input_bytes)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(ActivityError::execution_failed_error)?;
 
             // Minimal computation - just a simple calculation
             let result = input.id * 2 + 1;
@@ -45,7 +45,7 @@ impl Activity for FastActivity {
                 result,
             };
 
-            serde_json::to_vec(&output).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&output).map_err(ActivityError::execution_failed_error)
         })
     }
 }

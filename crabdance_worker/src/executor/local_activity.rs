@@ -158,7 +158,7 @@ impl LocalActivityExecutor {
             .registry
             .get_activity(&task.activity_type)
             .ok_or_else(|| {
-                ActivityError::ExecutionFailed(format!(
+                ActivityError::execution_failed(format!(
                     "Activity '{}' not registered",
                     task.activity_type
                 ))
@@ -204,9 +204,12 @@ impl LocalActivityExecutor {
 
         // Execute with timeout
         match tokio::time::timeout(remaining, async move {
-            tokio::spawn(future)
-                .await
-                .map_err(|e| ActivityError::Panic(format!("Activity panicked: {}", e)))?
+            tokio::spawn(future).await.map_err(|e| {
+                ActivityError::Panic(crabdance_workflow::future::boxed_error(format!(
+                    "Activity panicked: {}",
+                    e
+                )))
+            })?
         })
         .await
         {
@@ -319,7 +322,7 @@ mod tests {
             _ctx: &ActivityContext,
             _input: Option<Vec<u8>>,
         ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
-            Box::pin(async move { Err(ActivityError::ExecutionFailed("test error".to_string())) })
+            Box::pin(async move { Err(ActivityError::execution_failed("test error")) })
         }
     }
 
@@ -471,7 +474,7 @@ mod tests {
         let result = result_rx.await.expect("Failed to receive result");
         assert!(result.is_err());
         if let Err(ActivityError::ExecutionFailed(msg)) = result {
-            assert!(msg.contains("not registered"));
+            assert!(msg.to_string().contains("not registered"));
         }
 
         // Close queue to stop executor
@@ -497,7 +500,7 @@ mod tests {
                 let prev_attempts = attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
                 if prev_attempts < 2 {
-                    Err(ActivityError::Retryable(format!(
+                    Err(ActivityError::retryable(format!(
                         "Temporary failure on attempt {}",
                         attempt
                     )))

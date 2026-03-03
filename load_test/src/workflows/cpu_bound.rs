@@ -30,9 +30,9 @@ impl Workflow for CpuBoundWorkflow {
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
             let input: CpuWorkflowInput = serde_json::from_slice(&input_bytes)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             // Execute CPU-intensive activity
             let activity_input = crate::activities::cpu_intensive::CpuInput {
@@ -51,20 +51,17 @@ impl Workflow for CpuBoundWorkflow {
                     },
                 )
                 .await
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             let output: crate::activities::cpu_intensive::CpuOutput =
-                serde_json::from_slice(&result).map_err(|e| {
-                    WorkflowError::ExecutionFailed(format!("Failed to parse result: {}", e))
-                })?;
+                serde_json::from_slice(&result).map_err(WorkflowError::execution_failed_error)?;
 
             let workflow_output = CpuWorkflowOutput {
                 id: output.id,
                 result: output.result,
             };
 
-            serde_json::to_vec(&workflow_output)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&workflow_output).map_err(WorkflowError::execution_failed_error)
         })
     }
 }

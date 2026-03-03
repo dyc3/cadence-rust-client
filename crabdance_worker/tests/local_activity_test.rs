@@ -179,11 +179,11 @@ async fn test_local_activity_not_found() {
     match result.unwrap_err() {
         ActivityError::ExecutionFailed(msg) => {
             assert!(
-                msg.contains("not registered"),
+                msg.to_string().contains("not registered"),
                 "Error message should mention 'not registered'"
             );
             assert!(
-                msg.contains("non_existent"),
+                msg.to_string().contains("non_existent"),
                 "Error message should mention activity name"
             );
         }

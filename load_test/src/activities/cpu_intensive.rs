@@ -32,9 +32,9 @@ impl Activity for CpuIntensiveActivity {
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let input: CpuInput = serde_json::from_slice(&input_bytes)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(ActivityError::execution_failed_error)?;
 
             // Perform CPU-intensive work
             let mut result: u64 = 0;
@@ -47,7 +47,7 @@ impl Activity for CpuIntensiveActivity {
                 result,
             };
 
-            serde_json::to_vec(&output).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&output).map_err(ActivityError::execution_failed_error)
         })
     }
 }

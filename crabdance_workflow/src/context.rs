@@ -131,7 +131,7 @@ pub trait CommandSink: Send + Sync {
     fn submit(
         &self,
         command: WorkflowCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send>>;
 }
 
 /// No-op command sink for testing/initialization
@@ -140,8 +140,8 @@ impl CommandSink for NoopCommandSink {
     fn submit(
         &self,
         _command: WorkflowCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
-        Box::pin(async { Err(WorkflowError::Generic("No command sink configured".into())) })
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send>> {
+        Box::pin(async { Err(WorkflowError::message("No command sink configured")) })
     }
 }
 
@@ -314,12 +314,14 @@ impl WorkflowContext {
     }
 
     /// Execute an activity
+    ///
+    /// You probably want to use the [`crabdance_macros::call_activity`] macro instead of calling this directly, as it saves a lot of boilerplate around serialization and type safety.
     pub async fn execute_activity(
         &self,
         activity_type: &str,
         args: Option<Vec<u8>>,
         options: ActivityOptions,
-    ) -> Result<Vec<u8>, WorkflowError> {
+    ) -> Result<Vec<u8>, DefaultWorkflowError> {
         let activity_id = self.next_id();
 
         let command = WorkflowCommand::ScheduleActivity(ScheduleActivityCommand {
@@ -338,7 +340,7 @@ impl WorkflowContext {
         activity_type: &str,
         args: Option<Vec<u8>>,
         options: LocalActivityOptions,
-    ) -> Result<Vec<u8>, WorkflowError> {
+    ) -> Result<Vec<u8>, DefaultWorkflowError> {
         let activity_id = self.next_id();
 
         // Check if replay mode - return cached result if available
@@ -347,7 +349,7 @@ impl WorkflowContext {
                 return crate::local_activity::marker_data_to_result(marker_data);
             }
             // If not in cache during replay, this is a non-determinism error
-            return Err(WorkflowError::Generic(format!(
+            return Err(WorkflowError::message(format!(
                 "Local activity {} not found during replay - non-deterministic workflow code",
                 activity_id
             )));
@@ -371,7 +373,7 @@ impl WorkflowContext {
         workflow_type: &str,
         args: Option<Vec<u8>>,
         options: ChildWorkflowOptions,
-    ) -> Result<Vec<u8>, WorkflowError> {
+    ) -> Result<Vec<u8>, DefaultWorkflowError> {
         let workflow_id = if options.workflow_id.is_empty() {
             self.next_id()
         } else {
@@ -400,7 +402,7 @@ impl WorkflowContext {
         run_id: Option<&str>,
         signal_name: &str,
         args: Option<Vec<u8>>,
-    ) -> Result<(), WorkflowError> {
+    ) -> Result<(), DefaultWorkflowError> {
         let signal_id = self.next_id();
         let command = WorkflowCommand::SignalExternalWorkflow(
             crate::commands::SignalExternalWorkflowCommand {
@@ -423,7 +425,7 @@ impl WorkflowContext {
         &self,
         workflow_id: &str,
         run_id: Option<&str>,
-    ) -> Result<(), WorkflowError> {
+    ) -> Result<(), DefaultWorkflowError> {
         let cancellation_id = self.next_id();
         let command = WorkflowCommand::RequestCancelExternalWorkflow(
             crate::commands::RequestCancelExternalWorkflowCommand {
@@ -1098,7 +1100,9 @@ impl CancellationChannel {
 }
 
 // Re-export types from future module
-pub use crate::future::{ActivityError, TimerFuture, WorkflowError};
+pub use crate::future::{
+    ActivityError, DefaultActivityError, DefaultWorkflowError, TimerFuture, WorkflowError,
+};
 
 /// Logger trait
 pub trait Logger: Send + Sync {
