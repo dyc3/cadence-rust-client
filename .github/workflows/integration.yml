@@ -22,11 +22,6 @@ jobs:
         options: >-
           -e HEAP_NEWSIZE=1M
           -e MAX_HEAP_SIZE=2048M
-        healthcheck:
-          test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
-          interval: 15s
-          timeout: 10s
-          retries: 20
 
       cadence:
         image: ubercadence/server:master-auto-setup
@@ -37,11 +32,11 @@ jobs:
           - 7935:7935
           - 7939:7939
         env:
-          - CASSANDRA_SEEDS=cassandra
-          - ENABLE_ES=false
-          - POD_NAME=cadence
-          - SERVICES=history,matching,frontend,worker
-          - LOG_LEVEL=debug
+          CASSANDRA_SEEDS: cassandra
+          ENABLE_ES: false
+          POD_NAME: cadence
+          SERVICES: history,matching,frontend,worker
+          LOG_LEVEL: debug
         options: >-
           -e CASSANDRA_SEEDS=cassandra
           -e ENABLE_ES=false
@@ -52,11 +47,6 @@ jobs:
           -e PROMETHEUS_ENDPOINT_1=0.0.0.0:8001
           -e PROMETHEUS_ENDPOINT_2=0.0.0.0:8002
           -e PROMETHEUS_ENDPOINT_3=0.0.0.0:8003
-        healthcheck:
-          test: ["CMD-SHELL", "cadence --address localhost:7933 admin cluster get"]
-          interval: 15s
-          timeout: 10s
-          retries: 30
 
     steps:
       - name: Checkout code
