@@ -150,13 +150,13 @@ impl ReplayEngine {
                     } else if reason.starts_with("Timeout") {
                         ActivityError::Timeout(crabdance_proto::shared::TimeoutType::StartToClose)
                     } else if reason == "Retryable" {
-                        ActivityError::Retryable(String::from_utf8_lossy(&details).to_string())
+                        ActivityError::retryable(String::from_utf8_lossy(&details).to_string())
                     } else if reason == "NonRetryable" {
-                        ActivityError::NonRetryable(String::from_utf8_lossy(&details).to_string())
+                        ActivityError::non_retryable(String::from_utf8_lossy(&details).to_string())
                     } else if reason == "ApplicationError" {
-                        ActivityError::Application(String::from_utf8_lossy(&details).to_string())
+                        ActivityError::application(String::from_utf8_lossy(&details).to_string())
                     } else {
-                        ActivityError::ExecutionFailed(format!(
+                        ActivityError::execution_failed(format!(
                             "{}: {}",
                             reason,
                             String::from_utf8_lossy(&details)
@@ -268,7 +268,7 @@ impl ReplayEngine {
                     }
                     let reason = attrs.reason.clone().unwrap_or_default();
                     let details = attrs.details.clone().unwrap_or_default();
-                    let error = ActivityError::ExecutionFailed(format!(
+                    let error = ActivityError::execution_failed(format!(
                         "Child Workflow Failed: {}: {:?}",
                         reason, details
                     ));
@@ -317,8 +317,7 @@ impl ReplayEngine {
                         self.decisions_helper
                             .handle_child_workflow_closed(&decision_id.id);
                     }
-                    let error =
-                        ActivityError::ExecutionFailed("Child Workflow Terminated".to_string());
+                    let error = ActivityError::execution_failed("Child Workflow Terminated");
                     self.event_results.insert(initiated_id, Err(error));
                 }
             }
@@ -379,7 +378,7 @@ impl ReplayEngine {
                         self.decisions_helper
                             .handle_signal_external_workflow_failed(&decision_id.id);
                     }
-                    let error = ActivityError::ExecutionFailed(format!(
+                    let error = ActivityError::execution_failed(format!(
                         "Signal External Workflow Failed: {:?}",
                         attrs.cause
                     ));
@@ -435,7 +434,7 @@ impl ReplayEngine {
                         self.decisions_helper
                             .handle_request_cancel_external_workflow_failed(&decision_id.id);
                     }
-                    let error = ActivityError::ExecutionFailed(format!(
+                    let error = ActivityError::execution_failed(format!(
                         "Request Cancel External Workflow Failed: {:?}",
                         attrs.cause
                     ));

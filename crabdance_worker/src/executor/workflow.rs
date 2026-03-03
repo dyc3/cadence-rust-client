@@ -17,7 +17,11 @@ use crabdance_proto::{QueryResultType, WorkflowQueryResult};
 use crabdance_workflow::commands::WorkflowCommand;
 use crabdance_workflow::context::{CommandSink, WorkflowContext};
 use crabdance_workflow::dispatcher::{WorkflowDispatcher, WorkflowTask};
-use crabdance_workflow::future::{ActivityFailureInfo, ActivityFailureType, WorkflowError};
+use std::sync::Arc;
+
+use crabdance_workflow::future::{
+    ActivityFailureInfo, ActivityFailureType, DefaultWorkflowError, WorkflowError,
+};
 use crabdance_workflow::state_machine::{
     ActivityDecisionStateMachine, ChildWorkflowDecisionStateMachine, DecisionId,
     StateMachineDecisionType, TimerDecisionStateMachine,
@@ -25,7 +29,7 @@ use crabdance_workflow::state_machine::{
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 /// Convert ActivityError to ActivityFailureInfo
@@ -33,39 +37,39 @@ fn activity_error_to_failure_info(error: &crate::registry::ActivityError) -> Act
     use crate::registry::ActivityError;
 
     match error {
-        ActivityError::ExecutionFailed(msg) => ActivityFailureInfo {
+        ActivityError::ExecutionFailed(err) => ActivityFailureInfo {
             failure_type: ActivityFailureType::ExecutionFailed,
-            message: msg.clone(),
+            message: err.to_string(),
             details: None,
             retryable: false,
         },
-        ActivityError::Panic(msg) => ActivityFailureInfo {
+        ActivityError::Panic(err) => ActivityFailureInfo {
             failure_type: ActivityFailureType::Panic,
-            message: msg.clone(),
+            message: err.to_string(),
             details: None,
             retryable: false,
         },
-        ActivityError::Retryable(msg) => ActivityFailureInfo {
+        ActivityError::Retryable(err) => ActivityFailureInfo {
             failure_type: ActivityFailureType::Retryable,
-            message: msg.clone(),
+            message: err.to_string(),
             details: None,
             retryable: true,
         },
-        ActivityError::NonRetryable(msg) => ActivityFailureInfo {
+        ActivityError::NonRetryable(err) => ActivityFailureInfo {
             failure_type: ActivityFailureType::NonRetryable,
-            message: msg.clone(),
+            message: err.to_string(),
             details: None,
             retryable: false,
         },
-        ActivityError::Application(msg) => ActivityFailureInfo {
+        ActivityError::Application(err) => ActivityFailureInfo {
             failure_type: ActivityFailureType::Application,
-            message: msg.clone(),
+            message: err.to_string(),
             details: None,
             retryable: false,
         },
-        ActivityError::RetryableWithDelay(msg, _delay) => ActivityFailureInfo {
+        ActivityError::RetryableWithDelay(err, _delay) => ActivityFailureInfo {
             failure_type: ActivityFailureType::Retryable,
-            message: msg.clone(),
+            message: err.to_string(),
             details: None,
             retryable: true,
         },
@@ -105,8 +109,9 @@ fn activity_error_to_failure_info(error: &crate::registry::ActivityError) -> Act
 }
 
 // Type alias to reduce complexity
-type LocalActivityWakers =
-    Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<Vec<u8>, WorkflowError>>>>>;
+type LocalActivityWakers = Arc<
+    Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<Vec<u8>, DefaultWorkflowError>>>>,
+>;
 
 struct ReplayCommandSink {
     engine: Arc<Mutex<ReplayEngine>>,
@@ -133,7 +138,7 @@ impl CommandSink for ReplayCommandSink {
     fn submit(
         &self,
         command: WorkflowCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send>> {
         let engine = self.engine.clone();
         let default_task_list = self.default_task_list.clone();
         let pending_local_activity_submissions = self.pending_local_activity_submissions.clone();
@@ -282,14 +287,14 @@ impl CommandSink for ReplayCommandSink {
                             .get_child_workflow_result(&cmd.workflow_id)
                             .map(|r| match r {
                                 Ok(data) => Ok(data.clone()),
-                                Err(e) => Err(e.to_string()),
+                                Err(e) => Err(WorkflowError::child_workflow_failed(e.to_string())),
                             })
                     };
 
                     if let Some(result) = already_completed {
                         return match result {
                             Ok(data) => Ok(data),
-                            Err(e) => Err(WorkflowError::ChildWorkflowFailed(e)),
+                            Err(e) => Err(e),
                         };
                     }
 
@@ -840,8 +845,10 @@ impl WorkflowExecutor {
                 // Get result from root task
                 let disp = dispatcher.lock().unwrap();
                 if let Some(result_any) = disp.get_task_result(0) {
-                    // Downcast to Result<Vec<u8>, WorkflowError>
-                    if let Ok(result) = result_any.downcast::<Result<Vec<u8>, WorkflowError>>() {
+                    // Downcast to Result<Vec<u8>, DefaultWorkflowError>
+                    if let Ok(result) =
+                        result_any.downcast::<Result<Vec<u8>, DefaultWorkflowError>>()
+                    {
                         match *result {
                             Ok(output) => {
                                 info!("workflow completed successfully");

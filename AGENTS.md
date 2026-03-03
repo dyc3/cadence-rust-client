@@ -129,6 +129,8 @@ use crate::registry::WorkflowRegistry;
 ### Types and Type Safety
 - Use strong typing: avoid `Box<dyn std::error::Error>`, use `CadenceError` instead
 - Use `Option<T>` and `Result<T, E>` for nullable/ fallible operations
+- Prefer generic error parameters over `String` error payloads when propagating errors across APIs
+- Avoid erasing error types with `to_string()`/`format!` except at explicit I/O boundaries
 - Use `#[derive(Debug, Clone)]` for most types
 - Use `#[derive(Default)]` for configuration types with sensible defaults
 - Document public types with doc comments (`///`)
@@ -138,6 +140,7 @@ use crate::registry::WorkflowRegistry;
 - Use `CadenceError` as the primary error type throughout the codebase
 - Prefer `?` operator for error propagation
 - Provide context with `map_err()` when converting errors
+- Convert errors to strings only at wire or logging boundaries (Cadence RPC failure reasons, marker payloads, logs)
 - Use error factory functions in `crabdance_core::error::factory` module
 - Match on specific error types using helper functions (e.g., `is_custom_error()`)
 

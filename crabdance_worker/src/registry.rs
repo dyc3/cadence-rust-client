@@ -4,6 +4,9 @@
 
 use crabdance_activity::ActivityContext;
 use crabdance_workflow::context::WorkflowContext;
+pub use crabdance_workflow::ActivityError;
+pub use crabdance_workflow::DefaultActivityError as ActivityErrorDefault;
+pub use crabdance_workflow::DefaultWorkflowError as WorkflowErrorDefault;
 pub use crabdance_workflow::WorkflowError;
 use dashmap::DashMap;
 use dyn_clone::DynClone;
@@ -17,7 +20,7 @@ pub trait Workflow: Send + Sync + DynClone {
         &self,
         ctx: WorkflowContext,
         input: Option<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowErrorDefault>> + Send>>;
 }
 
 dyn_clone::clone_trait_object!(Workflow);
@@ -28,53 +31,10 @@ pub trait Activity: Send + Sync + DynClone {
         &self,
         ctx: &ActivityContext,
         input: Option<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityErrorDefault>> + Send>>;
 }
 
 dyn_clone::clone_trait_object!(Activity);
-
-/// Activity error
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum ActivityError {
-    #[error("Activity execution failed: {0}")]
-    ExecutionFailed(String),
-    #[error("Activity panicked: {0}")]
-    Panic(String),
-    #[error("Retryable activity error: {0}")]
-    Retryable(String),
-    #[error("Non-retryable activity error: {0}")]
-    NonRetryable(String),
-    #[error("Application error: {0}")]
-    Application(String),
-    #[error("Retryable with delay: {0}ms")]
-    RetryableWithDelay(String, u64),
-    #[error("Activity cancelled")]
-    Cancelled,
-    #[error("Activity timed out: {0:?}")]
-    Timeout(crabdance_proto::shared::TimeoutType),
-}
-
-impl ActivityError {
-    /// Create a retryable error
-    pub fn retryable(msg: impl Into<String>) -> Self {
-        Self::Retryable(msg.into())
-    }
-
-    /// Create a non-retryable error
-    pub fn non_retryable(msg: impl Into<String>) -> Self {
-        Self::NonRetryable(msg.into())
-    }
-
-    /// Create an application error
-    pub fn application(msg: impl Into<String>) -> Self {
-        Self::Application(msg.into())
-    }
-
-    /// Check if error is retryable
-    pub fn is_retryable(&self) -> bool {
-        matches!(self, Self::Retryable(_) | Self::RetryableWithDelay(_, _))
-    }
-}
 
 /// Registry trait
 pub trait Registry: Send + Sync {

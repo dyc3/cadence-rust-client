@@ -27,9 +27,9 @@ impl Workflow for NoopWorkflow {
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
             let input: NoopInput = serde_json::from_slice(&input_bytes)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             // Noop workflow - immediately return
             let output = NoopOutput {
@@ -37,7 +37,7 @@ impl Workflow for NoopWorkflow {
                 completed: true,
             };
 
-            serde_json::to_vec(&output).map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&output).map_err(WorkflowError::execution_failed_error)
         })
     }
 }

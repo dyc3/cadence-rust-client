@@ -53,7 +53,7 @@ async fn pg_select(
         .bind(input)
         .fetch_one(&mut *db.conn)
         .await
-        .map_err(|e| ActivityError::ExecutionFailed(format!("sqlx error: {e}")))?;
+        .map_err(ActivityError::execution_failed_error)?;
     Ok(value)
 }
 
@@ -63,7 +63,7 @@ async fn pg_count(ctx: WorkflowContext, mut db: DbConn, input: i64) -> Result<i6
         .bind(input)
         .fetch_one(&mut *db.conn)
         .await
-        .map_err(|e| WorkflowError::ExecutionFailed(format!("sqlx error: {e}")))?;
+        .map_err(WorkflowError::execution_failed_error)?;
     ctx.sleep(Duration::from_millis(1)).await;
     Ok(count)
 }

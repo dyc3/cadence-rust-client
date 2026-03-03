@@ -19,7 +19,7 @@ mod tests {
             .await
             .expect_err("expected error");
 
-        let activity_error = crate::registry::ActivityError::Retryable(err.to_string());
+        let activity_error = crate::registry::ActivityError::retryable(err.to_string());
         assert!(matches!(
             activity_error,
             crate::registry::ActivityError::Retryable(_)

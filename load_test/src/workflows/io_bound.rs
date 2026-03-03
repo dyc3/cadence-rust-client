@@ -30,9 +30,9 @@ impl Workflow for IoBoundWorkflow {
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
             let input: IoWorkflowInput = serde_json::from_slice(&input_bytes)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             // Execute IO-simulated activity
             let activity_input = crate::activities::io_simulated::IoInput {
@@ -51,20 +51,17 @@ impl Workflow for IoBoundWorkflow {
                     },
                 )
                 .await
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
-            let output: crate::activities::io_simulated::IoOutput = serde_json::from_slice(&result)
-                .map_err(|e| {
-                    WorkflowError::ExecutionFailed(format!("Failed to parse result: {}", e))
-                })?;
+            let output: crate::activities::io_simulated::IoOutput =
+                serde_json::from_slice(&result).map_err(WorkflowError::execution_failed_error)?;
 
             let workflow_output = IoWorkflowOutput {
                 id: output.id,
                 completed: output.completed,
             };
 
-            serde_json::to_vec(&workflow_output)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&workflow_output).map_err(WorkflowError::execution_failed_error)
         })
     }
 }

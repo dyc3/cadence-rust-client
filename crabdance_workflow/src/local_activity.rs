@@ -123,8 +123,8 @@ pub fn marker_data_to_result(
             },
         ))
     } else {
-        Err(crate::future::WorkflowError::Generic(
-            "Local activity marker has no result or error".into(),
+        Err(crate::future::WorkflowError::message(
+            "Local activity marker has no result or error",
         ))
     }
 }

@@ -34,16 +34,16 @@ impl Activity for FailingActivity {
         let activity_info = ctx.get_info().clone();
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let input: FailingInput = serde_json::from_slice(&input_bytes)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(ActivityError::execution_failed_error)?;
 
             // Generate random number to determine if we should fail
             let mut rng = rand::thread_rng();
             let roll: f64 = rng.gen();
 
             if roll < input.failure_rate {
-                return Err(ActivityError::Retryable(format!(
+                return Err(ActivityError::retryable(format!(
                     "Activity {} failed (attempt {}): random failure triggered",
                     input.id, activity_info.attempt
                 )));
@@ -54,7 +54,7 @@ impl Activity for FailingActivity {
                 attempt: activity_info.attempt as u32,
             };
 
-            serde_json::to_vec(&output).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&output).map_err(ActivityError::execution_failed_error)
         })
     }
 }

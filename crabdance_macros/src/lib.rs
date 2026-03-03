@@ -100,18 +100,24 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
             let #name = <#ty as ::#crabdance::core::FromResources>::get(
                 #ctx_ident
                     .resource_context()
-                    .ok_or_else(|| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed("resources not configured".to_string()))?
+                    .ok_or_else(|| {
+                        ::#crabdance::worker::registry::WorkflowError::execution_failed(
+                            "resources not configured",
+                        )
+                    })?
             )
             .await
-            .map_err(|e| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
+            .map_err(::#crabdance::worker::registry::WorkflowError::execution_failed_error)?;
         }
     });
 
     let input_decode = args.input_arg.as_ref().map(|_| {
         quote! {
-            let input_data = input.ok_or_else(|| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+            let input_data = input.ok_or_else(|| {
+                ::#crabdance::worker::registry::WorkflowError::execution_failed("Missing input")
+            })?;
             let decoded = ::#crabdance::serde_json::from_slice(&input_data)
-                .map_err(|e| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(::#crabdance::worker::registry::WorkflowError::execution_failed_error)?;
         }
     });
 
@@ -142,7 +148,7 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
                     #input_binding
                     let output = #ident(#(#call_args),*).await?;
                     ::#crabdance::serde_json::to_vec(&output)
-                        .map_err(|e| ::#crabdance::worker::registry::WorkflowError::ExecutionFailed(e.to_string()))
+                        .map_err(::#crabdance::worker::registry::WorkflowError::execution_failed_error)
                 })
             }
         }
@@ -225,18 +231,20 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
             let #name = <#ty as ::#crabdance::core::FromResources>::get(
                 #ctx_ident
                     .resource_context()
-                    .ok_or_else(|| ::#crabdance::worker::registry::ActivityError::Retryable("resources not configured".to_string()))?
+                    .ok_or_else(|| ::#crabdance::worker::registry::ActivityError::retryable("resources not configured"))?
             )
             .await
-            .map_err(|e| ::#crabdance::worker::registry::ActivityError::Retryable(e.to_string()))?;
+            .map_err(::#crabdance::worker::registry::ActivityError::execution_failed_error)?;
         }
     });
 
     let input_decode = args.input_arg.as_ref().map(|_| {
         quote! {
-            let input_data = input.ok_or_else(|| ::#crabdance::worker::registry::ActivityError::ExecutionFailed("Missing input".to_string()))?;
+            let input_data = input.ok_or_else(|| {
+                ::#crabdance::worker::registry::ActivityError::execution_failed("Missing input")
+            })?;
             let decoded = ::#crabdance::serde_json::from_slice(&input_data)
-                .map_err(|e| ::#crabdance::worker::registry::ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(::#crabdance::worker::registry::ActivityError::execution_failed_error)?;
         }
     });
 
@@ -268,7 +276,7 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
                     #input_binding
                     let output = #ident(#(#call_args),*).await?;
                     ::#crabdance::serde_json::to_vec(&output)
-                        .map_err(|e| ::#crabdance::worker::registry::ActivityError::ExecutionFailed(e.to_string()))
+                        .map_err(::#crabdance::worker::registry::ActivityError::execution_failed_error)
                 })
             }
         }
@@ -317,7 +325,7 @@ pub fn call_activity(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         async {
             let bytes = ::#crabdance::serde_json::to_vec(&#payload)
-                .map_err(|e| ::#crabdance::workflow::WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(::#crabdance::workflow::WorkflowError::execution_failed_error)?;
             let result_bytes = #ctx
                 .execute_activity(
                     #name_path,
@@ -326,7 +334,7 @@ pub fn call_activity(input: TokenStream) -> TokenStream {
                 )
                 .await?;
             ::#crabdance::serde_json::from_slice(&result_bytes)
-                .map_err(|e| ::#crabdance::workflow::WorkflowError::ExecutionFailed(e.to_string()))
+                .map_err(::#crabdance::workflow::WorkflowError::execution_failed_error)
         }
     };
 

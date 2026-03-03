@@ -3,12 +3,19 @@
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+
+use crabdance_core::GenericError;
+use crabdance_proto::shared::TimeoutType as ProtoTimeoutType;
+use std::error::Error;
 
 /// Future for child workflow execution
-pub type ChildWorkflowFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>;
+pub type ChildWorkflowFuture =
+    Pin<Box<dyn Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send>>;
 
 /// Future for activity execution
-pub type ActivityFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>>;
+pub type ActivityFuture =
+    Pin<Box<dyn Future<Output = Result<Vec<u8>, DefaultActivityError>> + Send>>;
 
 /// Future for timer
 pub type TimerFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -32,6 +39,35 @@ pub enum TimeoutType {
     ScheduleToStart,
     ScheduleToClose,
     Heartbeat,
+}
+
+/// Boxed error type for workflow/activity failures
+pub type BoxError = Arc<dyn Error + Send + Sync>;
+
+/// Convert a message into a boxed error
+pub fn boxed_error(message: impl Into<String>) -> BoxError {
+    Arc::new(GenericError::new(message))
+}
+
+pub fn boxed_error_from<E>(error: E) -> BoxError
+where
+    E: Error + Send + Sync + 'static,
+{
+    Arc::new(error)
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("Workflow execution failed: {message}")]
+pub struct WorkflowFailureMessage {
+    message: String,
+}
+
+impl WorkflowFailureMessage {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
 }
 
 /// Detailed information about an activity failure
@@ -63,10 +99,13 @@ impl fmt::Display for ActivityFailureInfo {
 }
 
 /// Workflow error
-#[derive(Debug, thiserror::Error)]
-pub enum WorkflowError {
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum WorkflowError<E = BoxError>
+where
+    E: fmt::Display + fmt::Debug + Send + Sync + Clone + 'static,
+{
     #[error("Workflow execution failed: {0}")]
-    ExecutionFailed(String),
+    ExecutionFailed(E),
     #[error("Non-deterministic workflow: {0}")]
     NonDeterministic(String),
     #[error("Workflow panicked: {0}")]
@@ -74,22 +113,121 @@ pub enum WorkflowError {
     #[error("Activity failed: {0}")]
     ActivityFailed(ActivityFailureInfo),
     #[error("Child workflow failed: {0}")]
-    ChildWorkflowFailed(String),
+    ChildWorkflowFailed(E),
     #[error("Signal failed: {0}")]
-    SignalFailed(String),
+    SignalFailed(E),
     #[error("Cancel failed: {0}")]
-    CancelFailed(String),
+    CancelFailed(E),
     #[error("Continue as new")]
     ContinueAsNew,
     #[error("Workflow cancelled")]
     Cancelled,
     #[error("Generic error: {0}")]
-    Generic(String),
+    Generic(E),
+}
+
+pub type DefaultWorkflowError = WorkflowError<BoxError>;
+
+impl WorkflowError<BoxError> {
+    pub fn message(message: impl Into<String>) -> Self {
+        Self::Generic(boxed_error(message))
+    }
+
+    pub fn execution_failed(message: impl Into<String>) -> Self {
+        Self::ExecutionFailed(Arc::new(WorkflowFailureMessage::new(message)))
+    }
+
+    pub fn execution_failed_error<E>(error: E) -> Self
+    where
+        E: Error + Send + Sync + 'static,
+    {
+        Self::ExecutionFailed(boxed_error_from(error))
+    }
+
+    pub fn generic_error<E>(error: E) -> Self
+    where
+        E: Error + Send + Sync + 'static,
+    {
+        Self::Generic(boxed_error_from(error))
+    }
+
+    pub fn child_workflow_failed(message: impl Into<String>) -> Self {
+        Self::ChildWorkflowFailed(boxed_error(message))
+    }
+
+    pub fn child_workflow_failed_error<E>(error: E) -> Self
+    where
+        E: Error + Send + Sync + 'static,
+    {
+        Self::ChildWorkflowFailed(boxed_error_from(error))
+    }
+
+    pub fn signal_failed(message: impl Into<String>) -> Self {
+        Self::SignalFailed(boxed_error(message))
+    }
+
+    pub fn cancel_failed(message: impl Into<String>) -> Self {
+        Self::CancelFailed(boxed_error(message))
+    }
 }
 
 /// Activity error
-#[derive(Debug, thiserror::Error)]
-pub enum ActivityError {
-    #[error("Activity failed: {0}")]
-    Failed(String),
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ActivityError<E = BoxError>
+where
+    E: fmt::Display + fmt::Debug + Send + Sync + Clone + 'static,
+{
+    #[error("Activity execution failed: {0}")]
+    ExecutionFailed(E),
+    #[error("Activity panicked: {0}")]
+    Panic(E),
+    #[error("Retryable activity error: {0}")]
+    Retryable(E),
+    #[error("Non-retryable activity error: {0}")]
+    NonRetryable(E),
+    #[error("Application error: {0}")]
+    Application(E),
+    #[error("Retryable with delay: {0}ms")]
+    RetryableWithDelay(E, u64),
+    #[error("Activity cancelled")]
+    Cancelled,
+    #[error("Activity timed out: {0:?}")]
+    Timeout(ProtoTimeoutType),
+}
+
+pub type DefaultActivityError = ActivityError<BoxError>;
+
+impl ActivityError<BoxError> {
+    /// Create a retryable error
+    pub fn retryable(message: impl Into<String>) -> Self {
+        Self::Retryable(boxed_error(message))
+    }
+
+    /// Create a non-retryable error
+    pub fn non_retryable(message: impl Into<String>) -> Self {
+        Self::NonRetryable(boxed_error(message))
+    }
+
+    /// Create an application error
+    pub fn application(message: impl Into<String>) -> Self {
+        Self::Application(boxed_error(message))
+    }
+
+    /// Create an execution failed error
+    pub fn execution_failed(message: impl Into<String>) -> Self {
+        Self::ExecutionFailed(boxed_error(message))
+    }
+
+    /// Create an execution failed error from a typed error
+    pub fn execution_failed_error<E>(error: E) -> Self
+    where
+        E: Error + Send + Sync + 'static,
+    {
+        Self::ExecutionFailed(boxed_error_from(error))
+    }
+
+    /// Check if error is retryable
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::Retryable(_) | Self::RetryableWithDelay(_, _))
+    }
 }

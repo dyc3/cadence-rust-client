@@ -99,10 +99,9 @@ impl Activity for ProcessJobActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-            let job: Job = serde_json::from_slice(&input_bytes).map_err(|e| {
-                ActivityError::ExecutionFailed(format!("Failed to deserialize job: {}", e))
-            })?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
+            let job: Job = serde_json::from_slice(&input_bytes)
+                .map_err(ActivityError::execution_failed_error)?;
 
             tracing::info!("Processing job {}: {}", job.id, job.data);
 
@@ -114,9 +113,7 @@ impl Activity for ProcessJobActivity {
                 result: format!("Processed: {}", job.data),
             };
 
-            serde_json::to_vec(&result).map_err(|e| {
-                ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
-            })
+            serde_json::to_vec(&result).map_err(ActivityError::execution_failed_error)
         })
     }
 }
@@ -132,18 +129,15 @@ impl Activity for FastProcessActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
-            let value: u32 = serde_json::from_slice(&input_bytes).map_err(|e| {
-                ActivityError::ExecutionFailed(format!("Failed to deserialize value: {}", e))
-            })?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
+            let value: u32 = serde_json::from_slice(&input_bytes)
+                .map_err(ActivityError::execution_failed_error)?;
 
             tracing::info!("Fast processing value: {}", value);
 
             let result = value * 2;
 
-            serde_json::to_vec(&result).map_err(|e| {
-                ActivityError::ExecutionFailed(format!("Failed to serialize result: {}", e))
-            })
+            serde_json::to_vec(&result).map_err(ActivityError::execution_failed_error)
         })
     }
 }
@@ -165,11 +159,9 @@ impl Workflow for SplitMergeWorkflow {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
-            let input_data: SplitMergeInput =
-                serde_json::from_slice(&input_bytes).map_err(|e| {
-                    WorkflowError::ExecutionFailed(format!("Failed to deserialize input: {}", e))
-                })?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
+            let input_data: SplitMergeInput = serde_json::from_slice(&input_bytes)
+                .map_err(WorkflowError::execution_failed_error)?;
 
             let job_count = input_data.jobs.len();
             tracing::info!("Starting split-merge workflow with {} jobs", job_count);
@@ -198,13 +190,13 @@ impl Workflow for SplitMergeWorkflow {
                     };
 
                     let job_bytes = serde_json::to_vec(&job)
-                        .map_err(|e| crabdance_workflow::WorkflowError::Generic(e.to_string()))?;
+                        .map_err(crabdance_workflow::WorkflowError::execution_failed_error)?;
                     let result_bytes = ctx_clone
                         .execute_activity("process_job", Some(job_bytes), options)
                         .await?;
 
                     let result: JobResult = serde_json::from_slice(&result_bytes)
-                        .map_err(|e| crabdance_workflow::WorkflowError::Generic(e.to_string()))?;
+                        .map_err(crabdance_workflow::WorkflowError::execution_failed_error)?;
                     tracing::info!("Job {} completed: {:?}", job.id, result);
 
                     // Send result through channel
@@ -230,9 +222,7 @@ impl Workflow for SplitMergeWorkflow {
             );
 
             let output = SplitMergeOutput { results };
-            serde_json::to_vec(&output).map_err(|e| {
-                WorkflowError::ExecutionFailed(format!("Failed to serialize output: {}", e))
-            })
+            serde_json::to_vec(&output).map_err(WorkflowError::execution_failed_error)
         })
     }
 }
@@ -248,10 +238,9 @@ impl Workflow for ParallelWorkflow {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_bytes =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
-            let values: Vec<u32> = serde_json::from_slice(&input_bytes).map_err(|e| {
-                WorkflowError::ExecutionFailed(format!("Failed to deserialize input: {}", e))
-            })?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
+            let values: Vec<u32> = serde_json::from_slice(&input_bytes)
+                .map_err(WorkflowError::execution_failed_error)?;
 
             tracing::info!("Starting parallel workflow with {} values", values.len());
 
@@ -273,16 +262,15 @@ impl Workflow for ParallelWorkflow {
                     };
 
                     let value_bytes = serde_json::to_vec(&value)
-                        .map_err(|e| crabdance_workflow::WorkflowError::Generic(e.to_string()))?;
+                        .map_err(crabdance_workflow::WorkflowError::execution_failed_error)?;
                     match ctx_clone
                         .execute_activity("fast_process", Some(value_bytes), options)
                         .await
                     {
                         Ok(result_bytes) => {
-                            let result: u32 =
-                                serde_json::from_slice(&result_bytes).map_err(|e| {
-                                    crabdance_workflow::WorkflowError::Generic(e.to_string())
-                                })?;
+                            let result: u32 = serde_json::from_slice(&result_bytes).map_err(
+                                crabdance_workflow::WorkflowError::execution_failed_error,
+                            )?;
                             Ok(result)
                         }
                         Err(e) => Err(e),
@@ -298,15 +286,13 @@ impl Workflow for ParallelWorkflow {
                 let value = handle
                     .join()
                     .await
-                    .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
-                results.push(value.map_err(|e| WorkflowError::Generic(format!("{:?}", e)))?);
+                    .map_err(WorkflowError::execution_failed_error)?;
+                results.push(value.map_err(WorkflowError::execution_failed_error)?);
             }
 
             tracing::info!("Parallel workflow completed with {} results", results.len());
 
-            serde_json::to_vec(&results).map_err(|e| {
-                WorkflowError::ExecutionFailed(format!("Failed to serialize output: {}", e))
-            })
+            serde_json::to_vec(&results).map_err(WorkflowError::execution_failed_error)
         })
     }
 }

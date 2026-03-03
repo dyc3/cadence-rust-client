@@ -7,7 +7,7 @@ use crabdance_proto::workflow_service::PollForDecisionTaskResponse;
 use crabdance_proto::WorkflowQuery;
 use crabdance_worker::executor::cache::WorkflowCache;
 use crabdance_worker::executor::workflow::WorkflowExecutor;
-use crabdance_worker::registry::{Registry, Workflow, WorkflowError, WorkflowRegistry};
+use crabdance_worker::registry::{Registry, Workflow, WorkflowErrorDefault, WorkflowRegistry};
 use crabdance_worker::WorkerOptions;
 use crabdance_workflow::context::WorkflowContext;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ where
     F: Fn(
             WorkflowContext,
             Option<Vec<u8>>,
-        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowErrorDefault>> + Send>>
         + Send
         + Sync
         + Clone;
@@ -31,7 +31,7 @@ where
     F: Fn(
             WorkflowContext,
             Option<Vec<u8>>,
-        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowErrorDefault>> + Send>>
         + Send
         + Sync
         + Clone
@@ -41,7 +41,7 @@ where
         &self,
         ctx: WorkflowContext,
         input: Option<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowErrorDefault>> + Send>> {
         (self.0)(ctx, input)
     }
 }
@@ -96,7 +96,7 @@ async fn test_signal_handling() {
     fn signal_workflow(
         ctx: WorkflowContext,
         _: Option<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowErrorDefault>> + Send>> {
         Box::pin(async move {
             let mut channel = ctx.get_signal_channel("test-signal");
             let val = channel.recv().await.unwrap();
@@ -181,7 +181,7 @@ async fn test_query_handling() {
     fn query_workflow(
         ctx: WorkflowContext,
         _: Option<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowErrorDefault>> + Send>> {
         Box::pin(async move {
             ctx.set_query_handler("get_state", |args| {
                 // Echo args

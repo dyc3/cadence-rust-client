@@ -91,15 +91,15 @@ impl Activity for CalculateOrderTotalActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let order: OrderInput = serde_json::from_slice(&input_data)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(ActivityError::execution_failed_error)?;
             let total: f64 = order
                 .items
                 .iter()
                 .map(|item| item.unit_price * item.quantity as f64)
                 .sum();
-            serde_json::to_vec(&total).map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&total).map_err(ActivityError::execution_failed_error)
         })
     }
 }
@@ -133,15 +133,15 @@ impl Activity for ProcessPaymentActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let (order, total): (OrderInput, f64) = serde_json::from_slice(&input_data)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(ActivityError::execution_failed_error)?;
 
             // Fail if any item is expensive (simple logic for testing failure)
             for item in order.items {
                 if item.unit_price > 10000.0 {
-                    return Err(ActivityError::ExecutionFailed(
-                        "Payment declined: limit exceeded".to_string(),
+                    return Err(ActivityError::execution_failed(
+                        "Payment declined: limit exceeded",
                     ));
                 }
             }
@@ -182,9 +182,9 @@ impl Activity for SendNotificationActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let message: String = serde_json::from_slice(&input_data)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(ActivityError::execution_failed_error)?;
             println!("Sending notification: {}", message);
             Ok(vec![])
         })
@@ -206,9 +206,9 @@ impl Workflow for OrderProcessingSagaWorkflow {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
             let order: OrderInput = serde_json::from_slice(&input_data)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             // Step 1: Calculate Total (using local activity for fast computation)
             let local_options = LocalActivityOptions {
@@ -245,7 +245,7 @@ impl Workflow for OrderProcessingSagaWorkflow {
             };
 
             let total: f64 = serde_json::from_slice(&total_bytes)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             // Step 2: Reserve Inventory
             ctx.execute_activity(
@@ -265,7 +265,7 @@ impl Workflow for OrderProcessingSagaWorkflow {
 
             // Step 3: Process Payment (with Compensation)
             let payment_input = serde_json::to_vec(&(order.clone(), total))
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             match ctx
                 .execute_activity("process_payment", Some(payment_input), options.clone())
@@ -275,7 +275,7 @@ impl Workflow for OrderProcessingSagaWorkflow {
                     // Payment success
                     let notification = format!("Order confirmed for ${}", total);
                     let notif_bytes = serde_json::to_vec(&notification)
-                        .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                        .map_err(WorkflowError::execution_failed_error)?;
                     ctx.execute_activity("send_notification", Some(notif_bytes), options.clone())
                         .await
                         .map_err(|e| {
@@ -293,7 +293,7 @@ impl Workflow for OrderProcessingSagaWorkflow {
                         total_amount: total,
                     };
                     Ok(serde_json::to_vec(&output)
-                        .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?)
+                        .map_err(WorkflowError::execution_failed_error)?)
                 }
                 Err(e) => {
                     // Payment failed - Compensate!
@@ -318,7 +318,7 @@ impl Workflow for OrderProcessingSagaWorkflow {
                     // Notify user of failure
                     let notification = "Order failed: payment declined".to_owned();
                     let notif_bytes = serde_json::to_vec(&notification)
-                        .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                        .map_err(WorkflowError::execution_failed_error)?;
                     let _ = ctx
                         .execute_activity("send_notification", Some(notif_bytes), options.clone())
                         .await;

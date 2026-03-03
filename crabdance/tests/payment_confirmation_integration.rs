@@ -106,9 +106,9 @@ impl Activity for InitiatePaymentActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let payment_input: PaymentInput = serde_json::from_slice(&input_data)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                .map_err(ActivityError::execution_failed_error)?;
 
             // Stubbed: generate a mock payment intent ID
             let payment_intent = PaymentIntent {
@@ -121,8 +121,7 @@ impl Activity for InitiatePaymentActivity {
                 payment_input.order_id, payment_input.amount, payment_intent.payment_intent_id
             );
 
-            serde_json::to_vec(&payment_intent)
-                .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))
+            serde_json::to_vec(&payment_intent).map_err(ActivityError::execution_failed_error)
         })
     }
 }
@@ -138,10 +137,10 @@ impl Activity for SendReceiptEmailActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let (order_id, amount, email): (String, f64, String) =
                 serde_json::from_slice(&input_data)
-                    .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                    .map_err(ActivityError::execution_failed_error)?;
 
             println!(
                 "[SEND_RECEIPT] To: {} | Order: {} | Amount: ${:.2}",
@@ -164,10 +163,10 @@ impl Activity for SendFailureNotificationActivity {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ActivityError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| ActivityError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| ActivityError::execution_failed("Missing input"))?;
             let (order_id, reason, email): (String, String, String) =
                 serde_json::from_slice(&input_data)
-                    .map_err(|e| ActivityError::ExecutionFailed(e.to_string()))?;
+                    .map_err(ActivityError::execution_failed_error)?;
 
             println!(
                 "[SEND_FAILURE_NOTIFICATION] To: {} | Order: {} | Reason: {}",
@@ -194,9 +193,9 @@ impl Workflow for PaymentConfirmationWorkflow {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, WorkflowError>> + Send>> {
         Box::pin(async move {
             let input_data =
-                input.ok_or_else(|| WorkflowError::ExecutionFailed("Missing input".to_string()))?;
+                input.ok_or_else(|| WorkflowError::execution_failed("Missing input"))?;
             let payment_input: PaymentInput = serde_json::from_slice(&input_data)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             println!(
                 "[WORKFLOW] Starting payment confirmation for order: {}",
@@ -233,7 +232,7 @@ impl Workflow for PaymentConfirmationWorkflow {
                 })?;
 
             let payment_intent: PaymentIntent = serde_json::from_slice(&payment_intent_bytes)
-                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                .map_err(WorkflowError::execution_failed_error)?;
 
             println!(
                 "[WORKFLOW] Payment initiated: {} | Waiting for confirmation signal...",
@@ -265,7 +264,7 @@ impl Workflow for PaymentConfirmationWorkflow {
                                 payment_input.customer_email.clone(),
                             );
                             let receipt_bytes = serde_json::to_vec(&receipt_input)
-                                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                                .map_err(WorkflowError::execution_failed_error)?;
 
                             ctx.execute_activity("send_receipt_email", Some(receipt_bytes), options.clone())
                                 .await
@@ -286,10 +285,10 @@ impl Workflow for PaymentConfirmationWorkflow {
                             };
 
                             return serde_json::to_vec(&result)
-                                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()));
+                                .map_err(WorkflowError::execution_failed_error);
                         }
                     }
-                    Err(WorkflowError::ExecutionFailed("Invalid signal data".to_string()))
+                    Err(WorkflowError::execution_failed("Invalid signal data"))
                 }
 
                 // Handle payment failed signal
@@ -308,7 +307,7 @@ impl Workflow for PaymentConfirmationWorkflow {
                                 payment_input.customer_email.clone(),
                             );
                             let failure_bytes = serde_json::to_vec(&failure_input)
-                                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                                .map_err(WorkflowError::execution_failed_error)?;
 
                             ctx.execute_activity("send_failure_notification", Some(failure_bytes), options.clone())
                                 .await
@@ -329,10 +328,10 @@ impl Workflow for PaymentConfirmationWorkflow {
                             };
 
                             return serde_json::to_vec(&result)
-                                .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()));
+                                .map_err(WorkflowError::execution_failed_error);
                         }
                     }
-                    Err(WorkflowError::ExecutionFailed("Invalid signal data".to_string()))
+                    Err(WorkflowError::execution_failed("Invalid signal data"))
                 }
 
                 // Handle timeout
@@ -346,7 +345,7 @@ impl Workflow for PaymentConfirmationWorkflow {
                         payment_input.customer_email.clone(),
                     );
                     let failure_bytes = serde_json::to_vec(&failure_input)
-                        .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))?;
+                        .map_err(WorkflowError::execution_failed_error)?;
 
                     ctx.execute_activity("send_failure_notification", Some(failure_bytes), options.clone())
                         .await
@@ -367,7 +366,7 @@ impl Workflow for PaymentConfirmationWorkflow {
                     };
 
                     serde_json::to_vec(&result)
-                        .map_err(|e| WorkflowError::ExecutionFailed(e.to_string()))
+                        .map_err(WorkflowError::execution_failed_error)
                 }
             }
         })

@@ -52,8 +52,8 @@ async fn insert_value(
             Ok(value)
         })
         .await
-        .map_err(|e| ActivityError::ExecutionFailed(format!("join error: {e}")))?
-        .map_err(|e| ActivityError::ExecutionFailed(format!("sqlite error: {e}")))?;
+        .map_err(|e| ActivityError::execution_failed(format!("join error: {e}")))?
+        .map_err(|e| ActivityError::execution_failed(format!("sqlite error: {e}")))?;
     Ok(inserted)
 }
 
@@ -67,8 +67,8 @@ async fn check_pool(ctx: WorkflowContext, conn: DbConn, input: i64) -> Result<i6
             Ok(count)
         })
         .await
-        .map_err(|e| WorkflowError::ExecutionFailed(format!("join error: {e}")))?
-        .map_err(|e| WorkflowError::ExecutionFailed(format!("sqlite error: {e}")))?;
+        .map_err(|e| WorkflowError::execution_failed(format!("join error: {e}")))?
+        .map_err(|e| WorkflowError::execution_failed(format!("sqlite error: {e}")))?;
     ctx.sleep(Duration::from_millis(1)).await;
     Ok(existing + input)
 }
