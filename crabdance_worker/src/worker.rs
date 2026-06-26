@@ -11,7 +11,7 @@ use crate::handlers::decision::DecisionTaskHandler;
 use crate::local_activity_queue::LocalActivityQueue;
 use crate::pollers::{ActivityTaskPoller, DecisionTaskPoller, PollerManager};
 use crate::registry::Registry;
-use crabdance_core::{CadenceError, TransportError};
+use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, TransportError};
 use crabdance_proto::workflow_service::WorkflowService;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -200,6 +200,7 @@ pub struct CadenceWorker {
     service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
     poller_manager: Arc<Mutex<Option<PollerManager>>>,
     resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    data_converter: Arc<dyn DataConverter>,
 }
 
 impl CadenceWorker {
@@ -218,6 +219,7 @@ impl CadenceWorker {
             service,
             poller_manager: Arc::new(Mutex::new(None)),
             resources: None,
+            data_converter: Arc::new(JsonDataConverter),
         }
     }
 
@@ -226,6 +228,15 @@ impl CadenceWorker {
         R: Send + Sync + 'static,
     {
         self.resources = Some(Arc::new(resources));
+        self
+    }
+
+    /// Configure the payload converter for this worker. It is threaded into the
+    /// workflow executor and activity handlers so all workflow/activity code on
+    /// this worker encodes and decodes through the same `DataConverter` seam.
+    /// Defaults to JSON.
+    pub fn with_data_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
+        self.data_converter = converter;
         self
     }
 }
@@ -248,17 +259,21 @@ impl Worker for CadenceWorker {
             self.registry.clone(),
             local_activity_queue.clone(),
             self.resources.clone(),
-        );
+        )
+        .with_data_converter(self.data_converter.clone());
 
         // Create executor
-        let executor = Arc::new(WorkflowExecutor::new(
-            self.registry.clone(),
-            cache,
-            self.options.clone(),
-            self.task_list.clone(),
-            local_activity_queue,
-            self.resources.clone(),
-        ));
+        let executor = Arc::new(
+            WorkflowExecutor::new(
+                self.registry.clone(),
+                cache,
+                self.options.clone(),
+                self.task_list.clone(),
+                local_activity_queue,
+                self.resources.clone(),
+            )
+            .with_data_converter(self.data_converter.clone()),
+        );
 
         // Create decision handler
         let decision_handler = Arc::new(DecisionTaskHandler::new(
@@ -268,12 +283,15 @@ impl Worker for CadenceWorker {
         ));
 
         // Create activity handler
-        let activity_handler = Arc::new(ActivityTaskHandler::new(
-            self.service.clone(),
-            self.registry.clone(),
-            self.options.identity.clone(),
-            self.resources.clone(),
-        ));
+        let activity_handler = Arc::new(
+            ActivityTaskHandler::new(
+                self.service.clone(),
+                self.registry.clone(),
+                self.options.identity.clone(),
+                self.resources.clone(),
+            )
+            .with_data_converter(self.data_converter.clone()),
+        );
 
         // Create decision pollers
         for i in 0..self.options.max_concurrent_decision_task_pollers {

@@ -2,7 +2,7 @@
 
 use crate::heartbeat::HeartbeatManager;
 use crate::registry::{ActivityError, Registry};
-use crabdance_core::{CadenceError, TransportError};
+use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, TransportError};
 use crabdance_proto::workflow_service::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -17,6 +17,7 @@ pub struct ActivityTaskHandler {
     heartbeat_manager: Arc<HeartbeatManager>,
     identity: String,
     resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    data_converter: Arc<dyn DataConverter>,
 }
 
 struct ActivityRuntimeImpl {
@@ -49,7 +50,15 @@ impl ActivityTaskHandler {
             heartbeat_manager,
             identity,
             resources,
+            data_converter: Arc::new(JsonDataConverter),
         }
+    }
+
+    /// Inject the worker's configured payload converter, threaded into every
+    /// `ActivityContext` this handler builds.
+    pub fn with_data_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
+        self.data_converter = converter;
+        self
     }
 
     /// Handle an activity task
@@ -155,7 +164,8 @@ impl ActivityTaskHandler {
                 resources.clone(),
             ),
             None => crabdance_activity::ActivityContext::new(activity_info, Some(runtime)),
-        };
+        }
+        .with_converter(self.data_converter.clone());
 
         // TODO: Pass worker stop channel to context if available
 

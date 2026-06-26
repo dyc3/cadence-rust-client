@@ -21,6 +21,7 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
+erased-serde = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 deadpool-sqlite = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }

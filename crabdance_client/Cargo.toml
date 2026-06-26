@@ -15,7 +15,6 @@ async-trait = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tonic = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 chrono = { workspace = true, features = ["serde"] }
@@ -26,6 +25,5 @@ parking_lot = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 chrono = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 rsa = { workspace = true, features = ["pem"] }
 rand = { workspace = true }

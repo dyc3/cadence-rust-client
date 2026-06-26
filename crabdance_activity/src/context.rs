@@ -3,7 +3,7 @@
 //! This module provides the API for implementing activities including
 //! heartbeats, context access, and activity information.
 
-use crabdance_core::{ResourceContext, RetryPolicy};
+use crabdance_core::{DataConverter, JsonDataConverter, ResourceContext, RetryPolicy};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -24,6 +24,8 @@ pub struct ActivityContext {
     worker_stop_channel: Option<tokio::sync::watch::Receiver<bool>>,
     runtime: Option<std::sync::Arc<dyn ActivityRuntime>>,
     resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    // Configured payload converter (the worker injects its own; defaults to JSON)
+    converter: Arc<dyn DataConverter>,
 }
 
 impl ActivityContext {
@@ -37,6 +39,7 @@ impl ActivityContext {
             activity_info,
             runtime,
             resources: None,
+            converter: Arc::new(JsonDataConverter),
         }
     }
 
@@ -85,6 +88,7 @@ impl ActivityContext {
             activity_info,
             runtime: None, // Local activities don't have runtime
             resources: None,
+            converter: Arc::new(JsonDataConverter),
         }
     }
 
@@ -118,7 +122,26 @@ impl ActivityContext {
             activity_info,
             runtime,
             resources: Some(resources),
+            converter: Arc::new(JsonDataConverter),
         }
+    }
+
+    /// Inject the configured payload converter (the worker calls this to thread
+    /// its `DataConverter` into activity code; defaults to JSON otherwise).
+    pub fn with_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
+        self.converter = converter;
+        self
+    }
+
+    /// Borrow the configured payload converter.
+    pub fn converter(&self) -> &dyn DataConverter {
+        self.converter.as_ref()
+    }
+
+    /// Clone the configured payload converter. Used by the `#[activity]` macro
+    /// to encode/decode payloads through the seam.
+    pub fn converter_arc(&self) -> Arc<dyn DataConverter> {
+        self.converter.clone()
     }
 
     /// Set the worker stop channel
