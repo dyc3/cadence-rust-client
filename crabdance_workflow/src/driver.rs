@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use crabdance_core::WorkflowInfo;
+use serde::{Deserialize, Serialize};
 
 use crate::commands::{StartTimerCommand, WorkflowCommand};
 use crate::context::{CommandSink, WorkflowContext, WorkflowContextBuilder};
@@ -37,7 +38,7 @@ const MAX_DRIVER_ITERATIONS: usize = 1_000_000;
 /// projection of each submission. The recorded sequence is what the replay harness
 /// asserts against history (the emitted-command sequence) and what the testsuite
 /// inspects to verify a workflow scheduled the operations it was expected to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandRecord {
     ScheduleActivity {
         activity_id: String,
