@@ -185,6 +185,8 @@ pub struct WorkflowContext {
     current_time_nanos: Arc<std::sync::atomic::AtomicI64>,
     // Version markers cache for workflow versioning
     change_versions: Arc<Mutex<HashMap<String, i32>>>,
+    // Search attributes, seeded from WorkflowInfo and updated by upsert_search_attributes.
+    search_attributes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     // Local activity results cache for replay
     local_activity_results:
         Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
@@ -203,10 +205,16 @@ pub struct WorkflowContext {
     converter: Arc<dyn DataConverter>,
 }
 
+/// Build the initial search-attribute cache from a workflow's `WorkflowInfo`.
+fn seed_search_attributes(workflow_info: &WorkflowInfo) -> HashMap<String, Vec<u8>> {
+    workflow_info.search_attributes.clone().unwrap_or_default()
+}
+
 impl WorkflowContext {
     pub fn new(workflow_info: WorkflowInfo) -> Self {
         // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
+        let search_attributes = seed_search_attributes(&workflow_info);
 
         Self {
             workflow_info,
@@ -220,6 +228,7 @@ impl WorkflowContext {
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions: Arc::new(Mutex::new(HashMap::new())),
+            search_attributes: Arc::new(Mutex::new(search_attributes)),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
             dispatcher: Arc::new(Mutex::new(None)),
             pending_spawn_tasks: Arc::new(Mutex::new(None)),
@@ -248,6 +257,7 @@ impl WorkflowContext {
     ) -> Self {
         // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
+        let search_attributes = seed_search_attributes(&workflow_info);
 
         Self {
             workflow_info,
@@ -261,6 +271,7 @@ impl WorkflowContext {
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions,
+            search_attributes: Arc::new(Mutex::new(search_attributes)),
             local_activity_results,
             dispatcher: Arc::new(Mutex::new(None)),
             pending_spawn_tasks: Arc::new(Mutex::new(None)),
@@ -797,9 +808,39 @@ impl WorkflowContext {
         handlers.insert(query_type.to_string(), Box::new(handler));
     }
 
-    /// Upsert search attributes
-    pub fn upsert_search_attributes(&self, _search_attributes: Vec<(String, Vec<u8>)>) {
-        // TODO: Implement search attributes upsert
+    /// Upsert (insert or update) workflow search attributes.
+    ///
+    /// The attributes are merged into the workflow's search-attribute set and, during
+    /// execution, an `UpsertWorkflowSearchAttributes` decision is emitted through the
+    /// deterministic command pipeline (synchronously and in order, like a marker — not
+    /// a detached task). On replay the local set is updated from the seeded value and
+    /// no decision is re-emitted, mirroring how versions and side effects replay.
+    pub fn upsert_search_attributes(&self, search_attributes: Vec<(String, Vec<u8>)>) {
+        if search_attributes.is_empty() {
+            return;
+        }
+
+        // Merge into the local set so get_search_attributes reflects the upsert
+        // immediately, on both the execution and replay paths.
+        {
+            let mut current = self.search_attributes.lock().unwrap();
+            for (key, value) in &search_attributes {
+                current.insert(key.clone(), value.clone());
+            }
+        }
+
+        // Emit the decision only during execution; on replay it is already in history.
+        if !self.is_replay.load(Ordering::SeqCst) {
+            let command = crate::commands::UpsertSearchAttributesCommand { search_attributes };
+            self.command_sink
+                .submit_now(WorkflowCommand::UpsertSearchAttributes(command));
+        }
+    }
+
+    /// Get the workflow's current search attributes (initial set merged with any
+    /// upserts performed during the workflow).
+    pub fn get_search_attributes(&self) -> HashMap<String, Vec<u8>> {
+        self.search_attributes.lock().unwrap().clone()
     }
 
     /// Sleep for a duration (workflow-aware)

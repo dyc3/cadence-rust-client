@@ -347,6 +347,35 @@ mod tests {
     }
 
     #[test]
+    fn upsert_search_attributes_is_not_re_emitted_on_replay() {
+        // On replay the upsert decision is already in history, so the workflow must not
+        // re-emit it — the only schedulable command is the activity. The attribute is
+        // still visible to the workflow from the updated local set.
+        async fn upsert_then_activity(
+            ctx: WorkflowContext,
+        ) -> Result<Vec<u8>, DefaultWorkflowError> {
+            ctx.upsert_search_attributes(vec![("CustomKeyword".to_string(), b"\"x\"".to_vec())]);
+            assert!(ctx.get_search_attributes().contains_key("CustomKeyword"));
+            ctx.execute_activity("charge", None, Default::default()).await
+        }
+
+        let history = RecordedHistory {
+            start_time_nanos: 0,
+            events: vec![RecordedEvent::ActivityCompleted {
+                activity_id: "0".to_string(),
+                result: b"ok".to_vec(),
+            }],
+            expected_commands: vec![CommandRecord::ScheduleActivity {
+                activity_id: "0".to_string(),
+                activity_type: "charge".to_string(),
+            }],
+        };
+
+        replay_workflow(&history, "upsert_workflow", upsert_then_activity)
+            .expect("upsert must not be re-emitted on replay");
+    }
+
+    #[test]
     fn blocks_when_recorded_result_missing() {
         // History records no result for the activity, so replay cannot make progress.
         let history = RecordedHistory {

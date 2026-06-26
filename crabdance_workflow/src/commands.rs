@@ -17,6 +17,7 @@ pub enum WorkflowCommand {
     SignalExternalWorkflow(SignalExternalWorkflowCommand),
     RequestCancelExternalWorkflow(RequestCancelExternalWorkflowCommand),
     RecordMarker(RecordMarkerCommand),
+    UpsertSearchAttributes(UpsertSearchAttributesCommand),
 }
 
 #[derive(Debug)]
@@ -102,4 +103,10 @@ pub struct RecordMarkerCommand {
     pub marker_name: String,
     pub details: Vec<u8>,
     pub header: Option<crabdance_proto::shared::Header>,
+}
+
+#[derive(Debug)]
+pub struct UpsertSearchAttributesCommand {
+    /// Search attribute key/value pairs; values are encoded payloads (typically JSON).
+    pub search_attributes: Vec<(String, Vec<u8>)>,
 }

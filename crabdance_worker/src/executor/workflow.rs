@@ -566,6 +566,36 @@ impl CommandSink for ReplayCommandSink {
                     // Return immediately since markers are synchronous
                     return Ok(Vec::new());
                 }
+                WorkflowCommand::UpsertSearchAttributes(cmd) => {
+                    debug!("recording upsert search attributes");
+
+                    let indexed_fields = cmd.search_attributes.into_iter().collect();
+
+                    let attrs = crabdance_proto::shared::UpsertWorkflowSearchAttributesDecisionAttributes {
+                        search_attributes: Some(crabdance_proto::shared::SearchAttributes {
+                            indexed_fields,
+                        }),
+                    };
+
+                    let decision_id = format!(
+                        "upsert_search_attributes_{}",
+                        marker_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    );
+
+                    let decision = Box::new(
+                        crabdance_workflow::state_machine::UpsertSearchAttributesDecisionStateMachine::new(
+                            decision_id,
+                            attrs,
+                        ),
+                    );
+
+                    let mut engine_lock = engine.lock().unwrap();
+                    engine_lock.decisions_helper.add_decision(decision);
+                    drop(engine_lock);
+
+                    // Return immediately since this decision is synchronous.
+                    return Ok(Vec::new());
+                }
                 _ => unimplemented!("Command not supported"),
             }
             std::future::pending().await

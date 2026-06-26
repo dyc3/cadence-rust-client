@@ -69,6 +69,9 @@ pub enum CommandRecord {
     RecordMarker {
         marker_name: String,
     },
+    UpsertSearchAttributes {
+        keys: Vec<String>,
+    },
     ContinueAsNewWorkflow {
         workflow_type: String,
     },
@@ -110,6 +113,9 @@ impl CommandRecord {
             }
             WorkflowCommand::RecordMarker(c) => CommandRecord::RecordMarker {
                 marker_name: c.marker_name.clone(),
+            },
+            WorkflowCommand::UpsertSearchAttributes(c) => CommandRecord::UpsertSearchAttributes {
+                keys: c.search_attributes.iter().map(|(k, _)| k.clone()).collect(),
             },
             WorkflowCommand::ContinueAsNewWorkflow(c) => CommandRecord::ContinueAsNewWorkflow {
                 workflow_type: c.workflow_type.clone(),
@@ -254,9 +260,11 @@ impl CommandSink for InMemoryCommandSink {
                     key,
                 })
             }
-            // Markers (side effects, mutable side effects, version, search attributes)
-            // are deterministic acknowledgements in an in-memory run.
-            WorkflowCommand::RecordMarker(_) => Box::pin(async { Ok(Vec::new()) }),
+            // Markers (side effects, mutable side effects, version) and search-attribute
+            // upserts are deterministic acknowledgements in an in-memory run.
+            WorkflowCommand::RecordMarker(_) | WorkflowCommand::UpsertSearchAttributes(_) => {
+                Box::pin(async { Ok(Vec::new()) })
+            }
             other => match self.resolver.resolve(&other) {
                 Resolution::Done(result) => Box::pin(async move { result }),
                 Resolution::Blocked => Box::pin(std::future::pending()),
@@ -549,6 +557,37 @@ mod tests {
             commands[1],
             CommandRecord::ScheduleActivity { .. }
         ));
+    }
+
+    #[test]
+    fn upsert_search_attributes_emits_command_and_updates_set() {
+        let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = driver.context();
+        let read_ctx = ctx.clone();
+
+        let outcome = driver.run(async move {
+            ctx.upsert_search_attributes(vec![(
+                "CustomKeyword".to_string(),
+                b"\"orders\"".to_vec(),
+            )]);
+            Ok(Vec::new())
+        });
+
+        assert!(matches!(outcome, DriverOutcome::Completed(Ok(_))));
+        // The decision was emitted through the deterministic pipeline...
+        let commands = driver.recorded_commands();
+        assert_eq!(
+            commands,
+            vec![CommandRecord::UpsertSearchAttributes {
+                keys: vec!["CustomKeyword".to_string()]
+            }]
+        );
+        // ...and the attribute is visible to the workflow.
+        let attrs = read_ctx.get_search_attributes();
+        assert_eq!(
+            attrs.get("CustomKeyword").map(|v| v.as_slice()),
+            Some(b"\"orders\"".as_slice())
+        );
     }
 
     #[test]
