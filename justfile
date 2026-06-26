@@ -5,6 +5,13 @@ _default:
 gen-proto:
     cargo build -p crabdance_proto
 
+# Determinism / replay gate: run the replay harness and the in-memory driver tests.
+# A failure here means a workflow no longer replays its recorded history
+# deterministically (the emitted command sequence diverged).
+replay-gate:
+    cargo test -p crabdance_testsuite --lib replay::
+    cargo test -p crabdance_workflow --lib driver::
+
 # Run gRPC integration tests
 test-grpc-integration:
     cargo test -p crabdance --test grpc_integration -- --ignored --test-threads=1 --nocapture
