@@ -135,6 +135,25 @@ pub trait CommandSink: Send + Sync {
         &self,
         command: WorkflowCommand,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send>>;
+
+    /// Submit a fire-and-forget command synchronously and in order, without yielding
+    /// to the async runtime.
+    ///
+    /// This exists for markers recorded from *synchronous* workflow APIs such as
+    /// [`WorkflowContext::get_version`], where spawning a detached `tokio` task would
+    /// escape the deterministic dispatcher (the marker could be recorded out of order,
+    /// late, or not at all — a replay-corrupting bug). Marker submissions resolve
+    /// immediately, so the default implementation drives the returned future with a
+    /// single no-op poll, recording the command in place before returning.
+    fn submit_now(&self, command: WorkflowCommand) {
+        let mut future = self.submit(command);
+        let waker = futures::task::noop_waker();
+        let mut cx = std::task::Context::from_waker(&waker);
+        // Markers complete on the first poll; we deliberately do not loop, since a
+        // Pending result would mean a non-marker (genuinely async) command was routed
+        // through the synchronous path.
+        let _ = future.as_mut().poll(&mut cx);
+    }
 }
 
 /// No-op command sink for testing/initialization
@@ -718,8 +737,13 @@ impl WorkflowContext {
         // Step 3: Validate version is in acceptable range
         Self::validate_version(change_id, version, min_supported, max_supported);
 
-        // Step 4: Record version marker if not in replay and not DEFAULT_VERSION
-        // Note: We don't await here to match Go client's synchronous behavior
+        // Step 4: Record version marker if not in replay and not DEFAULT_VERSION.
+        //
+        // `get_version` is synchronous (matching Go's `GetVersion`), but the marker
+        // must be recorded deterministically and in order. We submit it through the
+        // command pipeline synchronously via `submit_now` rather than a detached
+        // `tokio::spawn`, which would escape the deterministic dispatcher and could
+        // record the marker out of order, late, or not at all on replay.
         if !is_replay && version != DEFAULT_VERSION {
             use crate::side_effect_serialization::encode_version_details;
 
@@ -730,13 +754,8 @@ impl WorkflowContext {
                 header: None,
             };
 
-            // Submit command without awaiting (Go client is synchronous)
-            let command_sink = self.command_sink.clone();
-            tokio::spawn(async move {
-                let _ = command_sink
-                    .submit(WorkflowCommand::RecordMarker(command))
-                    .await;
-            });
+            self.command_sink
+                .submit_now(WorkflowCommand::RecordMarker(command));
         }
 
         // Step 5: Cache version for this changeID

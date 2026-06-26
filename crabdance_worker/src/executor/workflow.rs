@@ -124,6 +124,10 @@ struct ReplayCommandSink {
     pending_local_activity_submissions: Arc<Mutex<Vec<PendingLocalActivitySubmission>>>,
     // Map of activity_id to waker for unblocking workflow when local activity completes
     local_activity_wakers: LocalActivityWakers,
+    // Deterministic per-decision-task counter for generating stable marker IDs. Using
+    // wall-clock time here would produce a different ID on replay than on the original
+    // execution, corrupting replay matching.
+    marker_sequence: Arc<std::sync::atomic::AtomicU64>,
 }
 
 // Represents a local activity that needs to be executed
@@ -143,6 +147,7 @@ impl CommandSink for ReplayCommandSink {
         let default_task_list = self.default_task_list.clone();
         let pending_local_activity_submissions = self.pending_local_activity_submissions.clone();
         let local_activity_wakers = self.local_activity_wakers.clone();
+        let marker_sequence = self.marker_sequence.clone();
 
         Box::pin(async move {
             debug!(?command, "submitting workflow command");
@@ -536,16 +541,14 @@ impl CommandSink for ReplayCommandSink {
                         header: cmd.header,
                     };
 
-                    // Generate a unique marker ID based on marker name and sequence
-                    // Generate a unique marker ID based on marker name and timestamp
-                    let marker_id = format!("{}_{}", cmd.marker_name, {
-                        // Use timestamp nanos as a simple unique identifier
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_nanos()
-                            .to_string()
-                    });
+                    // Generate a deterministic marker ID from the marker name and a
+                    // per-decision-task sequence counter. This is stable across replay,
+                    // unlike a wall-clock timestamp.
+                    let marker_id = format!(
+                        "{}_{}",
+                        cmd.marker_name,
+                        marker_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    );
 
                     let decision = Box::new(
                         crabdance_workflow::state_machine::MarkerDecisionStateMachine::new(
@@ -739,6 +742,7 @@ impl WorkflowExecutor {
             workflow_info: workflow_info.clone(),
             pending_local_activity_submissions: pending_local_activity_submissions.clone(),
             local_activity_wakers: local_activity_wakers.clone(),
+            marker_sequence: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         });
 
         // Extract signals and side effect caches from engine (requires lock)
@@ -976,13 +980,10 @@ impl WorkflowExecutor {
                                 header: None,
                             };
 
+                            // The activity_id is already deterministic and unique, so it
+                            // alone yields a stable, replay-safe marker ID (no wall-clock).
                             let marker_id =
-                                format!("local_activity_{}_{}", submission.activity_id, {
-                                    std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_nanos()
-                                });
+                                format!("local_activity_{}", submission.activity_id);
 
                             let decision = Box::new(
                                 crabdance_workflow::state_machine::MarkerDecisionStateMachine::new(

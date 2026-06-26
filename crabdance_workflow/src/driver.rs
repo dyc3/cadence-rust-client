@@ -524,6 +524,34 @@ mod tests {
     }
 
     #[test]
+    fn get_version_records_marker_synchronously_in_order() {
+        // Regression test for the get_version determinism leak: the version marker must
+        // be recorded synchronously and in order (before the subsequent activity),
+        // not via a detached tokio::spawn that escapes the dispatcher.
+        let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = driver.context();
+
+        let _ = driver.run(async move {
+            let _v = ctx.get_version("change-1", crate::context::DEFAULT_VERSION, 1);
+            ctx.execute_activity("after", None, Default::default()).await?;
+            Ok(Vec::new())
+        });
+
+        let commands = driver.recorded_commands();
+        assert_eq!(
+            commands[0],
+            CommandRecord::RecordMarker {
+                marker_name: "Version".to_string()
+            },
+            "version marker must be recorded first, in order"
+        );
+        assert!(matches!(
+            commands[1],
+            CommandRecord::ScheduleActivity { .. }
+        ));
+    }
+
+    #[test]
     fn records_command_sequence() {
         let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
         let ctx = driver.context();
