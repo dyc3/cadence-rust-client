@@ -7,6 +7,7 @@ pub mod channel;
 pub mod commands;
 pub mod context;
 pub mod dispatcher;
+pub mod driver;
 pub mod future;
 pub mod local_activity;
 pub mod side_effect_serialization;
@@ -18,6 +19,9 @@ pub use context::*;
 pub use crabdance_core::FromResources;
 pub use crabdance_macros::{call_activity, workflow};
 pub use dispatcher::*;
+pub use driver::{
+    CommandRecord, CommandResolver, DriverOutcome, InMemoryCommandSink, Resolution, WorkflowDriver,
+};
 pub use future::*;
 pub use local_activity::*;
 pub use side_effect_serialization::*;
