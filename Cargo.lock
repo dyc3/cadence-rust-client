@@ -393,6 +393,7 @@ dependencies = [
  "crabdance_proto",
  "jsonwebtoken",
  "parking_lot",
+ "prost-types",
  "rand",
  "rsa",
  "serde",

@@ -100,6 +100,17 @@ pub trait Client: Send + Sync {
         reason: Option<&str>,
     ) -> CadenceResult<()>;
 
+    /// Cancel a workflow execution with options (e.g. an explicit cancel reason).
+    ///
+    /// Mirrors Go's `Client.CancelWorkflow(ctx, id, runID, opts...)` with
+    /// `WithCancelReason`.
+    async fn cancel_workflow_with_options(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        options: CancelWorkflowOptions,
+    ) -> CadenceResult<()>;
+
     /// Terminate a workflow execution
     async fn terminate_workflow(
         &self,
@@ -174,6 +185,14 @@ pub trait Client: Send + Sync {
 
     /// List workflow executions with query
     async fn list_workflows(
+        &self,
+        request: ListWorkflowExecutionsRequest,
+    ) -> CadenceResult<ListWorkflowExecutionsResponse>;
+
+    /// List archived workflow executions with query.
+    ///
+    /// Mirrors Go's `Client.ListArchivedWorkflow`.
+    async fn list_archived_workflows(
         &self,
         request: ListWorkflowExecutionsRequest,
     ) -> CadenceResult<ListWorkflowExecutionsResponse>;
@@ -257,6 +276,21 @@ pub struct StartWorkflowOptions {
     pub search_attributes: Option<HashMap<String, Vec<u8>>>,
     pub header: Option<HashMap<String, Vec<u8>>>,
     pub delay_start: Option<Duration>,
+    /// Amount to jitter the workflow start by. For example, with `10s` the
+    /// workflow starts at a random point in the 0-10s window. Mirrors Go's
+    /// `StartWorkflowOptions.JitterStart`.
+    pub jitter_start: Option<Duration>,
+    /// Specific wall-clock time for the first run to start at. When set it
+    /// overrides `delay_start`/`jitter_start` for the first run. Mirrors Go's
+    /// `StartWorkflowOptions.FirstRunAt`.
+    pub first_run_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Policy for handling cron workflow overlaps when a previous run is still
+    /// running. Mirrors Go's `StartWorkflowOptions.CronOverlapPolicy`.
+    pub cron_overlap_policy: CronOverlapPolicy,
+    /// Policy for selecting the active cluster to start the execution on for
+    /// active-active domains. Mirrors Go's
+    /// `StartWorkflowOptions.ActiveClusterSelectionPolicy`.
+    pub active_cluster_selection_policy: Option<ActiveClusterSelectionPolicy>,
 }
 
 impl Default for StartWorkflowOptions {
@@ -274,8 +308,66 @@ impl Default for StartWorkflowOptions {
             search_attributes: None,
             header: None,
             delay_start: None,
+            jitter_start: None,
+            first_run_at: None,
+            cron_overlap_policy: CronOverlapPolicy::default(),
+            active_cluster_selection_policy: None,
         }
     }
+}
+
+/// Policy for handling cron workflow overlaps when the previous scheduled run is
+/// still running by the time the next run is scheduled.
+///
+/// Mirrors the Go/Thrift `CronOverlapPolicy`. The default is [`Skipped`], which
+/// matches Go's zero value.
+///
+/// [`Skipped`]: CronOverlapPolicy::Skipped
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CronOverlapPolicy {
+    /// Skip the next scheduled run if the previous one is still running.
+    #[default]
+    Skipped,
+    /// Buffer (at most) one run and start it immediately after the previous,
+    /// overrunning run completes.
+    BufferOne,
+}
+
+impl CronOverlapPolicy {
+    /// Map to the protobuf `CronOverlapPolicy` discriminant
+    /// (`1`=Skipped, `2`=BufferOne; `0`=Invalid is never emitted by the client).
+    fn to_proto(self) -> i32 {
+        match self {
+            CronOverlapPolicy::Skipped => 1,
+            CronOverlapPolicy::BufferOne => 2,
+        }
+    }
+}
+
+/// Policy for selecting the active cluster to start a workflow execution on for
+/// active-active domains. Mirrors Go's `ActiveClusterSelectionPolicy`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ActiveClusterSelectionPolicy {
+    /// Cluster attribute identifying the sub-group whose active cluster should
+    /// host the workflow. When absent the domain's active cluster is used.
+    pub cluster_attribute: Option<ClusterAttribute>,
+}
+
+/// A cluster attribute (scope + name) used by [`ActiveClusterSelectionPolicy`].
+/// Mirrors Go's `ClusterAttribute`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClusterAttribute {
+    pub scope: String,
+    pub name: String,
+}
+
+/// Options for cancelling a workflow execution. Mirrors the variadic options of
+/// Go's `Client.CancelWorkflow` (e.g. `WithCancelReason`).
+#[derive(Debug, Clone, Default)]
+pub struct CancelWorkflowOptions {
+    /// Explicit, human-readable cancellation reason recorded as the request
+    /// `cause`. Mirrors Go's `WithCancelReason`.
+    pub cause: Option<String>,
 }
 
 /// Async workflow execution (returned by async start)
@@ -287,11 +379,15 @@ pub struct WorkflowExecutionAsync {
 /// Workflow run handle for retrieving results
 #[async_trait]
 pub trait WorkflowRun: Send + Sync {
-    /// Get the run ID
+    /// Get the workflow ID. Mirrors Go's `WorkflowRun.GetID`.
+    fn get_id(&self) -> &str;
+    /// Get the run ID. Mirrors Go's `WorkflowRun.GetRunID`.
     fn run_id(&self) -> &str;
-    /// Get the workflow execution result (blocking)
+    /// Get the workflow execution result, blocking until the workflow closes.
+    /// Mirrors Go's `WorkflowRun.Get`.
     async fn get(&self) -> CadenceResult<Option<Vec<u8>>>;
-    /// Get with timeout
+    /// Get the workflow execution result, returning a timeout error if the
+    /// workflow has not closed within `timeout`.
     async fn get_with_timeout(&self, timeout: Duration) -> CadenceResult<Option<Vec<u8>>>;
 }
 
@@ -389,6 +485,11 @@ pub struct ListWorkflowExecutionsRequest {
     pub execution_filter: Option<WorkflowExecutionFilter>,
     pub type_filter: Option<WorkflowTypeFilter>,
     pub status_filter: Option<WorkflowExecutionCloseStatus>,
+    /// Visibility query string used by the query-based APIs (`list_workflows`,
+    /// `scan_workflows`, `list_archived_workflows`). Ignored by the filter-based
+    /// `list_open_workflows`/`list_closed_workflows`. Mirrors the `Query` field
+    /// of Go's `ListWorkflowExecutionsRequest`.
+    pub query: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -671,9 +772,11 @@ impl Client for WorkflowClient {
         // So I should implement the shared logic in a helper or directly here.
 
         let request_id = Uuid::new_v4().to_string();
+        let workflow_id = options.id.clone();
+        let extensions = build_start_extensions(&options);
         let request = StartWorkflowExecutionRequest {
             domain: self.domain.clone(),
-            workflow_id: options.id.clone(),
+            workflow_id: workflow_id.clone(),
             workflow_type: Some(WorkflowType {
                 name: workflow_type.to_string(),
             }),
@@ -701,7 +804,7 @@ impl Client for WorkflowClient {
                 .map(|s| SearchAttributes { indexed_fields: s }),
             header: options.header.map(|h| Header { fields: h }),
             delay_start_seconds: options.delay_start.map(|d| d.as_secs() as i32),
-            jitter_start_seconds: None,
+            jitter_start_seconds: options.jitter_start.map(|d| d.as_secs() as i32),
             first_execution_run_id: None,
             first_decision_task_backoff_seconds: None,
             partition_config: None,
@@ -709,13 +812,11 @@ impl Client for WorkflowClient {
 
         let _response = self
             .service
-            .start_workflow_execution(request)
+            .start_workflow_execution_with_extensions(request, extensions)
             .await
             .map_err(|e| CadenceError::Other(e.to_string()))?;
 
-        Ok(WorkflowExecutionAsync {
-            workflow_id: options.id,
-        })
+        Ok(WorkflowExecutionAsync { workflow_id })
     }
 
     async fn execute_workflow(
@@ -726,6 +827,7 @@ impl Client for WorkflowClient {
     ) -> CadenceResult<Box<dyn WorkflowRun>> {
         let request_id = Uuid::new_v4().to_string();
         let workflow_id = options.id.clone();
+        let extensions = build_start_extensions(&options);
 
         let request = StartWorkflowExecutionRequest {
             domain: self.domain.clone(),
@@ -757,7 +859,7 @@ impl Client for WorkflowClient {
                 .map(|s| SearchAttributes { indexed_fields: s }),
             header: options.header.map(|h| Header { fields: h }),
             delay_start_seconds: options.delay_start.map(|d| d.as_secs() as i32),
-            jitter_start_seconds: None,
+            jitter_start_seconds: options.jitter_start.map(|d| d.as_secs() as i32),
             first_execution_run_id: None,
             first_decision_task_backoff_seconds: None,
             partition_config: None,
@@ -765,7 +867,7 @@ impl Client for WorkflowClient {
 
         let response = self
             .service
-            .start_workflow_execution(request)
+            .start_workflow_execution_with_extensions(request, extensions)
             .await
             .map_err(|e| CadenceError::Other(e.to_string()))?;
 
@@ -901,6 +1003,22 @@ impl Client for WorkflowClient {
         run_id: Option<&str>,
         reason: Option<&str>,
     ) -> CadenceResult<()> {
+        self.cancel_workflow_with_options(
+            workflow_id,
+            run_id,
+            CancelWorkflowOptions {
+                cause: reason.map(|s| s.to_string()),
+            },
+        )
+        .await
+    }
+
+    async fn cancel_workflow_with_options(
+        &self,
+        workflow_id: &str,
+        run_id: Option<&str>,
+        options: CancelWorkflowOptions,
+    ) -> CadenceResult<()> {
         let request = RequestCancelWorkflowExecutionRequest {
             domain: self.domain.clone(),
             workflow_execution: Some(make_proto_execution(
@@ -909,7 +1027,7 @@ impl Client for WorkflowClient {
             )),
             identity: self.options.identity.clone(),
             request_id: Uuid::new_v4().to_string(),
-            cause: reason.map(|s| s.to_string()),
+            cause: options.cause,
             first_execution_run_id: None,
         };
         self.service
@@ -1223,21 +1341,70 @@ impl Client for WorkflowClient {
         &self,
         request: ListWorkflowExecutionsRequest,
     ) -> CadenceResult<ListWorkflowExecutionsResponse> {
-        // Usually maps to ListWorkflowExecutions (visibility) but we don't have it in trait.
-        // Assuming this is just a wrapper for either open or closed, or visibility (which seems missing in trait).
-        // I will default to list_open_workflows for now as a placeholder
-        self.list_open_workflows(request).await
+        // Mirrors Go's ListWorkflow: the unified, query-based visibility API
+        // covering both open and closed executions.
+        let req = crabdance_proto::generated::ListWorkflowExecutionsRequest {
+            domain: self.domain.clone(),
+            page_size: request.maximum_page_size,
+            next_page_token: request.next_page_token.unwrap_or_default(),
+            query: request.query.unwrap_or_default(),
+        };
+
+        let response = self
+            .service
+            .list_workflow_executions(req)
+            .await
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
+
+        Ok(ListWorkflowExecutionsResponse {
+            executions: response
+                .executions
+                .into_iter()
+                .map(convert_workflow_execution_info)
+                .collect(),
+            next_page_token: response.next_page_token,
+        })
+    }
+
+    async fn list_archived_workflows(
+        &self,
+        request: ListWorkflowExecutionsRequest,
+    ) -> CadenceResult<ListWorkflowExecutionsResponse> {
+        // Mirrors Go's ListArchivedWorkflow: query-based visibility over the
+        // archival store.
+        let req = crabdance_proto::generated::ListArchivedWorkflowExecutionsRequest {
+            domain: self.domain.clone(),
+            page_size: request.maximum_page_size,
+            next_page_token: request.next_page_token.unwrap_or_default(),
+            query: request.query.unwrap_or_default(),
+        };
+
+        let response = self
+            .service
+            .list_archived_workflow_executions(req)
+            .await
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
+
+        Ok(ListWorkflowExecutionsResponse {
+            executions: response
+                .executions
+                .into_iter()
+                .map(convert_workflow_execution_info)
+                .collect(),
+            next_page_token: response.next_page_token,
+        })
     }
 
     async fn scan_workflows(
         &self,
         request: ListWorkflowExecutionsRequest,
     ) -> CadenceResult<ListWorkflowExecutionsResponse> {
+        // Mirrors Go's ScanWorkflow: query-based visibility scan with paging.
         let req = ScanWorkflowExecutionsRequest {
             domain: self.domain.clone(),
             page_size: request.maximum_page_size,
             next_page_token: request.next_page_token,
-            query: None, // ListWorkflowExecutionsRequest doesn't have a query field
+            query: request.query,
         };
 
         let response = self
@@ -1301,39 +1468,31 @@ impl Client for WorkflowClient {
         query_type: &str,
         args: Option<&[u8]>,
     ) -> CadenceResult<EncodedValue> {
-        let request = QueryWorkflowRequest {
-            domain: self.domain.clone(),
-            execution: Some(make_proto_execution(
-                workflow_id.to_string(),
-                run_id.unwrap_or_default().to_string(),
-            )),
-            query: Some(WorkflowQuery {
+        // Mirror Go: the simple QueryWorkflow delegates to the options-based
+        // form. Where Go's QueryWorkflowWithOptions returns the rejection in the
+        // response, the simple form has no place to carry it, so we surface a
+        // rejection as an error (the result would otherwise be silently empty).
+        let response = self
+            .query_workflow_with_options(QueryWorkflowWithOptionsRequest {
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.map(|s| s.to_string()),
                 query_type: query_type.to_string(),
                 query_args: args.map(|a| a.to_vec()),
-            }),
-            query_consistency_level: None,
-            query_reject_condition: None,
-        };
+                query_consistency_level: QueryConsistencyLevel::Unspecified,
+                query_reject_condition: None,
+            })
+            .await?;
 
-        let response = self
-            .service
-            .query_workflow(request)
-            .await
-            .map_err(|e| CadenceError::Other(e.to_string()))?;
-
-        // TODO: Handle query_rejected
         if let Some(rejected) = response.query_rejected {
             return Err(CadenceError::Other(format!(
-                "Query rejected: {:?}",
-                rejected
+                "query rejected: workflow close status {:?}",
+                rejected.close_status
             )));
         }
 
-        if let Some(result) = response.query_result {
-            // Assuming the result is JSON encoded value
-            Ok(EncodedValue::new(result))
-        } else {
-            Err(CadenceError::Other("Query returned no result".to_string()))
+        match response.query_result {
+            Some(result) => Ok(EncodedValue::new(result)),
+            None => Err(CadenceError::Other("query returned no result".to_string())),
         }
     }
 
@@ -1341,19 +1500,35 @@ impl Client for WorkflowClient {
         &self,
         request: QueryWorkflowWithOptionsRequest,
     ) -> CadenceResult<QueryWorkflowWithOptionsResponse> {
-        // query_workflow_with_options not in trait
-        // Just use query_workflow
-        let val = self
-            .query_workflow(
-                &request.workflow_id,
-                request.run_id.as_deref(),
-                &request.query_type,
-                request.query_args.as_deref(),
-            )
-            .await?;
+        let pb_request = QueryWorkflowRequest {
+            domain: self.domain.clone(),
+            execution: Some(make_proto_execution(
+                request.workflow_id.clone(),
+                request.run_id.clone().unwrap_or_default(),
+            )),
+            query: Some(WorkflowQuery {
+                query_type: request.query_type.clone(),
+                query_args: request.query_args.clone(),
+            }),
+            query_consistency_level: convert_query_consistency_level(
+                request.query_consistency_level,
+            ),
+            query_reject_condition: request
+                .query_reject_condition
+                .map(convert_query_reject_condition),
+        };
+
+        let response = self
+            .service
+            .query_workflow(pb_request)
+            .await
+            .map_err(|e| CadenceError::Other(e.to_string()))?;
+
+        // Surface the server-side query rejection (close-status mismatch)
+        // instead of dropping it, matching Go's QueryWorkflowWithOptions.
         Ok(QueryWorkflowWithOptionsResponse {
-            query_result: Some(val.as_bytes().to_vec()),
-            query_rejected: None,
+            query_result: response.query_result,
+            query_rejected: map_query_rejected(response.query_rejected),
         })
     }
 
@@ -1538,6 +1713,10 @@ struct WorkflowRunImpl {
 
 #[async_trait]
 impl WorkflowRun for WorkflowRunImpl {
+    fn get_id(&self) -> &str {
+        &self.workflow_id
+    }
+
     fn run_id(&self) -> &str {
         &self.run_id
     }
@@ -1607,14 +1786,80 @@ impl WorkflowRun for WorkflowRunImpl {
     }
 
     async fn get_with_timeout(&self, timeout: Duration) -> CadenceResult<Option<Vec<u8>>> {
-        // TODO: Implement timeout
-        tokio::time::timeout(timeout, self.get())
-            .await
-            .map_err(|_| CadenceError::Other("Timeout waiting for workflow result".to_string()))?
+        // Bound the blocking long-poll loop in `get()` by a client-side deadline.
+        match tokio::time::timeout(timeout, self.get()).await {
+            Ok(result) => result,
+            Err(_) => Err(CadenceError::Other(format!(
+                "timed out waiting for workflow result after {timeout:?}"
+            ))),
+        }
     }
 }
 
 // Helpers
+
+/// Build the gRPC-level start extensions (`first_run_at`, `cron_overlap_policy`,
+/// `active_cluster_selection_policy`) from idiomatic [`StartWorkflowOptions`].
+fn build_start_extensions(options: &StartWorkflowOptions) -> crate::grpc::StartWorkflowExtensions {
+    crate::grpc::StartWorkflowExtensions {
+        first_run_at_unix_nanos: options.first_run_at.and_then(|t| t.timestamp_nanos_opt()),
+        cron_overlap_policy: options.cron_overlap_policy.to_proto(),
+        active_cluster_selection_policy: options.active_cluster_selection_policy.as_ref().map(
+            |policy| crabdance_proto::generated::ActiveClusterSelectionPolicy {
+                cluster_attribute: policy.cluster_attribute.as_ref().map(|attr| {
+                    crabdance_proto::generated::ClusterAttribute {
+                        scope: attr.scope.clone(),
+                        name: attr.name.clone(),
+                    }
+                }),
+                ..Default::default()
+            },
+        ),
+    }
+}
+
+/// Map the api-level query rejection onto the client-facing [`QueryRejected`].
+///
+/// The api wrapper carries an optional close status; the client surface uses a
+/// concrete status, defaulting to `Completed` when the server omits it.
+fn map_query_rejected(
+    rejected: Option<crabdance_proto::workflow_service::QueryRejected>,
+) -> Option<QueryRejected> {
+    rejected.map(|r| QueryRejected {
+        close_status: r
+            .close_status
+            .unwrap_or(WorkflowExecutionCloseStatus::Completed),
+    })
+}
+
+/// Map a [`QueryConsistencyLevel`] to the proto-level value. `Unspecified` maps
+/// to `None`, letting the server apply its default.
+fn convert_query_consistency_level(
+    level: QueryConsistencyLevel,
+) -> Option<crabdance_proto::shared::QueryConsistencyLevel> {
+    match level {
+        QueryConsistencyLevel::Unspecified => None,
+        QueryConsistencyLevel::Eventual => {
+            Some(crabdance_proto::shared::QueryConsistencyLevel::Eventual)
+        }
+        QueryConsistencyLevel::Strong => {
+            Some(crabdance_proto::shared::QueryConsistencyLevel::Strong)
+        }
+    }
+}
+
+/// Map the client-side [`QueryRejectCondition`] to the proto-level value.
+fn convert_query_reject_condition(
+    condition: QueryRejectCondition,
+) -> crabdance_proto::shared::QueryRejectCondition {
+    match condition {
+        QueryRejectCondition::NotOpen => crabdance_proto::shared::QueryRejectCondition::NotOpen,
+        QueryRejectCondition::NotCompletedCleanly => {
+            crabdance_proto::shared::QueryRejectCondition::NotCompletedCleanly
+        }
+    }
+}
+
 fn convert_retry_policy(policy: RetryPolicy) -> crabdance_proto::shared::RetryPolicy {
     crabdance_proto::shared::RetryPolicy {
         initial_interval_in_seconds: policy.initial_interval.as_secs() as i32,
@@ -1703,5 +1948,230 @@ fn make_proto_execution(
     crabdance_proto::shared::WorkflowExecution {
         workflow_id,
         run_id,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- StartWorkflowOptions / extension fields (#22) -------------------
+
+    #[test]
+    fn test_start_workflow_options_default_sets_new_parity_fields() {
+        let opts = StartWorkflowOptions::default();
+        assert!(opts.jitter_start.is_none());
+        assert!(opts.first_run_at.is_none());
+        assert_eq!(opts.cron_overlap_policy, CronOverlapPolicy::Skipped);
+        assert!(opts.active_cluster_selection_policy.is_none());
+    }
+
+    #[test]
+    fn test_cron_overlap_policy_default_is_skipped() {
+        assert_eq!(CronOverlapPolicy::default(), CronOverlapPolicy::Skipped);
+    }
+
+    #[test]
+    fn test_cron_overlap_policy_to_proto_maps_skipped_and_buffer_one() {
+        // Proto discriminants: Skipped=1, BufferOne=2 (0=Invalid is never sent).
+        assert_eq!(CronOverlapPolicy::Skipped.to_proto(), 1);
+        assert_eq!(CronOverlapPolicy::BufferOne.to_proto(), 2);
+    }
+
+    #[test]
+    fn test_build_start_extensions_maps_first_run_at_to_unix_nanos() {
+        let when = chrono::DateTime::from_timestamp(1_700_000_000, 123).unwrap();
+        let opts = StartWorkflowOptions {
+            first_run_at: Some(when),
+            ..Default::default()
+        };
+        let ext = build_start_extensions(&opts);
+        assert_eq!(
+            ext.first_run_at_unix_nanos,
+            Some(1_700_000_000 * 1_000_000_000 + 123)
+        );
+    }
+
+    #[test]
+    fn test_build_start_extensions_defaults_to_skipped_cron_overlap_policy() {
+        let ext = build_start_extensions(&StartWorkflowOptions::default());
+        assert_eq!(ext.first_run_at_unix_nanos, None);
+        assert_eq!(ext.cron_overlap_policy, 1); // Skipped
+        assert!(ext.active_cluster_selection_policy.is_none());
+    }
+
+    #[test]
+    fn test_build_start_extensions_maps_buffer_one_cron_overlap_policy() {
+        let opts = StartWorkflowOptions {
+            cron_overlap_policy: CronOverlapPolicy::BufferOne,
+            ..Default::default()
+        };
+        assert_eq!(build_start_extensions(&opts).cron_overlap_policy, 2);
+    }
+
+    #[test]
+    fn test_build_start_extensions_maps_active_cluster_selection_policy() {
+        let opts = StartWorkflowOptions {
+            active_cluster_selection_policy: Some(ActiveClusterSelectionPolicy {
+                cluster_attribute: Some(ClusterAttribute {
+                    scope: "region".to_string(),
+                    name: "us-west".to_string(),
+                }),
+            }),
+            ..Default::default()
+        };
+        let ext = build_start_extensions(&opts);
+        let policy = ext
+            .active_cluster_selection_policy
+            .expect("policy should be present");
+        let attr = policy
+            .cluster_attribute
+            .expect("cluster attribute should be present");
+        assert_eq!(attr.scope, "region");
+        assert_eq!(attr.name, "us-west");
+    }
+
+    // ---- Query consistency / reject condition mapping (#17) --------------
+
+    #[test]
+    fn test_convert_query_consistency_level_unspecified_is_none() {
+        assert!(convert_query_consistency_level(QueryConsistencyLevel::Unspecified).is_none());
+    }
+
+    #[test]
+    fn test_convert_query_consistency_level_maps_eventual_and_strong() {
+        assert_eq!(
+            convert_query_consistency_level(QueryConsistencyLevel::Eventual),
+            Some(crabdance_proto::shared::QueryConsistencyLevel::Eventual)
+        );
+        assert_eq!(
+            convert_query_consistency_level(QueryConsistencyLevel::Strong),
+            Some(crabdance_proto::shared::QueryConsistencyLevel::Strong)
+        );
+    }
+
+    #[test]
+    fn test_convert_query_reject_condition_maps_both_variants() {
+        assert_eq!(
+            convert_query_reject_condition(QueryRejectCondition::NotOpen),
+            crabdance_proto::shared::QueryRejectCondition::NotOpen
+        );
+        assert_eq!(
+            convert_query_reject_condition(QueryRejectCondition::NotCompletedCleanly),
+            crabdance_proto::shared::QueryRejectCondition::NotCompletedCleanly
+        );
+    }
+
+    // ---- query_rejected surfacing (#17) ---------------------------------
+
+    #[test]
+    fn test_map_query_rejected_none_passes_through() {
+        assert!(map_query_rejected(None).is_none());
+    }
+
+    #[test]
+    fn test_map_query_rejected_surfaces_close_status() {
+        let api = crabdance_proto::workflow_service::QueryRejected {
+            close_status: Some(WorkflowExecutionCloseStatus::Failed),
+        };
+        let mapped = map_query_rejected(Some(api)).expect("rejection should be surfaced");
+        assert_eq!(mapped.close_status, WorkflowExecutionCloseStatus::Failed);
+    }
+
+    #[test]
+    fn test_map_query_rejected_defaults_missing_close_status_to_completed() {
+        let api = crabdance_proto::workflow_service::QueryRejected { close_status: None };
+        let mapped = map_query_rejected(Some(api)).expect("rejection should be surfaced");
+        assert_eq!(mapped.close_status, WorkflowExecutionCloseStatus::Completed);
+    }
+
+    // ---- Integration tests (require a running Cadence server) ------------
+    //
+    // Mirror the connection pattern in `crabdance/tests/grpc_integration.rs`.
+    // Run with: cargo test -p crabdance_client -- --ignored --test-threads=1
+
+    const CADENCE_GRPC_ENDPOINT: &str = "http://localhost:7833";
+    const TEST_DOMAIN: &str = "test-domain";
+
+    async fn connect_test_client() -> WorkflowClient {
+        WorkflowClient::connect(CADENCE_GRPC_ENDPOINT, TEST_DOMAIN, ClientOptions::default())
+            .await
+            .expect("should connect to local Cadence server")
+    }
+
+    fn empty_visibility_request(query: &str) -> ListWorkflowExecutionsRequest {
+        ListWorkflowExecutionsRequest {
+            maximum_page_size: 10,
+            next_page_token: None,
+            start_time_filter: None,
+            execution_filter: None,
+            type_filter: None,
+            status_filter: None,
+            query: Some(query.to_string()),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Cadence server"]
+    async fn test_list_workflows_returns_executions_for_query() {
+        let client = connect_test_client().await;
+        let resp = client
+            .list_workflows(empty_visibility_request("WorkflowType = 'nonexistent'"))
+            .await
+            .expect("list_workflows should succeed");
+        assert!(resp.executions.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Cadence server with archival enabled"]
+    async fn test_list_archived_workflows_queries_archival() {
+        let client = connect_test_client().await;
+        let resp = client
+            .list_archived_workflows(empty_visibility_request("WorkflowType = 'nonexistent'"))
+            .await
+            .expect("list_archived_workflows should succeed");
+        assert!(resp.executions.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Cadence server"]
+    async fn test_scan_workflows_passes_query_and_paging() {
+        let client = connect_test_client().await;
+        let resp = client
+            .scan_workflows(empty_visibility_request("WorkflowType = 'nonexistent'"))
+            .await
+            .expect("scan_workflows should succeed");
+        assert!(resp.executions.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Cadence server"]
+    async fn test_count_workflows_returns_count() {
+        let client = connect_test_client().await;
+        let resp = client
+            .count_workflows(CountWorkflowExecutionsRequest {
+                query: "WorkflowType = 'nonexistent'".to_string(),
+            })
+            .await
+            .expect("count_workflows should succeed");
+        assert_eq!(resp.count, 0);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Cadence server"]
+    async fn test_cancel_workflow_with_options_records_cause() {
+        let client = connect_test_client().await;
+        // Cancellation of a non-existent workflow is expected to fail; the test
+        // exercises that the cause-carrying request reaches the server.
+        let result = client
+            .cancel_workflow_with_options(
+                "nonexistent-workflow-id",
+                None,
+                CancelWorkflowOptions {
+                    cause: Some("integration-test cancel reason".to_string()),
+                },
+            )
+            .await;
+        assert!(result.is_err());
     }
 }
