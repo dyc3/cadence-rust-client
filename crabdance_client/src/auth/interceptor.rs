@@ -74,6 +74,8 @@ mod tests {
         }
     }
 
+    // tonic's Interceptor::call forces a `Result<_, Status>`; Status is large.
+    #[allow(clippy::result_large_err)]
     #[tokio::test]
     async fn test_interceptor_adds_header() {
         let provider: Arc<dyn AuthProvider> = Arc::new(MockAuthProvider {
@@ -96,6 +98,8 @@ mod tests {
         assert_eq!(header.unwrap(), "test-jwt-token");
     }
 
+    // tonic's Interceptor::call forces a `Result<_, Status>`; Status is large.
+    #[allow(clippy::result_large_err)]
     #[tokio::test]
     async fn test_interceptor_no_op_without_provider() {
         let mut interceptor = AuthInterceptor::new(None);
