@@ -171,6 +171,34 @@ impl WorkflowError<BoxError> {
     }
 }
 
+impl<E> WorkflowError<E>
+where
+    E: fmt::Display + fmt::Debug + Send + Sync + Clone + 'static,
+{
+    /// Whether this represents a workflow business failure (an execution/generic/
+    /// activity/child/signal/cancel failure or a panic) — as opposed to a control-flow
+    /// signal such as cancellation or continue-as-new. This is the Rust analogue of
+    /// treating an error as a real workflow error rather than a lifecycle outcome.
+    pub fn is_workflow_error(&self) -> bool {
+        !matches!(self, WorkflowError::Cancelled | WorkflowError::ContinueAsNew)
+    }
+
+    /// Whether this is a cancellation (Go's `IsCanceledError`).
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, WorkflowError::Cancelled | WorkflowError::CancelFailed(_))
+    }
+
+    /// Whether this is a continue-as-new signal (Go's `IsContinueAsNewError`).
+    pub fn is_continue_as_new(&self) -> bool {
+        matches!(self, WorkflowError::ContinueAsNew)
+    }
+
+    /// Whether this is a non-determinism error (replay mismatch).
+    pub fn is_non_deterministic(&self) -> bool {
+        matches!(self, WorkflowError::NonDeterministic(_))
+    }
+}
+
 /// Activity error
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ActivityError<E = BoxError>

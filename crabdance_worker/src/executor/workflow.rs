@@ -824,6 +824,12 @@ impl WorkflowExecutor {
             context.set_cancelled(true);
         }
 
+        // History-size accounting for this decision task. The server-tracked byte
+        // figure is not surfaced on the poll path, so total bytes is a best-effort
+        // serialized size.
+        let history_bytes = serde_json::to_vec(&events).map(|b| b.len()).unwrap_or(0);
+        context.set_history_size(events.len() as u64, history_bytes as u64);
+
         // Find workflow
         let workflow = self
             .registry
@@ -839,6 +845,8 @@ impl WorkflowExecutor {
             ) = &first_event.attributes
             {
                 debug!(input_len = attrs.input.len(), "workflow started event");
+                // Seed the cron previous-run result, if present.
+                context.set_last_completion_result(attrs.last_completion_result.clone());
                 if attrs.input.is_empty() {
                     None
                 } else {

@@ -591,6 +591,53 @@ mod tests {
     }
 
     #[test]
+    fn workflow_accessors_reflect_state() {
+        let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = driver.context();
+
+        // is_replaying
+        assert!(!ctx.is_replaying());
+        ctx.set_replay_mode(true);
+        assert!(ctx.is_replaying());
+
+        // history size
+        ctx.set_history_size(5, 1024);
+        assert_eq!(ctx.get_history_count(), 5);
+        assert_eq!(ctx.get_total_history_bytes(), 1024);
+
+        // cron last-completion result
+        assert!(!ctx.has_last_completion_result());
+        ctx.set_last_completion_result(Some(b"prev".to_vec()));
+        assert!(ctx.has_last_completion_result());
+        assert_eq!(ctx.get_last_completion_result(), Some(b"prev".to_vec()));
+
+        // NewValue
+        let value = ctx.new_value(serde_json::to_vec(&42i32).unwrap());
+        assert_eq!(value.decode::<i32>().unwrap(), 42);
+    }
+
+    #[test]
+    fn workflow_error_predicates() {
+        use crate::future::WorkflowError;
+
+        let generic = WorkflowError::message("boom");
+        assert!(generic.is_workflow_error());
+        assert!(!generic.is_cancelled());
+
+        let cancelled: DefaultWorkflowError = WorkflowError::Cancelled;
+        assert!(cancelled.is_cancelled());
+        assert!(!cancelled.is_workflow_error());
+
+        let can: DefaultWorkflowError = WorkflowError::ContinueAsNew;
+        assert!(can.is_continue_as_new());
+        assert!(!can.is_workflow_error());
+
+        let nd: DefaultWorkflowError = WorkflowError::NonDeterministic("mismatch".to_string());
+        assert!(nd.is_non_deterministic());
+        assert!(nd.is_workflow_error());
+    }
+
+    #[test]
     fn records_command_sequence() {
         let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
         let ctx = driver.context();

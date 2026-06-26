@@ -187,6 +187,11 @@ pub struct WorkflowContext {
     change_versions: Arc<Mutex<HashMap<String, i32>>>,
     // Search attributes, seeded from WorkflowInfo and updated by upsert_search_attributes.
     search_attributes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    // Cron: result of the previous run, if this workflow was started by a cron schedule.
+    last_completion_result: Arc<Mutex<Option<Vec<u8>>>>,
+    // History size accounting for the current decision task (set by the worker).
+    history_count: Arc<AtomicU64>,
+    total_history_bytes: Arc<AtomicU64>,
     // Local activity results cache for replay
     local_activity_results:
         Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
@@ -229,6 +234,9 @@ impl WorkflowContext {
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions: Arc::new(Mutex::new(HashMap::new())),
             search_attributes: Arc::new(Mutex::new(search_attributes)),
+            last_completion_result: Arc::new(Mutex::new(None)),
+            history_count: Arc::new(AtomicU64::new(0)),
+            total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
             dispatcher: Arc::new(Mutex::new(None)),
             pending_spawn_tasks: Arc::new(Mutex::new(None)),
@@ -272,6 +280,9 @@ impl WorkflowContext {
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions,
             search_attributes: Arc::new(Mutex::new(search_attributes)),
+            last_completion_result: Arc::new(Mutex::new(None)),
+            history_count: Arc::new(AtomicU64::new(0)),
+            total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results,
             dispatcher: Arc::new(Mutex::new(None)),
             pending_spawn_tasks: Arc::new(Mutex::new(None)),
@@ -841,6 +852,60 @@ impl WorkflowContext {
     /// upserts performed during the workflow).
     pub fn get_search_attributes(&self) -> HashMap<String, Vec<u8>> {
         self.search_attributes.lock().unwrap().clone()
+    }
+
+    /// Whether the workflow is currently replaying history (Go's `IsReplaying`).
+    ///
+    /// Use this to suppress non-replay-safe side effects (e.g. external logging) when
+    /// the dispatcher is re-deriving state from history rather than executing live.
+    pub fn is_replaying(&self) -> bool {
+        self.is_replay.load(Ordering::SeqCst)
+    }
+
+    /// Whether this run has a previous-run result available (cron workflows).
+    pub fn has_last_completion_result(&self) -> bool {
+        self.last_completion_result.lock().unwrap().is_some()
+    }
+
+    /// The encoded result of the previous run, if this workflow was started by a cron
+    /// schedule and the previous run completed successfully (Go's `LastCompletionResult`).
+    pub fn get_last_completion_result(&self) -> Option<Vec<u8>> {
+        self.last_completion_result.lock().unwrap().clone()
+    }
+
+    /// Set the previous-run result (called by the worker from the started event).
+    pub fn set_last_completion_result(&self, result: Option<Vec<u8>>) {
+        *self.last_completion_result.lock().unwrap() = result;
+    }
+
+    /// Number of events in the workflow's history for the current decision task.
+    pub fn get_history_count(&self) -> u64 {
+        self.history_count.load(Ordering::SeqCst)
+    }
+
+    /// Approximate size, in bytes, of the workflow's history for the current decision
+    /// task. This is a best-effort serialized size (the server-tracked figure is not
+    /// surfaced on the poll path); use it for relative growth signals, not exact limits.
+    pub fn get_total_history_bytes(&self) -> u64 {
+        self.total_history_bytes.load(Ordering::SeqCst)
+    }
+
+    /// Set the history-size accounting (called by the worker per decision task).
+    pub fn set_history_size(&self, count: u64, total_bytes: u64) {
+        self.history_count.store(count, Ordering::SeqCst);
+        self.total_history_bytes.store(total_bytes, Ordering::SeqCst);
+    }
+
+    /// Wrap a single encoded payload in an [`EncodedValue`](crabdance_core::EncodedValue)
+    /// for lazy, typed decoding (Go's `workflow.NewValue`).
+    pub fn new_value(&self, data: Vec<u8>) -> crabdance_core::EncodedValue {
+        crabdance_core::EncodedValue::new(data)
+    }
+
+    /// Wrap an encoded multi-value payload in an
+    /// [`EncodedValues`](crabdance_core::EncodedValues) (Go's `workflow.NewValues`).
+    pub fn new_values(&self, data: Vec<u8>) -> crabdance_core::EncodedValues {
+        crabdance_core::EncodedValues::new(data)
     }
 
     /// Sleep for a duration (workflow-aware)
