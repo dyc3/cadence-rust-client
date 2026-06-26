@@ -208,6 +208,23 @@ Before committing changes:
 4. Run `cargo doc` to ensure documentation builds
 5. Check that integration tests compile (they require running server)
 
+## Pull Request Titles
+
+PR titles are linted in CI (`.github/workflows/pull_request_pr_title.yml`, via
+`amannn/action-semantic-pull-request`). A title must follow Conventional Commits and
+satisfy these rules, or the check fails:
+
+- **Format**: `type(optional-scope): subject` — e.g. `docs: go-client parity plan`.
+- **Allowed types**: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`,
+  `refactor`, `release`, `revert`, `test`.
+- **Subject must start lowercase** (regex `^[^A-Z].*$`). `docs: Add foo` fails;
+  `docs: add foo` passes. Only the first character is checked, so mid-subject
+  capitals like `ADRs` are fine.
+- **Scope** is optional, but `release` and any all-UPPERCASE scope are disallowed.
+
+When opening a PR with `gh`, set a compliant `--title` up front; if CI rejects an
+existing PR, fix it with `gh pr edit <n> --title "..."`.
+
 ## Agent skills
 
 ### Issue tracker
