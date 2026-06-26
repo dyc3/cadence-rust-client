@@ -4,7 +4,7 @@ use crate::local_activity_queue::LocalActivityQueue;
 use crate::registry::Registry;
 use crate::replay_verifier::match_replay_with_history;
 use crate::WorkerOptions;
-use crabdance_core::{CadenceError, ReplayContext, WorkflowInfo};
+use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, ReplayContext, WorkflowInfo};
 use crabdance_proto::shared::{
     ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType,
     HistoryEvent, RequestCancelExternalWorkflowExecutionDecisionAttributes,
@@ -579,6 +579,7 @@ pub struct WorkflowExecutor {
     task_list: String,
     local_activity_queue: LocalActivityQueue,
     resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    data_converter: Arc<dyn DataConverter>,
 }
 
 /// Workflow execution state
@@ -603,7 +604,16 @@ impl WorkflowExecutor {
             task_list,
             local_activity_queue,
             resources,
+            data_converter: Arc::new(JsonDataConverter),
         }
+    }
+
+    /// Inject the worker's configured payload converter. Threaded into every
+    /// `WorkflowContext` this executor builds so workflow code encodes/decodes
+    /// through the seam rather than hardcoded JSON.
+    pub fn with_data_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
+        self.data_converter = converter;
+        self
     }
 
     pub async fn execute_decision_task(
@@ -768,7 +778,8 @@ impl WorkflowExecutor {
             change_versions_arc,
             local_activity_results_arc,
             self.resources.clone(),
-        );
+        )
+        .with_converter(self.data_converter.clone());
 
         // Set deterministic current time
         context.set_current_time_nanos(current_time_nanos);

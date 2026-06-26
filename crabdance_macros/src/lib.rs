@@ -116,7 +116,7 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
             let input_data = input.ok_or_else(|| {
                 ::#crabdance::worker::registry::WorkflowError::execution_failed("Missing input")
             })?;
-            let decoded = ::#crabdance::serde_json::from_slice(&input_data)
+            let decoded = __cadence_converter.decode(&input_data)
                 .map_err(::#crabdance::worker::registry::WorkflowError::execution_failed_error)?;
         }
     });
@@ -142,12 +142,17 @@ pub fn workflow(args: TokenStream, input: TokenStream) -> TokenStream {
                 input: Option<Vec<u8>>,
             ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, ::#crabdance::worker::registry::WorkflowError>> + Send>> {
                 Box::pin(async move {
+                    #[allow(unused_imports)]
+                    use ::#crabdance::core::DataConverterExt as _;
+                    // Capture the configured converter before `ctx` may be moved
+                    // into the workflow's own binding below.
+                    let __cadence_converter = ctx.converter_arc();
                     let #ctx_ident = #ctx_binding;
                     #input_decode
                     #(#guard_bindings)*
                     #input_binding
                     let output = #ident(#(#call_args),*).await?;
-                    ::#crabdance::serde_json::to_vec(&output)
+                    __cadence_converter.encode(&output)
                         .map_err(::#crabdance::worker::registry::WorkflowError::execution_failed_error)
                 })
             }
@@ -243,7 +248,7 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
             let input_data = input.ok_or_else(|| {
                 ::#crabdance::worker::registry::ActivityError::execution_failed("Missing input")
             })?;
-            let decoded = ::#crabdance::serde_json::from_slice(&input_data)
+            let decoded = __cadence_converter.decode(&input_data)
                 .map_err(::#crabdance::worker::registry::ActivityError::execution_failed_error)?;
         }
     });
@@ -270,12 +275,15 @@ pub fn activity(args: TokenStream, input: TokenStream) -> TokenStream {
             ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, ::#crabdance::worker::registry::ActivityError>> + Send>> {
                 let ctx = ctx.clone();
                 Box::pin(async move {
+                    #[allow(unused_imports)]
+                    use ::#crabdance::core::DataConverterExt as _;
+                    let __cadence_converter = ctx.converter_arc();
                     let #ctx_ident = #ctx_binding;
                     #input_decode
                     #(#guard_bindings)*
                     #input_binding
                     let output = #ident(#(#call_args),*).await?;
-                    ::#crabdance::serde_json::to_vec(&output)
+                    __cadence_converter.encode(&output)
                         .map_err(::#crabdance::worker::registry::ActivityError::execution_failed_error)
                 })
             }
@@ -324,7 +332,10 @@ pub fn call_activity(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         async {
-            let bytes = ::#crabdance::serde_json::to_vec(&#payload)
+            #[allow(unused_imports)]
+            use ::#crabdance::core::DataConverterExt as _;
+            let __cadence_converter = #ctx.converter_arc();
+            let bytes = __cadence_converter.encode(&#payload)
                 .map_err(::#crabdance::workflow::WorkflowError::execution_failed_error)?;
             let result_bytes = #ctx
                 .execute_activity(
@@ -333,7 +344,7 @@ pub fn call_activity(input: TokenStream) -> TokenStream {
                     #options,
                 )
                 .await?;
-            ::#crabdance::serde_json::from_slice(&result_bytes)
+            __cadence_converter.decode(&result_bytes)
                 .map_err(::#crabdance::workflow::WorkflowError::execution_failed_error)
         }
     };

@@ -21,7 +21,6 @@ use crabdance_proto::{
     WorkflowExecutionConfiguration as ProtoWorkflowExecutionConfiguration,
     WorkflowExecutionInfo as ProtoWorkflowExecutionInfo,
 };
-use serde_json;
 use uuid::Uuid;
 
 use crate::auth::BoxedAuthProvider;
@@ -618,8 +617,6 @@ pub struct ClientOptions {
     pub logger: Option<Arc<dyn Logger>>,
     /// Feature flags for experimental features
     pub feature_flags: FeatureFlags,
-    /// Data converter for serialization
-    pub data_converter: Arc<dyn DataConverter>,
 }
 
 impl std::fmt::Debug for ClientOptions {
@@ -629,7 +626,6 @@ impl std::fmt::Debug for ClientOptions {
             .field("metrics_scope", &self.metrics_scope.is_some())
             .field("logger", &self.logger.is_some())
             .field("feature_flags", &self.feature_flags)
-            .field("data_converter", &"<dyn DataConverter>")
             .finish()
     }
 }
@@ -646,7 +642,6 @@ impl Default for ClientOptions {
             metrics_scope: None,
             logger: None,
             feature_flags: FeatureFlags::default(),
-            data_converter: Arc::new(JsonDataConverter),
         }
     }
 }
@@ -1529,96 +1524,6 @@ pub trait Logger: Send + Sync {
     fn error(&self, msg: &str);
 }
 
-/// DataConverter trait for serializing/deserializing workflow and activity arguments
-pub trait DataConverter: Send + Sync {
-    /// Serialize a value to bytes
-    fn to_data(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, crabdance_core::EncodingError>;
-    /// Deserialize bytes into a target value
-    #[expect(clippy::wrong_self_convention)]
-    fn from_data(
-        &self,
-        data: &[u8],
-        target: &mut dyn std::any::Any,
-    ) -> Result<(), crabdance_core::EncodingError>;
-}
-
-/// JSON data converter implementation
-pub struct JsonDataConverter;
-
-impl DataConverter for JsonDataConverter {
-    fn to_data(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, crabdance_core::EncodingError> {
-        // Try to downcast to common serde-serializable types
-        // For most use cases, users should pass serializable types
-
-        // Handle String
-        if let Some(s) = value.downcast_ref::<String>() {
-            return serde_json::to_vec(s)
-                .map_err(|e| crabdance_core::EncodingError::Serialization(e.to_string()));
-        }
-
-        // Handle &str (this won't work directly with Any, but document it)
-        if let Some(s) = value.downcast_ref::<&str>() {
-            return serde_json::to_vec(s)
-                .map_err(|e| crabdance_core::EncodingError::Serialization(e.to_string()));
-        }
-
-        // Handle serde_json::Value directly
-        if let Some(v) = value.downcast_ref::<serde_json::Value>() {
-            return serde_json::to_vec(v)
-                .map_err(|e| crabdance_core::EncodingError::Serialization(e.to_string()));
-        }
-
-        // Handle Vec<u8> - pass through as-is
-        if let Some(bytes) = value.downcast_ref::<Vec<u8>>() {
-            return Ok(bytes.clone());
-        }
-
-        // For other types, we can't serialize without knowing the concrete type
-        // The user should either:
-        // 1. Serialize to serde_json::Value first
-        // 2. Serialize to Vec<u8> first
-        // 3. Use the generic encode function from crabdance_core
-        Err(crabdance_core::EncodingError::Serialization(
-            "Cannot serialize type - use serde_json::Value or Vec<u8> for dynamic types"
-                .to_string(),
-        ))
-    }
-
-    fn from_data(
-        &self,
-        data: &[u8],
-        target: &mut dyn std::any::Any,
-    ) -> Result<(), crabdance_core::EncodingError> {
-        // Try to downcast target to common deserializable types
-
-        // Handle String
-        if let Some(s) = target.downcast_mut::<String>() {
-            *s = serde_json::from_slice(data)
-                .map_err(|e| crabdance_core::EncodingError::Serialization(e.to_string()))?;
-            return Ok(());
-        }
-
-        // Handle serde_json::Value
-        if let Some(v) = target.downcast_mut::<serde_json::Value>() {
-            *v = serde_json::from_slice(data)
-                .map_err(|e| crabdance_core::EncodingError::Serialization(e.to_string()))?;
-            return Ok(());
-        }
-
-        // Handle Vec<u8> - copy data as-is
-        if let Some(bytes) = target.downcast_mut::<Vec<u8>>() {
-            *bytes = data.to_vec();
-            return Ok(());
-        }
-
-        // For other types, we can't deserialize without knowing the concrete type
-        Err(crabdance_core::EncodingError::Serialization(
-            "Cannot deserialize type - use serde_json::Value or Vec<u8> for dynamic types"
-                .to_string(),
-        ))
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FeatureFlags {
     pub enable_execution_cache: bool,
@@ -1798,76 +1703,5 @@ fn make_proto_execution(
     crabdance_proto::shared::WorkflowExecution {
         workflow_id,
         run_id,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_json_data_converter_string() {
-        let converter = JsonDataConverter;
-        let original = "Hello, Cadence!".to_string();
-
-        // Serialize
-        let data = converter.to_data(&original).unwrap();
-
-        // Deserialize
-        let mut target = String::new();
-        converter.from_data(&data, &mut target).unwrap();
-
-        assert_eq!(original, target);
-    }
-
-    #[test]
-    fn test_json_data_converter_json_value() {
-        let converter = JsonDataConverter;
-        let original = serde_json::json!({
-            "name": "test",
-            "value": 42,
-            "nested": {
-                "flag": true
-            }
-        });
-
-        // Serialize
-        let data = converter.to_data(&original).unwrap();
-
-        // Deserialize
-        let mut target = serde_json::Value::Null;
-        converter.from_data(&data, &mut target).unwrap();
-
-        assert_eq!(original, target);
-    }
-
-    #[test]
-    fn test_json_data_converter_bytes() {
-        let converter = JsonDataConverter;
-        let original = vec![1u8, 2, 3, 4, 5];
-
-        // Serialize (pass through)
-        let data = converter.to_data(&original).unwrap();
-
-        // Deserialize (pass through)
-        let mut target = Vec::<u8>::new();
-        converter.from_data(&data, &mut target).unwrap();
-
-        assert_eq!(original, target);
-    }
-
-    #[test]
-    fn test_json_data_converter_unsupported_type() {
-        let converter = JsonDataConverter;
-
-        // Try to serialize an unsupported type (i32)
-        let value = 42i32;
-        let result = converter.to_data(&value);
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            crabdance_core::EncodingError::Serialization(_)
-        ));
     }
 }

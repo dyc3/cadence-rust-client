@@ -7,7 +7,7 @@
 use crate::local_activity_queue::{LocalActivityQueue, LocalActivityTask};
 use crate::registry::{ActivityError, Registry};
 use crabdance_activity::ActivityContext;
-use crabdance_core::RetryPolicy;
+use crabdance_core::{DataConverter, JsonDataConverter, RetryPolicy};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tracing::{debug, error, info, warn};
@@ -21,6 +21,7 @@ pub struct LocalActivityExecutor {
     registry: Arc<dyn Registry>,
     queue: LocalActivityQueue,
     resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    data_converter: Arc<dyn DataConverter>,
 }
 
 impl LocalActivityExecutor {
@@ -34,7 +35,15 @@ impl LocalActivityExecutor {
             registry,
             queue,
             resources,
+            data_converter: Arc::new(JsonDataConverter),
         }
+    }
+
+    /// Inject the worker's configured payload converter, threaded into every
+    /// local `ActivityContext` this executor builds.
+    pub fn with_data_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
+        self.data_converter = converter;
+        self
     }
 
     /// Run the executor loop
@@ -181,7 +190,8 @@ impl LocalActivityExecutor {
                 attempt,
                 task.scheduled_time,
             ),
-        };
+        }
+        .with_converter(self.data_converter.clone());
 
         info!(
             activity_type = %task.activity_type,

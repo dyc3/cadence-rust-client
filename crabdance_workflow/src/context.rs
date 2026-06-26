@@ -7,7 +7,10 @@ use crate::commands::{
     RecordMarkerCommand, ScheduleActivityCommand, ScheduleLocalActivityCommand,
     StartChildWorkflowCommand, StartTimerCommand, WorkflowCommand,
 };
-use crabdance_core::{ActivityOptions, ChildWorkflowOptions, RetryPolicy, WorkflowInfo};
+use crabdance_core::{
+    ActivityOptions, ChildWorkflowOptions, DataConverter, JsonDataConverter, RetryPolicy,
+    WorkflowInfo,
+};
 use futures::future::poll_fn;
 use serde::Serialize;
 use std::any::Any;
@@ -177,6 +180,8 @@ pub struct WorkflowContext {
     // Channel sequence counter
     channel_sequence: Arc<AtomicU64>,
     resources: Option<Arc<dyn Any + Send + Sync>>,
+    // Configured payload converter (the worker injects its own; defaults to JSON)
+    converter: Arc<dyn DataConverter>,
 }
 
 impl WorkflowContext {
@@ -204,6 +209,7 @@ impl WorkflowContext {
             task_sequence: Arc::new(AtomicU64::new(1)),
             channel_sequence: Arc::new(AtomicU64::new(0)),
             resources: None,
+            converter: Arc::new(JsonDataConverter),
         }
     }
 
@@ -244,12 +250,31 @@ impl WorkflowContext {
             task_sequence: Arc::new(AtomicU64::new(1)),
             channel_sequence: Arc::new(AtomicU64::new(0)),
             resources,
+            converter: Arc::new(JsonDataConverter),
         }
     }
 
     pub fn with_resources(mut self, resources: Option<Arc<dyn Any + Send + Sync>>) -> Self {
         self.resources = resources;
         self
+    }
+
+    /// Inject the configured payload converter (the worker calls this to thread
+    /// its `DataConverter` into workflow code; defaults to JSON otherwise).
+    pub fn with_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
+        self.converter = converter;
+        self
+    }
+
+    /// Borrow the configured payload converter.
+    pub fn converter(&self) -> &dyn DataConverter {
+        self.converter.as_ref()
+    }
+
+    /// Clone the configured payload converter. Used by the `#[workflow]` /
+    /// `call_activity!` macros to encode/decode payloads through the seam.
+    pub fn converter_arc(&self) -> Arc<dyn DataConverter> {
+        self.converter.clone()
     }
 
     /// Set replay mode
