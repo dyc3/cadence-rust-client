@@ -16,8 +16,8 @@ cargo fmt --all -- --check
 just replay-gate                # the determinism gate specifically (#13)
 ```
 
-Integration tests that need a live Cadence server are `#[ignore]`d:
-`docker compose up -d` then `cargo test --workspace -- --ignored --test-threads=1`.
+Integration tests that need live external services are gated behind the `integration`
+Cargo feature (not `#[ignore]`): `docker compose up -d` then `just integration`.
 
 ## The architectural spine (read these first)
 

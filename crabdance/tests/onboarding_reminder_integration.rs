@@ -1,3 +1,5 @@
+#![cfg(feature = "integration")]
+
 //! Onboarding Reminder Flow Integration Test
 //!
 //! This test verifies that `ctx.sleep()` works correctly in a workflow.
@@ -355,7 +357,6 @@ fn assert_timer_fired(history: &crabdance_proto::shared::History) -> bool {
 // ============================================================================
 
 #[tokio::test]
-#[ignore]
 async fn test_onboarding_reminder_flow() {
     println!("\n=== Testing Onboarding Reminder Flow ===");
     println!("This test verifies that ctx.sleep() works correctly in workflows.\n");

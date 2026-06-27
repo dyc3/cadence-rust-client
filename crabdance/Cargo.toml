@@ -8,6 +8,11 @@ repository.workspace = true
 keywords.workspace = true
 description = "A Rust client for Uber Cadence workflow engine"
 
+[features]
+# Enables tests that require live external services (a running Cadence server,
+# Postgres, …). Off by default; run them with `just integration`.
+integration = []
+
 [dependencies]
 crabdance_proto = { workspace = true }
 crabdance_core = { workspace = true }

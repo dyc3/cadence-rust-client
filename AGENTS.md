@@ -40,19 +40,20 @@ cargo test --test grpc_integration
 # Run a specific test within an integration test file
 cargo test --test grpc_integration test_grpc_connection -- --nocapture
 
-# Run integration tests (requires running Cadence server)
-cargo test --test grpc_integration -- --ignored --test-threads=1
+# Run integration tests (requires running Cadence server) — gated behind the
+# `integration` feature, not #[ignore]
+cargo test -p crabdance --features integration --test grpc_integration -- --test-threads=1
 
 # Run integration tests with output
-cargo test --test grpc_integration -- --ignored --nocapture --test-threads=1
+cargo test -p crabdance --features integration --test grpc_integration -- --nocapture --test-threads=1
 
 # Run all integration tests in a crate
-cargo test -p crabdance_client -- --ignored --test-threads=1
+cargo test -p crabdance_client --features integration
 
-# Run tests using just (alternative runner)
+# Run tests using just (alternative runner) — runs everything under the feature
+just integration
 just test-grpc-integration
 just test-ecommerce-saga
-just test-all-integration
 ```
 
 ### Linting and Formatting
@@ -161,7 +162,13 @@ use crate::registry::WorkflowRegistry;
 - Integration tests go in `tests/` at crate root
 - Use `tokio::test` for async tests
 - Mock external dependencies using `mockall` crate
-- Integration tests requiring Cadence server should be marked `#[ignore]`
+- Tests that require live external services (a running Cadence server, Postgres, …)
+  are gated behind the crate's `integration` Cargo feature — **not** `#[ignore]`.
+  Gate a whole integration test file with a top-of-file inner attribute
+  `#![cfg(feature = "integration")]`; gate individual server-backed tests (and any
+  helpers/constants only they use) in a mixed module with `#[cfg(feature = "integration")]`.
+  Run them with `just integration` (the default `cargo test` skips them; clippy's
+  `--all-features` still compile-checks them).
 - Use descriptive test names: `test_<scenario>_<expected_behavior>()`
 
 ## Workspace Structure

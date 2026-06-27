@@ -83,7 +83,9 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run integration tests
-        run: cargo test -p crabdance --tests -- --ignored --test-threads=1
+        run: |
+          cargo test -p crabdance_client --features integration
+          cargo test -p crabdance --features integration --tests -- --test-threads=1
 
       - name: Show Cadence logs on failure
         if: failure()

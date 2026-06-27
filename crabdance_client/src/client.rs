@@ -2090,15 +2090,19 @@ mod tests {
     // Mirror the connection pattern in `crabdance/tests/grpc_integration.rs`.
     // Run with: cargo test -p crabdance_client -- --ignored --test-threads=1
 
+    #[cfg(feature = "integration")]
     const CADENCE_GRPC_ENDPOINT: &str = "http://localhost:7833";
+    #[cfg(feature = "integration")]
     const TEST_DOMAIN: &str = "test-domain";
 
+    #[cfg(feature = "integration")]
     async fn connect_test_client() -> WorkflowClient {
         WorkflowClient::connect(CADENCE_GRPC_ENDPOINT, TEST_DOMAIN, ClientOptions::default())
             .await
             .expect("should connect to local Cadence server")
     }
 
+    #[cfg(feature = "integration")]
     fn empty_visibility_request(query: &str) -> ListWorkflowExecutionsRequest {
         ListWorkflowExecutionsRequest {
             maximum_page_size: 10,
@@ -2112,7 +2116,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Cadence server"]
+    #[cfg(feature = "integration")]
     async fn test_list_workflows_returns_executions_for_query() {
         let client = connect_test_client().await;
         let resp = client
@@ -2123,7 +2127,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Cadence server with archival enabled"]
+    #[cfg(feature = "integration")]
     async fn test_list_archived_workflows_queries_archival() {
         let client = connect_test_client().await;
         let resp = client
@@ -2134,7 +2138,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Cadence server"]
+    #[cfg(feature = "integration")]
     async fn test_scan_workflows_passes_query_and_paging() {
         let client = connect_test_client().await;
         let resp = client
@@ -2145,7 +2149,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Cadence server"]
+    #[cfg(feature = "integration")]
     async fn test_count_workflows_returns_count() {
         let client = connect_test_client().await;
         let resp = client
@@ -2158,7 +2162,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Cadence server"]
+    #[cfg(feature = "integration")]
     async fn test_cancel_workflow_with_options_records_cause() {
         let client = connect_test_client().await;
         // Cancellation of a non-existent workflow is expected to fail; the test

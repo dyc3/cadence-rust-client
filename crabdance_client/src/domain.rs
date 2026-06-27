@@ -641,15 +641,19 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Integration tests against a live Cadence server (cargo test -- --ignored).
+    // Integration tests against a live Cadence server. Gated behind the
+    // `integration` feature; run with `just integration`.
     // ------------------------------------------------------------------
 
+    #[cfg(feature = "integration")]
     const CADENCE_GRPC_ENDPOINT: &str = "http://localhost:7833";
 
+    #[cfg(feature = "integration")]
     fn unique_domain_name() -> String {
         format!("domain-client-it-{}", uuid::Uuid::new_v4())
     }
 
+    #[cfg(feature = "integration")]
     async fn connect_domain_client(domain: &str) -> DomainClientImpl {
         let service = Arc::new(
             GrpcWorkflowServiceClient::connect(CADENCE_GRPC_ENDPOINT, domain, None)
@@ -660,7 +664,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[cfg(feature = "integration")]
     async fn test_register_and_describe_domain_via_domain_client() {
         let name = unique_domain_name();
         let client = connect_domain_client(&name).await;
@@ -693,7 +697,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[cfg(feature = "integration")]
     async fn test_update_domain_via_domain_client() {
         let name = unique_domain_name();
         let client = connect_domain_client(&name).await;
