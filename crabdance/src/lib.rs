@@ -31,6 +31,8 @@
 //! - [`activity`] - Activity authoring SDK
 //! - [`testsuite`] - Testing utilities
 
+pub mod shadow;
+
 pub use crabdance_activity as activity;
 pub use crabdance_client as client;
 pub use crabdance_core as core;

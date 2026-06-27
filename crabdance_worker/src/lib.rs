@@ -16,6 +16,7 @@ pub mod otel;
 pub mod pollers;
 pub mod registry;
 pub mod replay_verifier;
+pub mod replayer;
 #[cfg(test)]
 mod resource_tests;
 pub mod worker;
