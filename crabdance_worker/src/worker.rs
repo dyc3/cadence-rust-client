@@ -81,6 +81,11 @@ pub struct WorkerOptions {
     pub deadlock_detection_timeout: Duration,
     /// Max cached workflows
     pub max_cached_workflows: usize,
+    /// Idle expiration for the sticky workflow cache. An execution untouched for
+    /// longer than this is evicted even below `max_cached_workflows`, bounding
+    /// memory under churn. `Duration::ZERO` (the default) disables idle expiration,
+    /// leaving LRU capacity as the only bound.
+    pub sticky_cache_idle_ttl: Duration,
     /// Emit workflow logs during replay (Go's `EnableLoggingInReplay`). Off by default,
     /// so replayed history does not re-emit logs.
     pub enable_logging_in_replay: bool,
@@ -110,6 +115,7 @@ impl Default for WorkerOptions {
             ),
             deadlock_detection_timeout: Duration::from_secs(0), // Disabled by default
             max_cached_workflows: 1000,
+            sticky_cache_idle_ttl: Duration::ZERO, // Idle expiration disabled by default
             enable_logging_in_replay: false,
         }
     }
@@ -254,8 +260,11 @@ impl Worker for CadenceWorker {
 
         let mut poller_manager = PollerManager::new();
 
-        // Create cache
-        let cache = Arc::new(WorkflowCache::new(self.options.max_cached_workflows));
+        // Create cache, bounded by LRU capacity and (optionally) idle expiration.
+        let cache = Arc::new(
+            WorkflowCache::new(self.options.max_cached_workflows)
+                .with_idle_ttl(self.options.sticky_cache_idle_ttl),
+        );
 
         // Create local activity queue and executor
         let local_activity_queue = LocalActivityQueue::new();
