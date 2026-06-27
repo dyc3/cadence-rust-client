@@ -14,7 +14,7 @@
 //! [`InMemoryCommandSink`] resolves timers against the mock clock, acknowledges
 //! markers, and delegates everything else to a caller-supplied [`CommandResolver`].
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -166,6 +166,11 @@ struct TimerEntry {
     fired: bool,
 }
 
+/// A callback to fire at an absolute mock-clock deadline (unix-epoch nanoseconds),
+/// run against the workflow context — e.g. to deliver a signal at a workflow-time
+/// offset. Backs the testsuite's `register_delayed_callback`.
+pub type DelayedCallback = (i64, Box<dyn FnOnce(&WorkflowContext) + Send>);
+
 /// Details of a continue-as-new emitted by the workflow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContinuedAsNew {
@@ -242,6 +247,12 @@ impl InMemoryCommandSink {
         if let Some(timer) = inner.timers.get_mut(&key) {
             timer.fired = true;
         }
+    }
+
+    /// Advance the mock clock without firing a timer (used when a delayed callback,
+    /// not a timer, is the next event).
+    fn set_clock_nanos(&self, new_clock_nanos: i64) {
+        self.inner.lock().unwrap().clock_nanos = new_clock_nanos;
     }
 }
 
@@ -413,6 +424,28 @@ impl WorkflowDriver {
     where
         F: Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send + 'static,
     {
+        self.run_with_callbacks(root, Vec::new())
+    }
+
+    /// Like [`run`](Self::run), but also fires `callbacks` at their scheduled mock-clock
+    /// deadlines, interleaved with timers. Each callback runs against the workflow
+    /// context (e.g. to deliver a signal) when virtual time reaches its deadline,
+    /// advancing the clock if needed — the testsuite's `register_delayed_callback`.
+    ///
+    /// At each blocked step the earliest pending event (timer or callback) fires;
+    /// callbacks win ties so a signal delivered at time T is visible to any timer-driven
+    /// logic that also wakes at T.
+    pub fn run_with_callbacks<F>(&self, root: F, callbacks: Vec<DelayedCallback>) -> DriverOutcome
+    where
+        F: Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send + 'static,
+    {
+        // Order callbacks by deadline; fired front-to-back.
+        let mut pending: VecDeque<DelayedCallback> = {
+            let mut v = callbacks;
+            v.sort_by_key(|(deadline, _)| *deadline);
+            v.into()
+        };
+
         {
             let mut dispatcher = self.dispatcher.lock().unwrap();
             dispatcher.spawn_task(WorkflowTask::new(0, "root".to_string(), root));
@@ -443,15 +476,34 @@ impl WorkflowDriver {
                 return DriverOutcome::ContinuedAsNew(continued);
             }
 
-            // Blocked: advance the mock clock to the earliest pending timer, if any.
-            if let Some((key, deadline)) = self.sink.earliest_unfired_timer() {
+            // Blocked: fire the earliest pending event — a delayed callback or a timer,
+            // whichever is due first (callbacks win ties).
+            let next_timer = self.sink.earliest_unfired_timer();
+            let next_callback_deadline = pending.front().map(|(d, _)| *d);
+
+            let fire_callback = match (next_callback_deadline, next_timer) {
+                (Some(cb), Some((_, timer))) => cb <= timer,
+                (Some(_), None) => true,
+                _ => false,
+            };
+
+            if fire_callback {
+                let (deadline, callback) = pending.pop_front().expect("callback present");
+                let new_clock = deadline.max(self.sink.clock_nanos());
+                self.sink.set_clock_nanos(new_clock);
+                self.context.set_current_time_nanos(new_clock);
+                callback(&self.context);
+                continue;
+            }
+
+            if let Some((key, deadline)) = next_timer {
                 let new_clock = deadline.max(self.sink.clock_nanos());
                 self.sink.fire_timer(key, new_clock);
                 self.context.set_current_time_nanos(new_clock);
                 continue;
             }
 
-            // No timer can make progress: the workflow is blocked on external input.
+            // No timer or callback can make progress: blocked on external input.
             return DriverOutcome::Blocked;
         }
 
