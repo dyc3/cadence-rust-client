@@ -17,7 +17,9 @@ use crabdance_proto::{QueryResultType, WorkflowQueryResult};
 use crabdance_workflow::commands::WorkflowCommand;
 use crabdance_workflow::context::{CommandSink, WorkflowContext};
 use crabdance_workflow::dispatcher::{WorkflowDispatcher, WorkflowTask};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crabdance_workflow::future::{
     ActivityFailureInfo, ActivityFailureType, DefaultWorkflowError, WorkflowError,
@@ -135,7 +137,7 @@ struct ReplayCommandSink {
     // Deterministic per-decision-task counter for generating stable marker IDs. Using
     // wall-clock time here would produce a different ID on replay than on the original
     // execution, corrupting replay matching.
-    marker_sequence: Arc<std::sync::atomic::AtomicU64>,
+    marker_sequence: Arc<AtomicU64>,
 }
 
 // Represents a local activity that needs to be executed
@@ -767,8 +769,8 @@ impl WorkflowExecutor {
             },
             task_list: self.task_list.clone(),
             start_time,
-            execution_start_to_close_timeout: std::time::Duration::from_secs(3600),
-            task_start_to_close_timeout: std::time::Duration::from_secs(10),
+            execution_start_to_close_timeout: Duration::from_secs(3600),
+            task_start_to_close_timeout: Duration::from_secs(10),
             attempt: 1,
             continued_execution_run_id: None,
             parent_workflow_execution: None,
@@ -787,7 +789,7 @@ impl WorkflowExecutor {
             workflow_info: workflow_info.clone(),
             pending_local_activity_submissions: pending_local_activity_submissions.clone(),
             local_activity_wakers: local_activity_wakers.clone(),
-            marker_sequence: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            marker_sequence: Arc::new(AtomicU64::new(0)),
         });
 
         // Extract signals and side effect caches from engine (requires lock)
@@ -1237,6 +1239,7 @@ mod tests {
     use crate::registry::Workflow;
     use crate::registry::WorkflowRegistry;
     use crate::WorkerOptions;
+    use crabdance_proto::shared::WorkflowExecution;
     use crabdance_proto::shared::{
         EventAttributes, EventType, History, HistoryEvent, WorkflowExecutionStartedEventAttributes,
     };
@@ -1377,7 +1380,7 @@ mod tests {
 
         let task = PollForDecisionTaskResponse {
             task_token: vec![1],
-            workflow_execution: Some(crabdance_proto::shared::WorkflowExecution {
+            workflow_execution: Some(WorkflowExecution {
                 workflow_id: "time-wf".to_string(),
                 run_id: "time-run".to_string(),
             }),
@@ -1491,7 +1494,7 @@ mod tests {
 
         let task2 = PollForDecisionTaskResponse {
             task_token: vec![2],
-            workflow_execution: Some(crabdance_proto::shared::WorkflowExecution {
+            workflow_execution: Some(WorkflowExecution {
                 workflow_id: "time-wf-2".to_string(), // Different workflow ID
                 run_id: "time-run-2".to_string(),
             }),
@@ -1752,7 +1755,7 @@ mod tests {
 
         let task = PollForDecisionTaskResponse {
             task_token: vec![1],
-            workflow_execution: Some(crabdance_proto::shared::WorkflowExecution {
+            workflow_execution: Some(WorkflowExecution {
                 workflow_id: "w1".to_string(),
                 run_id: "r1".to_string(),
             }),

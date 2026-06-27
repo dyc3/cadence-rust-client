@@ -7,9 +7,10 @@ use crate::commands::{
     RecordMarkerCommand, ScheduleActivityCommand, ScheduleLocalActivityCommand,
     StartChildWorkflowCommand, StartTimerCommand, WorkflowCommand,
 };
+use crate::local_activity::LocalActivityMarkerData;
 use crabdance_core::{
-    ActivityOptions, ChildWorkflowOptions, DataConverter, JsonDataConverter, RetryPolicy,
-    WorkflowInfo,
+    ActivityOptions, ChildWorkflowOptions, DataConverter, JsonDataConverter, PropagationContext,
+    RetryPolicy, WorkflowInfo,
 };
 use futures::future::poll_fn;
 use serde::Serialize;
@@ -26,7 +27,7 @@ use tracing::debug;
 type PendingSpawnTasks = Arc<Mutex<Option<Arc<Mutex<Vec<WorkflowTask>>>>>>;
 type CompletedResults = Arc<Mutex<Option<Arc<Mutex<HashMap<u64, Box<dyn Any + Send>>>>>>>;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 
 use crate::channel::{channel, Receiver, Sender};
 use crate::dispatcher::{WorkflowDispatcher, WorkflowTask};
@@ -85,8 +86,7 @@ pub struct WorkflowContextBuilder {
     side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
     mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     change_versions: Arc<Mutex<HashMap<String, i32>>>,
-    local_activity_results:
-        Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
+    local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
 }
 
 impl WorkflowContextBuilder {
@@ -139,9 +139,7 @@ impl WorkflowContextBuilder {
 
     pub fn local_activity_results(
         mut self,
-        local_activity_results: Arc<
-            Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>,
-        >,
+        local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
     ) -> Self {
         self.local_activity_results = local_activity_results;
         self
@@ -208,17 +206,17 @@ pub struct WorkflowContext {
     sequence: Arc<AtomicU64>,
     signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
     query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
-    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    cancelled: Arc<AtomicBool>,
     // Side effect result caches for replay
     side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
     mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     // Replay flag - true when workflow is being replayed from history
-    is_replay: Arc<std::sync::atomic::AtomicBool>,
+    is_replay: Arc<AtomicBool>,
     // When false (default), workflow logs are suppressed during replay (Go's
     // EnableLoggingInReplay). The worker sets this from its options.
-    log_in_replay: Arc<std::sync::atomic::AtomicBool>,
+    log_in_replay: Arc<AtomicBool>,
     // Deterministic time - current time in nanoseconds (unix epoch)
-    current_time_nanos: Arc<std::sync::atomic::AtomicI64>,
+    current_time_nanos: Arc<AtomicI64>,
     // Version markers cache for workflow versioning
     change_versions: Arc<Mutex<HashMap<String, i32>>>,
     // Search attributes, seeded from WorkflowInfo and updated by upsert_search_attributes.
@@ -228,13 +226,12 @@ pub struct WorkflowContext {
     // Propagated trace context / baggage, extracted from the workflow's start header by
     // the worker (see ContextPropagator). Available to workflow code and injectable into
     // outbound activity/child headers.
-    propagation_context: Arc<Mutex<crabdance_core::PropagationContext>>,
+    propagation_context: Arc<Mutex<PropagationContext>>,
     // History size accounting for the current decision task (set by the worker).
     history_count: Arc<AtomicU64>,
     total_history_bytes: Arc<AtomicU64>,
     // Local activity results cache for replay
-    local_activity_results:
-        Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
+    local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
     // Dispatcher for managing spawned tasks
     dispatcher: Arc<Mutex<Option<Arc<Mutex<WorkflowDispatcher>>>>>,
     // Pending tasks queue (shared with dispatcher for lock-free spawning)
@@ -267,16 +264,16 @@ impl WorkflowContext {
             sequence: Arc::new(AtomicU64::new(0)),
             signals: Arc::new(Mutex::new(HashMap::new())),
             query_handlers: Arc::new(Mutex::new(HashMap::new())),
-            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cancelled: Arc::new(AtomicBool::new(false)),
             side_effect_results: Arc::new(Mutex::new(HashMap::new())),
             mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
-            is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            log_in_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
+            is_replay: Arc::new(AtomicBool::new(false)),
+            log_in_replay: Arc::new(AtomicBool::new(false)),
+            current_time_nanos: Arc::new(AtomicI64::new(start_time_nanos)),
             change_versions: Arc::new(Mutex::new(HashMap::new())),
             search_attributes: Arc::new(Mutex::new(search_attributes)),
             last_completion_result: Arc::new(Mutex::new(None)),
-            propagation_context: Arc::new(Mutex::new(crabdance_core::PropagationContext::new())),
+            propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
             history_count: Arc::new(AtomicU64::new(0)),
             total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
@@ -300,9 +297,7 @@ impl WorkflowContext {
         side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
         mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
         change_versions: Arc<Mutex<HashMap<String, i32>>>,
-        local_activity_results: Arc<
-            Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>,
-        >,
+        local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
         resources: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Self {
         // Initialize with start time from workflow info
@@ -315,16 +310,16 @@ impl WorkflowContext {
             sequence: Arc::new(AtomicU64::new(0)),
             signals,
             query_handlers,
-            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cancelled: Arc::new(AtomicBool::new(false)),
             side_effect_results,
             mutable_side_effects,
-            is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            log_in_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
+            is_replay: Arc::new(AtomicBool::new(false)),
+            log_in_replay: Arc::new(AtomicBool::new(false)),
+            current_time_nanos: Arc::new(AtomicI64::new(start_time_nanos)),
             change_versions,
             search_attributes: Arc::new(Mutex::new(search_attributes)),
             last_completion_result: Arc::new(Mutex::new(None)),
-            propagation_context: Arc::new(Mutex::new(crabdance_core::PropagationContext::new())),
+            propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
             history_count: Arc::new(AtomicU64::new(0)),
             total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results,
@@ -391,19 +386,13 @@ impl WorkflowContext {
     }
 
     /// Set local activity results cache (used during replay)
-    pub fn set_local_activity_results(
-        &self,
-        results: HashMap<String, crate::local_activity::LocalActivityMarkerData>,
-    ) {
+    pub fn set_local_activity_results(&self, results: HashMap<String, LocalActivityMarkerData>) {
         let mut cache = self.local_activity_results.lock().unwrap();
         *cache = results;
     }
 
     /// Get local activity result from cache (used during replay)
-    fn get_local_activity_result(
-        &self,
-        activity_id: &str,
-    ) -> Option<crate::local_activity::LocalActivityMarkerData> {
+    fn get_local_activity_result(&self, activity_id: &str) -> Option<LocalActivityMarkerData> {
         let cache = self.local_activity_results.lock().unwrap();
         cache.get(activity_id).cloned()
     }
@@ -1008,13 +997,13 @@ impl WorkflowContext {
 
     /// Set the propagated trace context / baggage, called by the worker after extracting
     /// it from the workflow's start header through the configured `ContextPropagator`s.
-    pub fn set_propagation_context(&self, context: crabdance_core::PropagationContext) {
+    pub fn set_propagation_context(&self, context: PropagationContext) {
         *self.propagation_context.lock().unwrap() = context;
     }
 
     /// The propagated trace context / baggage available to this workflow (Go's header
     /// values exposed to workflow code).
-    pub fn propagation_context(&self) -> crabdance_core::PropagationContext {
+    pub fn propagation_context(&self) -> PropagationContext {
         self.propagation_context.lock().unwrap().clone()
     }
 
@@ -1418,11 +1407,11 @@ impl SignalChannel {
 
 /// Cancellation channel
 pub struct CancellationChannel {
-    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl CancellationChannel {
-    pub fn new(cancelled: Arc<std::sync::atomic::AtomicBool>) -> Self {
+    pub fn new(cancelled: Arc<AtomicBool>) -> Self {
         Self { cancelled }
     }
 
