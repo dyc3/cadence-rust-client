@@ -286,8 +286,15 @@ impl ActivityTaskHandler {
         let context_ref = &context;
         let future = activity.execute(context_ref, input);
 
+        // Span for the activity execution. Under the `otel` feature it is parented to
+        // the remote trace carried in the task header, so the activity span joins the
+        // workflow's trace (W3C `traceparent`).
+        let exec_span = tracing::info_span!("activity.execute", activity_type = %activity_type);
+        #[cfg(feature = "otel")]
+        crate::otel::set_remote_parent(&exec_span, task.header.as_ref());
+
         // Execute with panic recovery using tokio::spawn
-        let result = tokio::spawn(future).await;
+        let result = tokio::spawn(tracing::Instrument::instrument(future, exec_span)).await;
 
         // Stop heartbeat
         let _ = cancel_heartbeat_tx.send(());

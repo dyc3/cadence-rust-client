@@ -1009,6 +1009,19 @@ impl WorkflowContext {
         *self.propagation_context.lock().unwrap() = context;
     }
 
+    /// Share the propagation context with another holder (e.g. the worker's command
+    /// sink, so it can inject the live context into outbound activity / child-workflow
+    /// headers). Builder-style: call immediately after construction, before cloning.
+    pub fn with_shared_propagation(mut self, handle: Arc<Mutex<PropagationContext>>) -> Self {
+        self.propagation_context = handle;
+        self
+    }
+
+    /// A handle to this context's propagation context, for sharing with the command sink.
+    pub fn propagation_handle(&self) -> Arc<Mutex<PropagationContext>> {
+        self.propagation_context.clone()
+    }
+
     /// The propagated trace context / baggage available to this workflow (Go's header
     /// values exposed to workflow code).
     pub fn propagation_context(&self) -> PropagationContext {

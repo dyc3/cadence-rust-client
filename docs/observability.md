@@ -109,5 +109,78 @@ allowed. A workflow-boundary interceptor wraps a *decision-task execution*; it
 must not mutate workflow state or emit commands, and a veto there fails the
 decision task rather than the workflow logic.
 
-> **Deferred (M2, TD-2):** OpenTelemetry/OTLP export and W3C `traceparent` propagation,
-> riding on the `ContextPropagator` seam.
+## Distributed tracing (OpenTelemetry / OTLP)
+
+The worker can export its `tracing` spans to an OpenTelemetry collector over OTLP,
+behind the optional **`otel`** feature (off by default so the OTel dependency tree
+is only pulled when an application opts in):
+
+```toml
+crabdance_worker = { version = "0.3", features = ["otel"] }
+```
+
+Install the exporter once at process start, then register a
+`W3CTraceContextPropagator` on the worker so `traceparent` crosses the
+workflow → activity boundary:
+
+```rust
+use std::sync::Arc;
+use crabdance_core::W3CTraceContextPropagator;
+use crabdance_worker::WorkerOptions;
+
+// Export spans to a collector at http://localhost:4317.
+crabdance_worker::otel::init_otlp("http://localhost:4317", "order-worker")?;
+
+let options = WorkerOptions {
+    context_propagators: vec![Arc::new(W3CTraceContextPropagator)],
+    ..Default::default()
+};
+```
+
+How the workflow → activity trace is stitched together:
+
+1. Workflow code (or an interceptor) seeds the propagation context with the active
+   span's `traceparent` via `ctx.set_propagation_context(..)`.
+2. When the workflow schedules an activity or child workflow, the worker injects
+   that context into the decision's **header** through the configured propagators.
+3. The activity worker extracts the header and (under `otel`) parents the
+   `activity.execute` span to it — so **activity spans are children of the
+   workflow span** and appear under the same trace in the collector.
+
+### Running an OTLP collector
+
+A minimal collector for local development:
+
+```yaml
+# docker-compose.otel.yml
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-config.yaml"]
+    volumes:
+      - ./otel-config.yaml:/etc/otel-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+```
+
+```yaml
+# otel-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+exporters:
+  debug:
+    verbosity: detailed
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+> **Known limitation:** the inbound client → workflow trace link depends on a
+> `Header` field on the workflow-started history event, which the simplified
+> wire types do not yet surface; tracked as the remaining piece of #39. The
+> workflow → activity / child-workflow links above are fully wired.

@@ -11,6 +11,8 @@ pub mod heartbeat;
 pub mod interceptor;
 pub mod local_activity_queue;
 pub mod metrics;
+#[cfg(feature = "otel")]
+pub mod otel;
 pub mod pollers;
 pub mod registry;
 pub mod replay_verifier;

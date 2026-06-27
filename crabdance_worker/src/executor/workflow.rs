@@ -141,6 +141,33 @@ struct ReplayCommandSink {
     // wall-clock time here would produce a different ID on replay than on the original
     // execution, corrupting replay matching.
     marker_sequence: Arc<AtomicU64>,
+    // Live propagation context (shared with the WorkflowContext) and the configured
+    // propagators, used to inject trace context / baggage into outbound activity and
+    // child-workflow headers (Go's ContextPropagators on the wire).
+    propagation: Arc<Mutex<crabdance_core::PropagationContext>>,
+    propagators: Vec<Arc<dyn crabdance_core::ContextPropagator>>,
+}
+
+impl ReplayCommandSink {
+    /// Build the header carrier for an outbound boundary by injecting the live
+    /// propagation context through the configured propagators. Returns `None` when
+    /// nothing is propagated (no propagators, or an empty carrier), so the common
+    /// path leaves the header unset.
+    fn outbound_header(&self) -> Option<crabdance_proto::shared::Header> {
+        if self.propagators.is_empty() {
+            return None;
+        }
+        let context = self.propagation.lock().unwrap();
+        let mut carrier = crabdance_core::PropagationCarrier::new();
+        for propagator in &self.propagators {
+            propagator.inject(&context, &mut carrier);
+        }
+        if carrier.is_empty() {
+            None
+        } else {
+            Some(crabdance_proto::shared::Header { fields: carrier })
+        }
+    }
 }
 
 // Represents a local activity that needs to be executed
@@ -161,6 +188,9 @@ impl CommandSink for ReplayCommandSink {
         let pending_local_activity_submissions = self.pending_local_activity_submissions.clone();
         let local_activity_wakers = self.local_activity_wakers.clone();
         let marker_sequence = self.marker_sequence.clone();
+        // Snapshot the outbound propagation header now (reads the live propagation
+        // context), so the returned future does not borrow `self`.
+        let outbound_header = self.outbound_header();
 
         Box::pin(async move {
             debug!(?command, "submitting workflow command");
@@ -235,7 +265,7 @@ impl CommandSink for ReplayCommandSink {
                                     as i32,
                             }
                         }),
-                        header: None,
+                        header: outbound_header.clone(),
                     };
 
                     let decision = Box::new(ActivityDecisionStateMachine::new(
@@ -346,7 +376,7 @@ impl CommandSink for ReplayCommandSink {
                             }
                         }),
                         cron_schedule: cmd.options.cron_schedule,
-                        header: None,
+                        header: outbound_header.clone(),
                         memo: None,
                         search_attributes: None,
                         workflow_id_reuse_policy: None,
@@ -848,9 +878,12 @@ impl WorkflowExecutor {
             search_attributes: None,
         };
 
-        // Create sink with workflow_info
+        // Create sink with workflow_info. The propagation context is shared with the
+        // WorkflowContext below so the sink injects the live context into outbound
+        // activity / child-workflow headers.
         let pending_local_activity_submissions = Arc::new(Mutex::new(Vec::new()));
         let local_activity_wakers = Arc::new(Mutex::new(HashMap::new()));
+        let propagation = Arc::new(Mutex::new(crabdance_core::PropagationContext::new()));
         let sink = Arc::new(ReplayCommandSink {
             engine: engine_arc.clone(),
             default_task_list: self.task_list.clone(),
@@ -859,6 +892,8 @@ impl WorkflowExecutor {
             pending_local_activity_submissions: pending_local_activity_submissions.clone(),
             local_activity_wakers: local_activity_wakers.clone(),
             marker_sequence: Arc::new(AtomicU64::new(0)),
+            propagation: propagation.clone(),
+            propagators: self.options.context_propagators.clone(),
         });
 
         // Extract signals and side effect caches from engine (requires lock)
@@ -899,7 +934,11 @@ impl WorkflowExecutor {
             local_activity_results_arc,
             self.resources.clone(),
         )
-        .with_converter(self.data_converter.clone());
+        .with_converter(self.data_converter.clone())
+        // Share the same propagation context the sink injects from, so when workflow
+        // code (or an interceptor) seeds trace context / baggage it flows onto the
+        // wire for downstream activities and child workflows.
+        .with_shared_propagation(propagation.clone());
 
         // Set deterministic current time
         context.set_current_time_nanos(current_time_nanos);
@@ -1325,6 +1364,37 @@ mod tests {
         }
     }
 
+    /// Seeds a propagation context then schedules an activity — used to assert the
+    /// trace context flows into the outbound activity header.
+    #[derive(Clone)]
+    struct PropagatingWorkflow;
+
+    impl Workflow for PropagatingWorkflow {
+        fn execute(
+            &self,
+            ctx: WorkflowContext,
+            input: Option<Vec<u8>>,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, crate::registry::WorkflowError>> + Send>>
+        {
+            Box::pin(async move {
+                let mut pc = crabdance_core::PropagationContext::new();
+                pc.set(
+                    crabdance_core::TRACEPARENT_HEADER,
+                    b"00-trace-span-01".to_vec(),
+                );
+                ctx.set_propagation_context(pc);
+                let res = ctx
+                    .execute_activity(
+                        "test_activity",
+                        input,
+                        crabdance_core::ActivityOptions::default(),
+                    )
+                    .await?;
+                Ok(res)
+            })
+        }
+    }
+
     #[derive(Clone)]
     struct TimeWorkflow;
 
@@ -1607,6 +1677,144 @@ mod tests {
                 decision2.attributes
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_propagation_context_injected_into_activity_header() {
+        let registry = Arc::new(WorkflowRegistry::new());
+        registry.register_workflow("PropagatingWorkflow", Box::new(PropagatingWorkflow));
+
+        let cache = Arc::new(WorkflowCache::new(10));
+        // Configure a W3C propagator so the workflow's propagation context is carried.
+        let options = WorkerOptions {
+            context_propagators: vec![Arc::new(crabdance_core::W3CTraceContextPropagator)],
+            ..Default::default()
+        };
+        let executor = WorkflowExecutor::new(
+            registry,
+            cache,
+            options,
+            "test-list".to_string(),
+            LocalActivityQueue::new(),
+            None,
+        );
+
+        let t0 = 1_000_000_000_000i64;
+        let events = vec![
+            HistoryEvent {
+                event_id: 1,
+                event_type: EventType::WorkflowExecutionStarted,
+                attributes: Some(EventAttributes::WorkflowExecutionStartedEventAttributes(
+                    Box::new(WorkflowExecutionStartedEventAttributes {
+                        workflow_type: Some(WorkflowType {
+                            name: "PropagatingWorkflow".to_string(),
+                        }),
+                        parent_workflow_execution: None,
+                        task_list: Some(crabdance_proto::shared::TaskList {
+                            name: "test-list".to_string(),
+                            kind: crabdance_proto::shared::TaskListKind::Normal,
+                        }),
+                        input: vec![],
+                        execution_start_to_close_timeout_seconds: 10,
+                        task_start_to_close_timeout_seconds: 10,
+                        identity: "test-identity".to_string(),
+                        continued_execution_run_id: None,
+                        initiator: None,
+                        continued_failure_details: None,
+                        last_completion_result: None,
+                        original_execution_run_id: None,
+                        first_execution_run_id: None,
+                        retry_policy: None,
+                        attempt: 0,
+                        expiration_timestamp: None,
+                        cron_schedule: None,
+                        first_decision_task_backoff_seconds: 0,
+                    }),
+                )),
+                timestamp: t0,
+                version: 0,
+                task_id: 0,
+            },
+            HistoryEvent {
+                event_id: 2,
+                event_type: EventType::DecisionTaskScheduled,
+                attributes: Some(EventAttributes::DecisionTaskScheduledEventAttributes(
+                    Box::new(
+                        crabdance_proto::shared::DecisionTaskScheduledEventAttributes {
+                            task_list: Some(crabdance_proto::shared::TaskList {
+                                name: "test-list".to_string(),
+                                kind: crabdance_proto::shared::TaskListKind::Normal,
+                            }),
+                            start_to_close_timeout_seconds: 10,
+                            attempt: 0,
+                        },
+                    ),
+                )),
+                timestamp: t0,
+                version: 0,
+                task_id: 0,
+            },
+            HistoryEvent {
+                event_id: 3,
+                event_type: EventType::DecisionTaskStarted,
+                attributes: Some(EventAttributes::DecisionTaskStartedEventAttributes(
+                    Box::new(
+                        crabdance_proto::shared::DecisionTaskStartedEventAttributes {
+                            scheduled_event_id: 2,
+                            identity: "test-worker".to_string(),
+                            request_id: "req-1".to_string(),
+                        },
+                    ),
+                )),
+                timestamp: t0,
+                version: 0,
+                task_id: 0,
+            },
+        ];
+
+        let task = PollForDecisionTaskResponse {
+            task_token: vec![1],
+            workflow_execution: Some(WorkflowExecution {
+                workflow_id: "prop-wf".to_string(),
+                run_id: "prop-run".to_string(),
+            }),
+            workflow_type: Some(WorkflowType {
+                name: "PropagatingWorkflow".to_string(),
+            }),
+            history: Some(History { events }),
+            previous_started_event_id: 0,
+            started_event_id: 3,
+            attempt: 0,
+            backlog_count_hint: 0,
+            queries: None,
+            next_page_token: Some(vec![]),
+            query: None,
+            workflow_execution_task_list: None,
+            scheduled_timestamp: Some(t0),
+            started_timestamp: Some(t0),
+        };
+
+        let (decisions, _) = executor.execute_decision_task(task).await.unwrap();
+
+        // The workflow blocks on the scheduled (uncompleted) activity, so the decision
+        // task emits a ScheduleActivityTask carrying the propagated traceparent header.
+        let schedule = decisions
+            .iter()
+            .find_map(|d| match &d.attributes {
+                Some(crabdance_proto::shared::DecisionAttributes::ScheduleActivityTaskDecisionAttributes(a)) => Some(a),
+                _ => None,
+            })
+            .expect("expected a ScheduleActivityTask decision");
+
+        let header = schedule
+            .header
+            .as_ref()
+            .expect("activity header should carry propagated context");
+        assert_eq!(
+            header.fields.get(crabdance_core::TRACEPARENT_HEADER),
+            Some(&b"00-trace-span-01".to_vec()),
+            "traceparent should be injected into the activity header"
+        );
     }
 
     #[tokio::test]
