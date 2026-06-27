@@ -142,12 +142,21 @@ mod tests {
         let mut carrier = PropagationCarrier::new();
         propagator.inject(&ctx, &mut carrier);
 
-        assert_eq!(carrier.get(TRACEPARENT_HEADER).map(|v| v.as_slice()), Some(&b"00-abc-def-01"[..]));
-        assert_eq!(carrier.get(BAGGAGE_HEADER).map(|v| v.as_slice()), Some(&b"k=v"[..]));
+        assert_eq!(
+            carrier.get(TRACEPARENT_HEADER).map(|v| v.as_slice()),
+            Some(&b"00-abc-def-01"[..])
+        );
+        assert_eq!(
+            carrier.get(BAGGAGE_HEADER).map(|v| v.as_slice()),
+            Some(&b"k=v"[..])
+        );
         assert!(!carrier.contains_key("x-custom"));
 
         let extracted = propagator.extract(&carrier);
-        assert_eq!(extracted.get(TRACEPARENT_HEADER), Some(&b"00-abc-def-01"[..]));
+        assert_eq!(
+            extracted.get(TRACEPARENT_HEADER),
+            Some(&b"00-abc-def-01"[..])
+        );
         assert_eq!(extracted.get(BAGGAGE_HEADER), Some(&b"k=v"[..]));
         assert_eq!(extracted.get("x-custom"), None);
     }

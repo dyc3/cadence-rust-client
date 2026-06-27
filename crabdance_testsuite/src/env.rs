@@ -33,7 +33,9 @@ use crabdance_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
 use crabdance_workflow::commands::WorkflowCommand;
 use crabdance_workflow::context::WorkflowContext;
 use crabdance_workflow::future::{DefaultWorkflowError, WorkflowError};
-use crabdance_workflow::{CommandRecord, CommandResolver, DriverOutcome, Resolution, WorkflowDriver};
+use crabdance_workflow::{
+    CommandRecord, CommandResolver, DriverOutcome, Resolution, WorkflowDriver,
+};
 
 type ActivityClosure = Arc<dyn Fn(Option<Vec<u8>>) -> Result<Vec<u8>, String> + Send + Sync>;
 
@@ -214,14 +216,18 @@ impl CommandResolver for MockResolver {
                     )))),
                 }
             }
-            WorkflowCommand::StartChildWorkflow(c) => match self.child_results.get(&c.workflow_id) {
-                Some(Ok(bytes)) => Resolution::Done(Ok(bytes.clone())),
-                Some(Err(reason)) => Resolution::Done(Err(WorkflowError::message(reason.clone()))),
-                None => Resolution::Done(Err(WorkflowError::message(format!(
-                    "no mock registered for child workflow '{}'",
-                    c.workflow_id
-                )))),
-            },
+            WorkflowCommand::StartChildWorkflow(c) => {
+                match self.child_results.get(&c.workflow_id) {
+                    Some(Ok(bytes)) => Resolution::Done(Ok(bytes.clone())),
+                    Some(Err(reason)) => {
+                        Resolution::Done(Err(WorkflowError::message(reason.clone())))
+                    }
+                    None => Resolution::Done(Err(WorkflowError::message(format!(
+                        "no mock registered for child workflow '{}'",
+                        c.workflow_id
+                    )))),
+                }
+            }
             WorkflowCommand::SignalExternalWorkflow(_)
             | WorkflowCommand::RequestCancelExternalWorkflow(_)
             | WorkflowCommand::ContinueAsNewWorkflow(_) => Resolution::Done(Ok(Vec::new())),
@@ -273,9 +279,7 @@ impl TestRunResult {
 
     /// Whether the workflow scheduled an activity of the given type.
     pub fn was_activity_executed(&self, activity_type: &str) -> bool {
-        self.executed_activities
-            .iter()
-            .any(|a| a == activity_type)
+        self.executed_activities.iter().any(|a| a == activity_type)
     }
 
     /// The full sequence of commands the workflow emitted.
@@ -302,7 +306,11 @@ mod tests {
 
         let run = env.execute(|ctx| async move {
             let out = ctx
-                .execute_activity("double", Some(serde_json::to_vec(&21).unwrap()), Default::default())
+                .execute_activity(
+                    "double",
+                    Some(serde_json::to_vec(&21).unwrap()),
+                    Default::default(),
+                )
                 .await?;
             Ok(out)
         });
@@ -318,7 +326,8 @@ mod tests {
         env.on_activity("greet", b"hi".to_vec());
 
         let run = env.execute(|ctx| async move {
-            ctx.execute_activity("greet", None, Default::default()).await
+            ctx.execute_activity("greet", None, Default::default())
+                .await
         });
         assert_eq!(run.unwrap_output(), b"hi".to_vec());
     }
@@ -333,7 +342,10 @@ mod tests {
             Ok(ctx.now().timestamp().to_string().into_bytes())
         });
 
-        let secs: i64 = String::from_utf8(run.unwrap_output()).unwrap().parse().unwrap();
+        let secs: i64 = String::from_utf8(run.unwrap_output())
+            .unwrap()
+            .parse()
+            .unwrap();
         assert_eq!(secs, 30);
     }
 
@@ -375,9 +387,11 @@ mod tests {
             assert_eq!(n, 7);
             let version = ctx.get_version("step", DEFAULT_VERSION, 1);
             if version >= 1 {
-                ctx.execute_activity("new_path", None, Default::default()).await
+                ctx.execute_activity("new_path", None, Default::default())
+                    .await
             } else {
-                ctx.execute_activity("old_path", None, Default::default()).await
+                ctx.execute_activity("old_path", None, Default::default())
+                    .await
             }
         });
 
@@ -390,7 +404,8 @@ mod tests {
         env.on_activity_error("charge", "card declined");
 
         let run = env.execute(|ctx| async move {
-            ctx.execute_activity("charge", None, Default::default()).await
+            ctx.execute_activity("charge", None, Default::default())
+                .await
         });
 
         match run.output_result() {
