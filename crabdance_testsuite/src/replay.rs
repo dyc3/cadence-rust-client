@@ -376,6 +376,42 @@ mod tests {
     }
 
     #[test]
+    fn version_gated_workflow_replays_recorded_version() {
+        // A workflow that branches on get_version. On replay the recorded version (1)
+        // is returned from the seeded cache, so the "new path" activity is scheduled
+        // deterministically — proving versioning replay correctness end-to-end.
+        async fn versioned(ctx: WorkflowContext) -> Result<Vec<u8>, DefaultWorkflowError> {
+            let version = ctx.get_version("add-step", DEFAULT_VERSION, 2);
+            if version >= 1 {
+                ctx.execute_activity("new_path", None, Default::default()).await
+            } else {
+                ctx.execute_activity("old_path", None, Default::default()).await
+            }
+        }
+
+        let history = RecordedHistory {
+            start_time_nanos: 0,
+            events: vec![
+                RecordedEvent::Version {
+                    change_id: "add-step".to_string(),
+                    version: 1,
+                },
+                RecordedEvent::ActivityCompleted {
+                    activity_id: "0".to_string(),
+                    result: b"done".to_vec(),
+                },
+            ],
+            expected_commands: vec![CommandRecord::ScheduleActivity {
+                activity_id: "0".to_string(),
+                activity_type: "new_path".to_string(),
+            }],
+        };
+
+        replay_workflow(&history, "versioned", versioned)
+            .expect("version-gated workflow must replay the recorded version deterministically");
+    }
+
+    #[test]
     fn blocks_when_recorded_result_missing() {
         // History records no result for the activity, so replay cannot make progress.
         let history = RecordedHistory {

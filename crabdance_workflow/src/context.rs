@@ -40,6 +40,39 @@ pub const VERSION_MARKER_NAME: &str = "Version";
 /// Default version constant (-1) used when no version is specified
 pub const DEFAULT_VERSION: i32 = -1;
 
+/// Search-attribute key under which `get_version` records the change/version pairs,
+/// matching the Go client's `CadenceChangeVersion`.
+pub const CADENCE_CHANGE_VERSION_SEARCH_ATTRIBUTE: &str = "CadenceChangeVersion";
+
+/// First-execution options for [`WorkflowContext::get_version_with_options`],
+/// mirroring Go's `GetVersionOption` (`ExecuteWithVersion` / `ExecuteWithMinVersion`).
+///
+/// These only affect the version chosen the *first* time a changeID is seen during
+/// live execution; cached and replayed versions are unaffected.
+#[derive(Debug, Clone, Default)]
+pub struct GetVersionOptions {
+    custom_version: Option<i32>,
+    use_min_version: bool,
+}
+
+impl GetVersionOptions {
+    /// Force a specific version on first execution (Go's `ExecuteWithVersion`).
+    pub fn execute_with_version(version: i32) -> Self {
+        Self {
+            custom_version: Some(version),
+            use_min_version: false,
+        }
+    }
+
+    /// Force `min_supported` on first execution (Go's `ExecuteWithMinVersion`).
+    pub fn execute_with_min_version() -> Self {
+        Self {
+            custom_version: None,
+            use_min_version: true,
+        }
+    }
+}
+
 /// Type alias for query handlers
 pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
 
@@ -733,39 +766,62 @@ impl WorkflowContext {
     /// // Original code continues...
     /// ```
     pub fn get_version(&self, change_id: &str, min_supported: i32, max_supported: i32) -> i32 {
-        // Step 1: Check if version already cached for this changeID
+        self.get_version_with_options(
+            change_id,
+            min_supported,
+            max_supported,
+            GetVersionOptions::default(),
+        )
+    }
+
+    /// [`get_version`](Self::get_version) with explicit first-execution options.
+    ///
+    /// Mirrors Go's `GetVersion(ctx, changeID, min, max, opts...)`:
+    /// - cached changeID → the recorded version (validated against the range);
+    /// - replay (uncached) → `DEFAULT_VERSION`;
+    /// - [`GetVersionOptions::execute_with_version`] → the supplied version;
+    /// - [`GetVersionOptions::execute_with_min_version`] → `min_supported`;
+    /// - otherwise → `max_supported`.
+    ///
+    /// On first execution (not replay) of a non-default version, the version marker is
+    /// recorded through the deterministic command pipeline and the `CadenceChangeVersion`
+    /// search attribute is upserted, matching Go.
+    pub fn get_version_with_options(
+        &self,
+        change_id: &str,
+        min_supported: i32,
+        max_supported: i32,
+        options: GetVersionOptions,
+    ) -> i32 {
+        // Step 1: a version already assigned to this changeID is stable for the run.
         {
             let versions = self.change_versions.lock().unwrap();
             if let Some(&version) = versions.get(change_id) {
-                // Validate cached version is still in supported range
                 Self::validate_version(change_id, version, min_supported, max_supported);
                 return version;
             }
         }
 
-        // Step 2: Determine version based on context
+        // Step 2: choose the version for this first execution.
         let is_replay = self.is_replay.load(Ordering::SeqCst);
-
         let version = if is_replay {
-            // During replay mode: use DEFAULT_VERSION
-            // The actual version will be loaded from history markers
+            // The actual version is loaded from history markers (seeded into the cache);
+            // an uncached changeID during replay predates this change → DEFAULT_VERSION.
             DEFAULT_VERSION
+        } else if let Some(custom) = options.custom_version {
+            custom
+        } else if options.use_min_version {
+            min_supported
         } else {
-            // During execution: use max_supported
-            // This allows new code to execute the latest version
             max_supported
         };
 
-        // Step 3: Validate version is in acceptable range
+        // Step 3: validate the chosen version is in range.
         Self::validate_version(change_id, version, min_supported, max_supported);
 
-        // Step 4: Record version marker if not in replay and not DEFAULT_VERSION.
-        //
-        // `get_version` is synchronous (matching Go's `GetVersion`), but the marker
-        // must be recorded deterministically and in order. We submit it through the
-        // command pipeline synchronously via `submit_now` rather than a detached
-        // `tokio::spawn`, which would escape the deterministic dispatcher and could
-        // record the marker out of order, late, or not at all on replay.
+        // Step 4: on first non-replay execution of a non-default version, record the
+        // marker (synchronously and in order via submit_now — not a detached spawn) and
+        // upsert the CadenceChangeVersion search attribute, matching Go.
         if !is_replay && version != DEFAULT_VERSION {
             use crate::side_effect_serialization::encode_version_details;
 
@@ -775,18 +831,37 @@ impl WorkflowContext {
                 details,
                 header: None,
             };
-
             self.command_sink
                 .submit_now(WorkflowCommand::RecordMarker(command));
+
+            self.upsert_change_version_search_attribute(change_id, version);
         }
 
-        // Step 5: Cache version for this changeID
+        // Step 5: record the version so it is stable for the rest of the run.
         {
             let mut versions = self.change_versions.lock().unwrap();
             versions.insert(change_id.to_string(), version);
         }
 
         version
+    }
+
+    /// Upsert the `CadenceChangeVersion` search attribute (a JSON array of
+    /// `"<changeID>-<version>"` entries for this and all prior changes), matching Go.
+    fn upsert_change_version_search_attribute(&self, change_id: &str, version: i32) {
+        let mut entries = vec![format!("{change_id}-{version}")];
+        {
+            let versions = self.change_versions.lock().unwrap();
+            for (existing_id, existing_version) in versions.iter() {
+                entries.push(format!("{existing_id}-{existing_version}"));
+            }
+        }
+        if let Ok(encoded) = serde_json::to_vec(&entries) {
+            self.upsert_search_attributes(vec![(
+                CADENCE_CHANGE_VERSION_SEARCH_ATTRIBUTE.to_string(),
+                encoded,
+            )]);
+        }
     }
 
     /// Validate version is within supported range

@@ -546,6 +546,9 @@ mod tests {
         });
 
         let commands = driver.recorded_commands();
+        // The version marker is recorded first and synchronously, followed by the
+        // CadenceChangeVersion search-attribute upsert, then the activity — all before
+        // the next await point, proving in-order synchronous recording.
         assert_eq!(
             commands[0],
             CommandRecord::RecordMarker {
@@ -555,6 +558,10 @@ mod tests {
         );
         assert!(matches!(
             commands[1],
+            CommandRecord::UpsertSearchAttributes { .. }
+        ));
+        assert!(matches!(
+            commands[2],
             CommandRecord::ScheduleActivity { .. }
         ));
     }
@@ -635,6 +642,47 @@ mod tests {
         let nd: DefaultWorkflowError = WorkflowError::NonDeterministic("mismatch".to_string());
         assert!(nd.is_non_deterministic());
         assert!(nd.is_workflow_error());
+    }
+
+    #[test]
+    fn get_version_options_select_first_execution_version() {
+        use crate::context::{GetVersionOptions, DEFAULT_VERSION};
+
+        // default → max_supported
+        let d = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = d.context();
+        d.run(async move {
+            assert_eq!(ctx.get_version("a", DEFAULT_VERSION, 5), 5);
+            Ok(Vec::new())
+        });
+
+        // ExecuteWithVersion → the supplied version
+        let d = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = d.context();
+        d.run(async move {
+            let v = ctx.get_version_with_options(
+                "a",
+                DEFAULT_VERSION,
+                5,
+                GetVersionOptions::execute_with_version(3),
+            );
+            assert_eq!(v, 3);
+            Ok(Vec::new())
+        });
+
+        // ExecuteWithMinVersion → min_supported
+        let d = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = d.context();
+        d.run(async move {
+            let v = ctx.get_version_with_options(
+                "a",
+                2,
+                5,
+                GetVersionOptions::execute_with_min_version(),
+            );
+            assert_eq!(v, 2);
+            Ok(Vec::new())
+        });
     }
 
     #[test]
