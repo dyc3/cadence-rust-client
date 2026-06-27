@@ -291,10 +291,12 @@ impl WorkflowTestEnv {
         Fut: Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send + 'static,
     {
         let executed = Arc::new(Mutex::new(Vec::new()));
+        let task_lists = Arc::new(Mutex::new(HashMap::new()));
         let resolver = Arc::new(MockResolver {
             activity_mocks: self.activity_mocks.clone(),
             child_results: self.child_results.clone(),
             executed_activities: executed.clone(),
+            scheduled_task_lists: task_lists.clone(),
             call_indices: Arc::new(Mutex::new(HashMap::new())),
             listeners: self.listeners.clone(),
         });
@@ -324,10 +326,12 @@ impl WorkflowTestEnv {
         let outcome = driver.run_with_callbacks(build(ctx), callbacks);
 
         let executed_activities = executed.lock().unwrap().clone();
+        let scheduled_task_lists = task_lists.lock().unwrap().clone();
         let commands = driver.recorded_commands();
         TestRunResult {
             outcome,
             executed_activities,
+            scheduled_task_lists,
             commands,
             expected_activity_calls: self.expected_activity_calls.clone(),
         }
@@ -338,6 +342,8 @@ struct MockResolver {
     activity_mocks: HashMap<String, ActivityMock>,
     child_results: HashMap<String, Result<Vec<u8>, String>>,
     executed_activities: Arc<Mutex<Vec<String>>>,
+    /// The task list each activity type was last scheduled on (for session routing).
+    scheduled_task_lists: Arc<Mutex<HashMap<String, String>>>,
     /// Per-activity invocation counter, for `Seq` mocks.
     call_indices: Arc<Mutex<HashMap<String, usize>>>,
     listeners: Listeners,
@@ -386,6 +392,10 @@ impl CommandResolver for MockResolver {
                     .lock()
                     .unwrap()
                     .push(c.activity_type.clone());
+                self.scheduled_task_lists
+                    .lock()
+                    .unwrap()
+                    .insert(c.activity_type.clone(), c.options.task_list.clone());
                 for listener in &self.listeners.activity_scheduled {
                     listener(&c.activity_type);
                 }
@@ -441,6 +451,7 @@ impl CommandResolver for MockResolver {
 pub struct TestRunResult {
     outcome: DriverOutcome,
     executed_activities: Vec<String>,
+    scheduled_task_lists: HashMap<String, String>,
     commands: Vec<CommandRecord>,
     expected_activity_calls: HashMap<String, usize>,
 }
@@ -489,6 +500,13 @@ impl TestRunResult {
     /// Whether the workflow scheduled an activity of the given type.
     pub fn was_activity_executed(&self, activity_type: &str) -> bool {
         self.executed_activities.iter().any(|a| a == activity_type)
+    }
+
+    /// The task list an activity type was scheduled on (e.g. to verify a session
+    /// pinned its activities to the resource-specific task list). Empty string means
+    /// the workflow's default task list.
+    pub fn activity_task_list(&self, activity_type: &str) -> Option<String> {
+        self.scheduled_task_lists.get(activity_type).cloned()
     }
 
     /// How many times the workflow scheduled an activity of the given type.
@@ -748,6 +766,47 @@ mod tests {
 
         assert_eq!(run.activity_call_count("flaky"), 2);
         assert_eq!(run.unwrap_output(), b"recovered".to_vec());
+    }
+
+    #[test]
+    fn session_pins_activities_to_resource_tasklist() {
+        let response = serde_json::to_vec(&crabdance_workflow::session::SessionCreationResponse {
+            tasklist: "res-7@host-a".to_string(),
+            host_name: "host-a".to_string(),
+            resource_id: "res-7".to_string(),
+        })
+        .unwrap();
+
+        let mut env = WorkflowTestEnv::new();
+        env.on_activity(crabdance_workflow::SESSION_CREATION_ACTIVITY, response);
+        env.on_activity("doWork", b"done".to_vec());
+        env.on_activity(crabdance_workflow::SESSION_COMPLETION_ACTIVITY, vec![]);
+
+        let run = env.execute(|ctx| async move {
+            let session = ctx.create_session("default-tl", Default::default()).await?;
+            assert_eq!(session.tasklist, "res-7@host-a");
+            assert!(ctx.get_session_info().is_some());
+
+            let out = ctx
+                .execute_activity_in_session(&session, "doWork", None, Default::default())
+                .await?;
+            ctx.complete_session(&session).await;
+            assert!(ctx.get_session_info().is_none());
+            Ok(out)
+        });
+
+        // The session's activity was pinned to the resource-specific task list.
+        assert_eq!(
+            run.activity_task_list("doWork").as_deref(),
+            Some("res-7@host-a")
+        );
+        // The creation activity used the derived creation task list.
+        assert_eq!(
+            run.activity_task_list(crabdance_workflow::SESSION_CREATION_ACTIVITY)
+                .as_deref(),
+            Some("default-tl__internal_session_creation")
+        );
+        assert_eq!(run.unwrap_output(), b"done".to_vec());
     }
 
     #[test]

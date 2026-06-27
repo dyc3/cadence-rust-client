@@ -19,6 +19,7 @@ pub mod replay_verifier;
 pub mod replayer;
 #[cfg(test)]
 mod resource_tests;
+pub mod session;
 pub mod worker;
 
 pub use interceptor::TimingInterceptor;

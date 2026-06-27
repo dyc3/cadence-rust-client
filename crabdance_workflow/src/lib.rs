@@ -10,6 +10,7 @@ pub mod dispatcher;
 pub mod driver;
 pub mod future;
 pub mod local_activity;
+pub mod session;
 pub mod side_effect_serialization;
 pub mod state_machine;
 
@@ -25,5 +26,9 @@ pub use driver::{
 };
 pub use future::*;
 pub use local_activity::*;
+pub use session::{
+    resource_specific_tasklist, session_creation_tasklist, SessionInfo, SessionOptions,
+    SessionState, SESSION_COMPLETION_ACTIVITY, SESSION_CREATION_ACTIVITY,
+};
 pub use side_effect_serialization::*;
 pub use state_machine::*;

@@ -24,6 +24,9 @@ pub struct ActivityTaskHandler {
     data_converter: Arc<dyn DataConverter>,
     interceptors: InterceptorChain,
     context_propagators: Vec<Arc<dyn ContextPropagator>>,
+    /// Set on the session worker; handles the internal session creation/completion
+    /// activities (token acquire/release + signal-back).
+    session_environment: Option<Arc<crate::session::SessionEnvironment>>,
 }
 
 struct ActivityRuntimeImpl {
@@ -59,7 +62,91 @@ impl ActivityTaskHandler {
             data_converter: Arc::new(JsonDataConverter),
             interceptors: InterceptorChain::default(),
             context_propagators: Vec::new(),
+            session_environment: None,
         }
+    }
+
+    /// Attach the session environment so this handler serves the internal session
+    /// creation/completion activities.
+    pub fn with_session_environment(
+        mut self,
+        env: Arc<crate::session::SessionEnvironment>,
+    ) -> Self {
+        self.session_environment = Some(env);
+        self
+    }
+
+    /// Serve the internal session-creation activity: acquire a concurrency token and
+    /// return the host-specific resource task list. Fails the activity with "too many
+    /// outstanding sessions" when the worker is already full.
+    async fn handle_session_creation(
+        &self,
+        task: &PollForActivityTaskResponse,
+        env: &Arc<crate::session::SessionEnvironment>,
+    ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
+        if !env.bucket.try_acquire() {
+            let _ = self
+                .service
+                .respond_activity_task_failed(RespondActivityTaskFailedRequest {
+                    task_token: task.task_token.clone(),
+                    reason: Some("too many outstanding sessions".to_string()),
+                    details: None,
+                    identity: self.identity.clone(),
+                })
+                .await;
+            crate::metrics::incr(
+                crate::metrics::ACTIVITY_TASK_FAILED,
+                crate::metrics::TAG_ACTIVITY_TYPE,
+                crabdance_workflow::SESSION_CREATION_ACTIVITY,
+            );
+            return Err(CadenceError::Other(
+                "too many outstanding sessions".to_string(),
+            ));
+        }
+
+        let response = crabdance_workflow::session::SessionCreationResponse {
+            tasklist: env.resource_tasklist.clone(),
+            host_name: env.host.clone(),
+            resource_id: env.resource_id.clone(),
+        };
+        let result = serde_json::to_vec(&response)
+            .map_err(|e| CadenceError::Other(format!("encode session response: {e}")))?;
+
+        crate::metrics::incr(
+            crate::metrics::ACTIVITY_TASK_COMPLETED,
+            crate::metrics::TAG_ACTIVITY_TYPE,
+            crabdance_workflow::SESSION_CREATION_ACTIVITY,
+        );
+        self.service
+            .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
+                task_token: task.task_token.clone(),
+                result: Some(result),
+                identity: self.identity.clone(),
+            })
+            .await
+            .map_err(CadenceError::from)
+    }
+
+    /// Serve the internal session-completion activity: release the concurrency token.
+    async fn handle_session_completion(
+        &self,
+        task: &PollForActivityTaskResponse,
+        env: &Arc<crate::session::SessionEnvironment>,
+    ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
+        env.bucket.release();
+        crate::metrics::incr(
+            crate::metrics::ACTIVITY_TASK_COMPLETED,
+            crate::metrics::TAG_ACTIVITY_TYPE,
+            crabdance_workflow::SESSION_COMPLETION_ACTIVITY,
+        );
+        self.service
+            .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
+                task_token: task.task_token.clone(),
+                result: Some(Vec::new()),
+                identity: self.identity.clone(),
+            })
+            .await
+            .map_err(CadenceError::from)
     }
 
     /// Inject the worker's configured payload converter, threaded into every
@@ -120,6 +207,17 @@ impl ActivityTaskHandler {
             crate::metrics::TAG_ACTIVITY_TYPE,
             &activity_type,
         );
+
+        // Internal session activities are served by the session worker, not the
+        // user registry.
+        if let Some(env) = self.session_environment.clone() {
+            if activity_type == crabdance_workflow::SESSION_CREATION_ACTIVITY {
+                return self.handle_session_creation(&task, &env).await;
+            }
+            if activity_type == crabdance_workflow::SESSION_COMPLETION_ACTIVITY {
+                return self.handle_session_completion(&task, &env).await;
+            }
+        }
 
         // Build the interceptor context once (only when interceptors are configured).
         let interceptor_ctx = if self.interceptors.is_empty() {

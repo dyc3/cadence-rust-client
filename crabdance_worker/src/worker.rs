@@ -326,18 +326,33 @@ impl Worker for CadenceWorker {
             self.options.identity.clone(),
         ));
 
-        // Create activity handler
-        let activity_handler = Arc::new(
-            ActivityTaskHandler::new(
-                self.service.clone(),
-                self.registry.clone(),
+        // The session environment (token bucket + resource task list) for the session
+        // worker, if enabled. The resource id defaults to the worker identity so each
+        // worker owns a distinct resource task list.
+        let session_environment = if self.options.enable_session_worker {
+            Some(crate::session::SessionEnvironment::new(
                 self.options.identity.clone(),
-                self.resources.clone(),
-            )
-            .with_data_converter(self.data_converter.clone())
-            .with_interceptors(self.options.interceptors.clone())
-            .with_context_propagators(self.options.context_propagators.clone()),
-        );
+                self.options.max_concurrent_session_execution_size,
+            ))
+        } else {
+            None
+        };
+
+        // Create activity handler
+        let mut activity_handler_builder = ActivityTaskHandler::new(
+            self.service.clone(),
+            self.registry.clone(),
+            self.options.identity.clone(),
+            self.resources.clone(),
+        )
+        .with_data_converter(self.data_converter.clone())
+        .with_interceptors(self.options.interceptors.clone())
+        .with_context_propagators(self.options.context_propagators.clone());
+        if let Some(env) = &session_environment {
+            activity_handler_builder =
+                activity_handler_builder.with_session_environment(env.clone());
+        }
+        let activity_handler = Arc::new(activity_handler_builder);
 
         // Publish the configured concurrent decision-task quota as a gauge.
         crate::metrics::set_gauge(
@@ -422,6 +437,33 @@ impl Worker for CadenceWorker {
                     crate::metrics::POLLER_START,
                     crate::metrics::TAG_TASK_LIST,
                     &self.task_list,
+                );
+                poller_manager.add_activity_poller(Arc::new(poller));
+            }
+        }
+
+        // Session worker: poll the creation task list (for internal session-creation
+        // activities) and the host-specific resource task list (for the session's
+        // activities). Both use the same handler, which special-cases the internal
+        // activities and runs ordinary registered activities on the resource list.
+        if let Some(env) = &session_environment {
+            let creation_task_list = crabdance_workflow::session_creation_tasklist(&self.task_list);
+            for (suffix, task_list) in [
+                ("session-creation", creation_task_list),
+                ("session-resource", env.resource_tasklist.clone()),
+            ] {
+                let identity = format!("{}-{}", self.options.identity, suffix);
+                let poller = ActivityTaskPoller::new(
+                    self.service.clone(),
+                    &self.domain,
+                    &task_list,
+                    &identity,
+                    activity_handler.clone(),
+                );
+                crate::metrics::incr(
+                    crate::metrics::POLLER_START,
+                    crate::metrics::TAG_TASK_LIST,
+                    &task_list,
                 );
                 poller_manager.add_activity_poller(Arc::new(poller));
             }
