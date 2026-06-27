@@ -39,11 +39,10 @@ pub fn high_performance_profile() -> WorkerOptions {
         enable_session_worker: false,
         max_concurrent_session_execution_size: 1000,
         max_cached_workflows: 1000,
-        sticky_cache_idle_ttl: Duration::ZERO,
-        enable_logging_in_replay: false,
         non_deterministic_workflow_policy: NonDeterministicWorkflowPolicy::FailWorkflow,
         identity: "loadtest-high-perf-worker".to_string(),
         deadlock_detection_timeout: Duration::from_secs(60),
+        ..Default::default()
     }
 }
 
@@ -72,11 +71,10 @@ pub fn development_profile() -> WorkerOptions {
         enable_session_worker: false,
         max_concurrent_session_execution_size: 100,
         max_cached_workflows: 100,
-        sticky_cache_idle_ttl: Duration::ZERO,
-        enable_logging_in_replay: false,
         non_deterministic_workflow_policy: NonDeterministicWorkflowPolicy::BlockWorkflow,
         identity: "loadtest-dev-worker".to_string(),
         deadlock_detection_timeout: Duration::from_secs(30),
+        ..Default::default()
     }
 }
 
@@ -105,10 +103,9 @@ pub fn stress_test_profile() -> WorkerOptions {
         enable_session_worker: false,
         max_concurrent_session_execution_size: 5000,
         max_cached_workflows: 5000,
-        sticky_cache_idle_ttl: Duration::ZERO,
-        enable_logging_in_replay: false,
         non_deterministic_workflow_policy: NonDeterministicWorkflowPolicy::FailWorkflow,
         identity: "loadtest-stress-worker".to_string(),
         deadlock_detection_timeout: Duration::from_secs(120),
+        ..Default::default()
     }
 }

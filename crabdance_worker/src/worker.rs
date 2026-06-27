@@ -89,6 +89,10 @@ pub struct WorkerOptions {
     /// Emit workflow logs during replay (Go's `EnableLoggingInReplay`). Off by default,
     /// so replayed history does not re-emit logs.
     pub enable_logging_in_replay: bool,
+    /// Poller auto-scaling. When enabled, the active poller pool is resized
+    /// between `min_pollers` and `max_pollers` based on observed poll latency.
+    /// Disabled by default (a fixed pool of `max_concurrent_*_task_pollers`).
+    pub autoscaler: AutoScalerOptions,
 }
 
 impl Default for WorkerOptions {
@@ -117,6 +121,7 @@ impl Default for WorkerOptions {
             max_cached_workflows: 1000,
             sticky_cache_idle_ttl: Duration::ZERO, // Idle expiration disabled by default
             enable_logging_in_replay: false,
+            autoscaler: AutoScalerOptions::default(),
         }
     }
 }
@@ -314,8 +319,40 @@ impl Worker for CadenceWorker {
             self.options.max_concurrent_decision_task_execution_size as f64,
         );
 
+        // Pace polling to the configured per-second limits (Go's
+        // WorkerDecisionTasksPerSecond / WorkerActivitiesPerSecond). Unlimited by default.
+        poller_manager.with_rate_limits(
+            self.options.worker_decision_tasks_per_second,
+            self.options.worker_activities_per_second,
+        );
+
+        // When auto-scaling is enabled, spawn the full max-poller pool up front and
+        // let each scaler's resizable gate bound how many poll concurrently between
+        // min and max. Otherwise use a fixed pool of the configured poller count.
+        let autoscaler = &self.options.autoscaler;
+        let (decision_poller_count, activity_poller_count) = if autoscaler.enabled {
+            let decision_scaler = crate::autoscaler::PollerAutoScaler::new(
+                autoscaler.min_pollers,
+                autoscaler.max_pollers,
+                autoscaler.target_poll_duration,
+            );
+            let activity_scaler = crate::autoscaler::PollerAutoScaler::new(
+                autoscaler.min_pollers,
+                autoscaler.max_pollers,
+                autoscaler.target_poll_duration,
+            );
+            poller_manager.set_decision_scaler(decision_scaler);
+            poller_manager.set_activity_scaler(activity_scaler);
+            (autoscaler.max_pollers, autoscaler.max_pollers)
+        } else {
+            (
+                self.options.max_concurrent_decision_task_pollers,
+                self.options.max_concurrent_activity_task_pollers,
+            )
+        };
+
         // Create decision pollers
-        for i in 0..self.options.max_concurrent_decision_task_pollers {
+        for i in 0..decision_poller_count {
             let identity = format!("{}-decision-{}", self.options.identity, i);
             let mut poller = DecisionTaskPoller::new(
                 self.service.clone(),
@@ -340,7 +377,7 @@ impl Worker for CadenceWorker {
         }
 
         // Create activity pollers
-        for i in 0..self.options.max_concurrent_activity_task_pollers {
+        for i in 0..activity_poller_count {
             let identity = format!("{}-activity-{}", self.options.identity, i);
             let poller = ActivityTaskPoller::new(
                 self.service.clone(),

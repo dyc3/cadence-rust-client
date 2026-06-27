@@ -4,6 +4,7 @@
 //! implementations, polling tasks from the Cadence server, and executing
 //! them.
 
+pub mod autoscaler;
 pub mod executor;
 pub mod handlers;
 pub mod heartbeat;
