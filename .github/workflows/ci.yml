@@ -137,3 +137,30 @@ jobs:
 
       - name: Run tests
         run: cargo test
+
+  replay-gate:
+    name: Determinism Replay Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "21.12"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      # Required check: a workflow must replay its recorded history deterministically.
+      # A divergent command sequence fails here as a NonDeterministic error.
+      - name: Run determinism / replay gate
+        run: just replay-gate

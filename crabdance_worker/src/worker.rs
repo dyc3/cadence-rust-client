@@ -81,6 +81,9 @@ pub struct WorkerOptions {
     pub deadlock_detection_timeout: Duration,
     /// Max cached workflows
     pub max_cached_workflows: usize,
+    /// Emit workflow logs during replay (Go's `EnableLoggingInReplay`). Off by default,
+    /// so replayed history does not re-emit logs.
+    pub enable_logging_in_replay: bool,
 }
 
 impl Default for WorkerOptions {
@@ -107,6 +110,7 @@ impl Default for WorkerOptions {
             ),
             deadlock_detection_timeout: Duration::from_secs(0), // Disabled by default
             max_cached_workflows: 1000,
+            enable_logging_in_replay: false,
         }
     }
 }
@@ -293,6 +297,14 @@ impl Worker for CadenceWorker {
             .with_data_converter(self.data_converter.clone()),
         );
 
+        // Publish the configured concurrent decision-task quota as a gauge.
+        crate::metrics::set_gauge(
+            crate::metrics::CONCURRENT_TASK_QUOTA,
+            crate::metrics::TAG_TASK_LIST,
+            &self.task_list,
+            self.options.max_concurrent_decision_task_execution_size as f64,
+        );
+
         // Create decision pollers
         for i in 0..self.options.max_concurrent_decision_task_pollers {
             let identity = format!("{}-decision-{}", self.options.identity, i);
@@ -310,6 +322,11 @@ impl Worker for CadenceWorker {
                 poller = poller.with_sticky_task_list(sticky_task_list);
             }
 
+            crate::metrics::incr(
+                crate::metrics::POLLER_START,
+                crate::metrics::TAG_TASK_LIST,
+                &self.task_list,
+            );
             poller_manager.add_decision_poller(Arc::new(poller));
         }
 
@@ -322,6 +339,11 @@ impl Worker for CadenceWorker {
                 &self.task_list,
                 &identity,
                 activity_handler.clone(),
+            );
+            crate::metrics::incr(
+                crate::metrics::POLLER_START,
+                crate::metrics::TAG_TASK_LIST,
+                &self.task_list,
             );
             poller_manager.add_activity_poller(Arc::new(poller));
         }

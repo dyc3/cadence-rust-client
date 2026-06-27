@@ -1,3 +1,5 @@
+#![cfg(feature = "integration")]
+
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,7 +71,6 @@ async fn pg_count(ctx: WorkflowContext, mut db: DbConn, input: i64) -> Result<i6
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_sqlx_pgpool_resources_for_activity_and_workflow() {
     let database_url = match env::var("DATABASE_URL") {
         Ok(url) => url,

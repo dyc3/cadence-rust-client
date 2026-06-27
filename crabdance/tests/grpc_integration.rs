@@ -1,3 +1,5 @@
+#![cfg(feature = "integration")]
+
 //! gRPC Integration Tests
 //!
 //! These tests verify the gRPC client implementation works correctly with a real Cadence server.
@@ -135,7 +137,6 @@ fn create_test_workflow_request(domain: &str, workflow_id: &str) -> StartWorkflo
 /// This test verifies that the gRPC client can connect to the Cadence server
 /// and make a basic API call.
 #[tokio::test]
-#[ignore]
 async fn test_grpc_connection() {
     println!(
         "Testing gRPC connection to Cadence server at {}",
@@ -176,7 +177,6 @@ async fn test_grpc_connection() {
 ///
 /// This test verifies domain management operations work via gRPC.
 #[tokio::test]
-#[ignore]
 async fn test_register_and_describe_domain() {
     let domain_name = generate_test_domain_name();
     println!("Testing domain registration: {}", domain_name);
@@ -225,7 +225,6 @@ async fn test_register_and_describe_domain() {
 ///
 /// This test verifies starting a workflow via gRPC.
 #[tokio::test]
-#[ignore]
 async fn test_start_workflow_execution() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
@@ -268,7 +267,6 @@ async fn test_start_workflow_execution() {
 ///
 /// This test verifies retrieving workflow history via gRPC.
 #[tokio::test]
-#[ignore]
 async fn test_get_workflow_execution_history() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
@@ -362,7 +360,6 @@ async fn test_get_workflow_execution_history() {
 ///
 /// This test verifies sending a signal to a workflow via gRPC.
 #[tokio::test]
-#[ignore]
 async fn test_signal_workflow_execution() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
@@ -416,7 +413,6 @@ async fn test_signal_workflow_execution() {
 /// This test verifies querying a workflow via gRPC.
 /// Note: This may return an error if the workflow is not running with a worker.
 #[tokio::test]
-#[ignore]
 async fn test_query_workflow() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();
@@ -480,7 +476,6 @@ async fn test_query_workflow() {
 ///
 /// This test verifies listing workflows via gRPC.
 #[tokio::test]
-#[ignore]
 async fn test_list_open_workflow_executions() {
     let domain_name = generate_test_domain_name();
     let workflow_id = generate_workflow_id();

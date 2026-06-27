@@ -214,8 +214,12 @@ pub fn decode<T: DeserializeOwned>(data: &[u8]) -> Result<T, EncodingError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
     use serde::Deserialize;
+
+    use super::*;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     struct TestStruct {
@@ -243,8 +247,8 @@ mod tests {
     /// honours the *injected* converter rather than hardcoding JSON.
     #[derive(Default)]
     struct FakeConverter {
-        encodes: std::sync::atomic::AtomicUsize,
-        decodes: std::sync::atomic::AtomicUsize,
+        encodes: AtomicUsize,
+        decodes: AtomicUsize,
     }
 
     impl DataConverter for FakeConverter {
@@ -252,8 +256,7 @@ mod tests {
             &self,
             value: &dyn erased_serde::Serialize,
         ) -> Result<Vec<u8>, EncodingError> {
-            self.encodes
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.encodes.fetch_add(1, Ordering::SeqCst);
             let mut out = vec![0xFE];
             out.extend(JsonDataConverter.to_payload(value)?);
             Ok(out)
@@ -264,8 +267,7 @@ mod tests {
             data: &'de [u8],
             f: &mut dyn FnMut(&mut dyn erased_serde::Deserializer<'de>) -> erased_serde::Result<()>,
         ) -> Result<(), EncodingError> {
-            self.decodes
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.decodes.fetch_add(1, Ordering::SeqCst);
             let inner = data.strip_prefix(&[0xFE]).ok_or_else(|| {
                 EncodingError::Deserialization("missing FakeConverter frame".to_string())
             })?;
@@ -275,9 +277,6 @@ mod tests {
 
     #[test]
     fn test_seam_is_object_safe_and_swappable() {
-        use std::sync::atomic::Ordering;
-        use std::sync::Arc;
-
         let fake = Arc::new(FakeConverter::default());
         // Stored and used purely as a trait object — the object-safety the seam exists for.
         let converter: Arc<dyn DataConverter> = fake.clone();

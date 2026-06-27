@@ -8,12 +8,18 @@ repository.workspace = true
 description = "Cadence workflow client for Rust"
 keywords.workspace = true
 
+[features]
+# Enables tests that require a live Cadence server. Off by default; run them
+# with `just integration`.
+integration = []
+
 [dependencies]
 crabdance_proto = { workspace = true }
 crabdance_core = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tonic = { workspace = true }
+prost-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }

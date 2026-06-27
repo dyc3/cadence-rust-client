@@ -1,3 +1,5 @@
+#![cfg(feature = "integration")]
+
 //! Payment Confirmation Flow Integration Test
 //!
 //! This test verifies signal handling in workflows by implementing a payment confirmation flow.
@@ -588,7 +590,6 @@ fn assert_activity_executed(
 // ============================================================================
 
 #[tokio::test]
-#[ignore]
 async fn test_payment_confirmation_success() {
     println!("\n=== Testing Payment Confirmation Success ===");
     println!("This test verifies signal handling for payment confirmation flow.\n");
@@ -754,7 +755,6 @@ async fn test_payment_confirmation_success() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_payment_confirmation_failure() {
     println!("\n=== Testing Payment Confirmation Failure ===");
     println!("This test verifies signal handling for payment failure flow.\n");

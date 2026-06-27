@@ -132,6 +132,100 @@ impl GrpcWorkflowServiceClient {
     }
 }
 
+/// Go-parity extension fields for `StartWorkflowExecutionRequest` that the
+/// api-level request wrapper (`crabdance_proto::workflow_service`) does not yet
+/// carry. They are applied directly onto the generated protobuf request after
+/// the standard conversion, so the client can reach the wire fields without a
+/// change rippling into `crabdance_proto`.
+///
+/// Mirrors the `FirstRunAt`, `CronOverlapPolicy` and `ActiveClusterSelectionPolicy`
+/// fields of the Go client's `StartWorkflowOptions`.
+#[derive(Debug, Clone, Default)]
+pub struct StartWorkflowExtensions {
+    /// `first_run_at` expressed as Unix nanoseconds. `None` leaves the proto
+    /// field unset (server falls back to `delay_start`/`jitter_start`).
+    pub first_run_at_unix_nanos: Option<i64>,
+    /// Proto `CronOverlapPolicy` discriminant (`0`=Invalid, `1`=Skipped, `2`=BufferOne).
+    pub cron_overlap_policy: i32,
+    /// Active-active cluster selection policy.
+    pub active_cluster_selection_policy:
+        Option<crabdance_proto::generated::ActiveClusterSelectionPolicy>,
+}
+
+/// Inherent visibility/start helpers that talk to the generated gRPC clients
+/// directly. These complement the object-safe `WorkflowService` trait impl for
+/// methods/fields that the trait and api-wrapper types do not yet expose.
+impl GrpcWorkflowServiceClient {
+    /// Start a workflow, applying the Go-parity extension fields not present on
+    /// the api-level request wrapper (`first_run_at`, `cron_overlap_policy`,
+    /// `active_cluster_selection_policy`).
+    pub async fn start_workflow_execution_with_extensions(
+        &self,
+        request: StartWorkflowExecutionRequest,
+        ext: StartWorkflowExtensions,
+    ) -> Result<StartWorkflowExecutionResponse, TransportError> {
+        let mut pb_request: crabdance_proto::generated::StartWorkflowExecutionRequest =
+            request.into();
+        pb_request.first_run_at = ext
+            .first_run_at_unix_nanos
+            .map(|nanos| prost_types::Timestamp {
+                seconds: nanos.div_euclid(1_000_000_000),
+                nanos: nanos.rem_euclid(1_000_000_000) as i32,
+            });
+        pb_request.cron_overlap_policy = ext.cron_overlap_policy;
+        pb_request.active_cluster_selection_policy = ext.active_cluster_selection_policy;
+
+        let mut client = self.workflow_client.clone();
+        let response = client
+            .start_workflow_execution(pb_request)
+            .await
+            .map_err(TransportError::from)?;
+        Ok(response.into_inner().into())
+    }
+
+    /// Transport wrapper for the unified `ListWorkflowExecutions` visibility API
+    /// (open + closed, query based) used by Go's `ListWorkflow`.
+    ///
+    /// Returns the response shaped as `ScanWorkflowExecutionsResponse` (the
+    /// structurally identical wrapper) so it reuses the existing `From`
+    /// conversion for `WorkflowExecutionInfo`.
+    pub async fn list_workflow_executions(
+        &self,
+        request: crabdance_proto::generated::ListWorkflowExecutionsRequest,
+    ) -> Result<ScanWorkflowExecutionsResponse, TransportError> {
+        let mut client = self.visibility_client.clone();
+        let response = client
+            .list_workflow_executions(request)
+            .await
+            .map_err(TransportError::from)?
+            .into_inner();
+        Ok(crabdance_proto::generated::ScanWorkflowExecutionsResponse {
+            executions: response.executions,
+            next_page_token: response.next_page_token,
+        }
+        .into())
+    }
+
+    /// Transport wrapper for `ListArchivedWorkflowExecutions`, used by Go's
+    /// `ListArchivedWorkflow`.
+    pub async fn list_archived_workflow_executions(
+        &self,
+        request: crabdance_proto::generated::ListArchivedWorkflowExecutionsRequest,
+    ) -> Result<ScanWorkflowExecutionsResponse, TransportError> {
+        let mut client = self.visibility_client.clone();
+        let response = client
+            .list_archived_workflow_executions(request)
+            .await
+            .map_err(TransportError::from)?
+            .into_inner();
+        Ok(crabdance_proto::generated::ScanWorkflowExecutionsResponse {
+            executions: response.executions,
+            next_page_token: response.next_page_token,
+        }
+        .into())
+    }
+}
+
 #[async_trait]
 impl WorkflowService for GrpcWorkflowServiceClient {
     type Error = TransportError;

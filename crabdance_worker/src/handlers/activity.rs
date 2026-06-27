@@ -86,6 +86,12 @@ impl ActivityTaskHandler {
             .clone();
 
         info!(activity_type = %activity_type, "handling activity task");
+        let activity_started_at = std::time::Instant::now();
+        crate::metrics::incr(
+            crate::metrics::ACTIVITY_TASK_STARTED,
+            crate::metrics::TAG_ACTIVITY_TYPE,
+            &activity_type,
+        );
 
         // Look up activity in registry
         let activity = match self.registry.get_activity(&activity_type) {
@@ -103,6 +109,18 @@ impl ActivityTaskHandler {
                     })
                     .await;
 
+                // Terminal metric for the started counter on this failure path.
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
                 return Err(CadenceError::Other(format!(
                     "Activity '{}' not registered",
                     activity_type
@@ -242,7 +260,27 @@ impl ActivityTaskHandler {
                     .await?;
 
                 tracing::info!("Activity '{}' completed successfully", activity_type);
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_COMPLETED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
                 Ok(response)
+            }
+            // Async completion: the activity asked not to be auto-responded. The result
+            // will be delivered out of band via Client::complete_activity[_by_id].
+            Err(err) if err.is_result_pending() => {
+                info!(
+                    activity_type = %activity_type,
+                    "activity result pending; not auto-responding (async completion)"
+                );
+                Ok(RespondActivityTaskCompletedResponse {})
             }
             Err(err) => {
                 let (reason, details) = match &err {
@@ -271,6 +309,8 @@ impl ActivityTaskHandler {
                     ),
                     ActivityError::Cancelled => ("Cancelled".to_string(), None),
                     ActivityError::Timeout(t) => (format!("Timeout: {:?}", t), None),
+                    // Intercepted above; included for exhaustiveness.
+                    ActivityError::ResultPending => ("ResultPending".to_string(), None),
                 };
 
                 let _ = self
@@ -284,6 +324,17 @@ impl ActivityTaskHandler {
                     .await?;
 
                 tracing::error!(activity_type, ?err, "Activity failed");
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
                 Err(CadenceError::Other(err.to_string()))
             }
         }

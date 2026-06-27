@@ -17,7 +17,9 @@ use crabdance_proto::{QueryResultType, WorkflowQueryResult};
 use crabdance_workflow::commands::WorkflowCommand;
 use crabdance_workflow::context::{CommandSink, WorkflowContext};
 use crabdance_workflow::dispatcher::{WorkflowDispatcher, WorkflowTask};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crabdance_workflow::future::{
     ActivityFailureInfo, ActivityFailureType, DefaultWorkflowError, WorkflowError,
@@ -79,6 +81,14 @@ fn activity_error_to_failure_info(error: &crate::registry::ActivityError) -> Act
             details: None,
             retryable: false,
         },
+        // Result-pending is an async-completion signal handled at the activity-task
+        // boundary, not in workflow decisions; surface defensively as a failure here.
+        ActivityError::ResultPending => ActivityFailureInfo {
+            failure_type: ActivityFailureType::ExecutionFailed,
+            message: "Activity result pending".to_string(),
+            details: None,
+            retryable: false,
+        },
         ActivityError::Timeout(timeout_type) => {
             let failure_type = match timeout_type {
                 crabdance_proto::shared::TimeoutType::StartToClose => ActivityFailureType::Timeout(
@@ -124,6 +134,10 @@ struct ReplayCommandSink {
     pending_local_activity_submissions: Arc<Mutex<Vec<PendingLocalActivitySubmission>>>,
     // Map of activity_id to waker for unblocking workflow when local activity completes
     local_activity_wakers: LocalActivityWakers,
+    // Deterministic per-decision-task counter for generating stable marker IDs. Using
+    // wall-clock time here would produce a different ID on replay than on the original
+    // execution, corrupting replay matching.
+    marker_sequence: Arc<AtomicU64>,
 }
 
 // Represents a local activity that needs to be executed
@@ -143,6 +157,7 @@ impl CommandSink for ReplayCommandSink {
         let default_task_list = self.default_task_list.clone();
         let pending_local_activity_submissions = self.pending_local_activity_submissions.clone();
         let local_activity_wakers = self.local_activity_wakers.clone();
+        let marker_sequence = self.marker_sequence.clone();
 
         Box::pin(async move {
             debug!(?command, "submitting workflow command");
@@ -536,16 +551,14 @@ impl CommandSink for ReplayCommandSink {
                         header: cmd.header,
                     };
 
-                    // Generate a unique marker ID based on marker name and sequence
-                    // Generate a unique marker ID based on marker name and timestamp
-                    let marker_id = format!("{}_{}", cmd.marker_name, {
-                        // Use timestamp nanos as a simple unique identifier
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_nanos()
-                            .to_string()
-                    });
+                    // Generate a deterministic marker ID from the marker name and a
+                    // per-decision-task sequence counter. This is stable across replay,
+                    // unlike a wall-clock timestamp.
+                    let marker_id = format!(
+                        "{}_{}",
+                        cmd.marker_name,
+                        marker_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    );
 
                     let decision = Box::new(
                         crabdance_workflow::state_machine::MarkerDecisionStateMachine::new(
@@ -563,6 +576,37 @@ impl CommandSink for ReplayCommandSink {
                     // Return immediately since markers are synchronous
                     return Ok(Vec::new());
                 }
+                WorkflowCommand::UpsertSearchAttributes(cmd) => {
+                    debug!("recording upsert search attributes");
+
+                    let indexed_fields = cmd.search_attributes.into_iter().collect();
+
+                    let attrs =
+                        crabdance_proto::shared::UpsertWorkflowSearchAttributesDecisionAttributes {
+                            search_attributes: Some(crabdance_proto::shared::SearchAttributes {
+                                indexed_fields,
+                            }),
+                        };
+
+                    let decision_id = format!(
+                        "upsert_search_attributes_{}",
+                        marker_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    );
+
+                    let decision = Box::new(
+                        crabdance_workflow::state_machine::UpsertSearchAttributesDecisionStateMachine::new(
+                            decision_id,
+                            attrs,
+                        ),
+                    );
+
+                    let mut engine_lock = engine.lock().unwrap();
+                    engine_lock.decisions_helper.add_decision(decision);
+                    drop(engine_lock);
+
+                    // Return immediately since this decision is synchronous.
+                    return Ok(Vec::new());
+                }
                 _ => unimplemented!("Command not supported"),
             }
             std::future::pending().await
@@ -574,7 +618,6 @@ impl CommandSink for ReplayCommandSink {
 pub struct WorkflowExecutor {
     registry: Arc<dyn Registry>,
     cache: Arc<WorkflowCache>,
-    #[expect(dead_code)]
     options: WorkerOptions,
     task_list: String,
     local_activity_queue: LocalActivityQueue,
@@ -617,6 +660,38 @@ impl WorkflowExecutor {
     }
 
     pub async fn execute_decision_task(
+        &self,
+        task: PollForDecisionTaskResponse,
+    ) -> Result<(Vec<Decision>, HashMap<String, WorkflowQueryResult>), CadenceError> {
+        let started_at = std::time::Instant::now();
+        crate::metrics::incr(
+            crate::metrics::DECISION_TASK_STARTED,
+            crate::metrics::TAG_TASK_LIST,
+            &self.task_list,
+        );
+
+        let result = self.execute_decision_task_inner(task).await;
+
+        // Emit a terminal metric + latency on every exit path — success or any of the
+        // early `?` error returns (missing history/type, unknown workflow, replay or
+        // dispatcher failures) — so the started/completed/failed series stays balanced.
+        let terminal = if result.is_ok() {
+            crate::metrics::DECISION_TASK_COMPLETED
+        } else {
+            crate::metrics::DECISION_TASK_FAILED
+        };
+        crate::metrics::incr(terminal, crate::metrics::TAG_TASK_LIST, &self.task_list);
+        crate::metrics::record_latency(
+            crate::metrics::DECISION_TASK_LATENCY,
+            crate::metrics::TAG_TASK_LIST,
+            &self.task_list,
+            started_at.elapsed(),
+        );
+
+        result
+    }
+
+    async fn execute_decision_task_inner(
         &self,
         task: PollForDecisionTaskResponse,
     ) -> Result<(Vec<Decision>, HashMap<String, WorkflowQueryResult>), CadenceError> {
@@ -719,8 +794,8 @@ impl WorkflowExecutor {
             },
             task_list: self.task_list.clone(),
             start_time,
-            execution_start_to_close_timeout: std::time::Duration::from_secs(3600),
-            task_start_to_close_timeout: std::time::Duration::from_secs(10),
+            execution_start_to_close_timeout: Duration::from_secs(3600),
+            task_start_to_close_timeout: Duration::from_secs(10),
             attempt: 1,
             continued_execution_run_id: None,
             parent_workflow_execution: None,
@@ -739,6 +814,7 @@ impl WorkflowExecutor {
             workflow_info: workflow_info.clone(),
             pending_local_activity_submissions: pending_local_activity_submissions.clone(),
             local_activity_wakers: local_activity_wakers.clone(),
+            marker_sequence: Arc::new(AtomicU64::new(0)),
         });
 
         // Extract signals and side effect caches from engine (requires lock)
@@ -786,9 +862,16 @@ impl WorkflowExecutor {
 
         // Set replay mode and cancellation
         context.set_replay_mode(is_replay);
+        context.set_logging_enabled_in_replay(self.options.enable_logging_in_replay);
         if cancel_requested {
             context.set_cancelled(true);
         }
+
+        // History-size accounting for this decision task. The server-tracked byte
+        // figure is not surfaced on the poll path, so total bytes is a best-effort
+        // serialized size.
+        let history_bytes = serde_json::to_vec(&events).map(|b| b.len()).unwrap_or(0);
+        context.set_history_size(events.len() as u64, history_bytes as u64);
 
         // Find workflow
         let workflow = self
@@ -805,6 +888,8 @@ impl WorkflowExecutor {
             ) = &first_event.attributes
             {
                 debug!(input_len = attrs.input.len(), "workflow started event");
+                // Seed the cron previous-run result, if present.
+                context.set_last_completion_result(attrs.last_completion_result.clone());
                 if attrs.input.is_empty() {
                     None
                 } else {
@@ -867,6 +952,15 @@ impl WorkflowExecutor {
                             }
                             Err(e) => {
                                 error!(error = %e, "workflow failed");
+                                // Only count true panics here; a normal Err return is a
+                                // workflow failure, not a panic.
+                                if matches!(e, WorkflowError::Panic(_)) {
+                                    crate::metrics::incr(
+                                        crate::metrics::WORKFLOW_PANIC,
+                                        crate::metrics::TAG_TASK_LIST,
+                                        &self.task_list,
+                                    );
+                                }
                                 engine
                                     .decisions_helper
                                     .fail_workflow_execution(e.to_string(), "".to_string());
@@ -976,13 +1070,9 @@ impl WorkflowExecutor {
                                 header: None,
                             };
 
-                            let marker_id =
-                                format!("local_activity_{}_{}", submission.activity_id, {
-                                    std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_nanos()
-                                });
+                            // The activity_id is already deterministic and unique, so it
+                            // alone yields a stable, replay-safe marker ID (no wall-clock).
+                            let marker_id = format!("local_activity_{}", submission.activity_id);
 
                             let decision = Box::new(
                                 crabdance_workflow::state_machine::MarkerDecisionStateMachine::new(
@@ -1166,6 +1256,7 @@ mod tests {
     use crate::registry::Workflow;
     use crate::registry::WorkflowRegistry;
     use crate::WorkerOptions;
+    use crabdance_proto::shared::WorkflowExecution;
     use crabdance_proto::shared::{
         EventAttributes, EventType, History, HistoryEvent, WorkflowExecutionStartedEventAttributes,
     };
@@ -1306,7 +1397,7 @@ mod tests {
 
         let task = PollForDecisionTaskResponse {
             task_token: vec![1],
-            workflow_execution: Some(crabdance_proto::shared::WorkflowExecution {
+            workflow_execution: Some(WorkflowExecution {
                 workflow_id: "time-wf".to_string(),
                 run_id: "time-run".to_string(),
             }),
@@ -1420,7 +1511,7 @@ mod tests {
 
         let task2 = PollForDecisionTaskResponse {
             task_token: vec![2],
-            workflow_execution: Some(crabdance_proto::shared::WorkflowExecution {
+            workflow_execution: Some(WorkflowExecution {
                 workflow_id: "time-wf-2".to_string(), // Different workflow ID
                 run_id: "time-run-2".to_string(),
             }),
@@ -1681,7 +1772,7 @@ mod tests {
 
         let task = PollForDecisionTaskResponse {
             task_token: vec![1],
-            workflow_execution: Some(crabdance_proto::shared::WorkflowExecution {
+            workflow_execution: Some(WorkflowExecution {
                 workflow_id: "w1".to_string(),
                 run_id: "r1".to_string(),
             }),

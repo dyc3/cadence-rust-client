@@ -1,0 +1,16 @@
+{
+  "start_time_nanos": 0,
+  "events": [
+    { "Version": { "change_id": "charge-v1", "version": 1 } },
+    {
+      "ActivityCompleted": {
+        "activity_id": "1",
+        "result": [99, 104, 97, 114, 103, 101, 100]
+      }
+    }
+  ],
+  "expected_commands": [
+    { "StartTimer": { "timer_id": "0", "duration_millis": 60000 } },
+    { "ScheduleActivity": { "activity_id": "1", "activity_type": "charge" } }
+  ]
+}

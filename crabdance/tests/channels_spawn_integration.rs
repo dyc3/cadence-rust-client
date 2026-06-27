@@ -1,3 +1,5 @@
+#![cfg(feature = "integration")]
+
 //! Channels and Spawn Integration Test
 //!
 //! This test verifies that workflow channels and spawn work correctly with a real Cadence server.
@@ -478,7 +480,6 @@ async fn wait_for_workflow_completion(
 // ============================================================================
 
 #[tokio::test]
-#[ignore] // Requires running Cadence server
 async fn test_split_merge_workflow_with_channels_and_spawn() {
     // Initialize tracing
     tracing_subscriber::fmt()
@@ -633,7 +634,6 @@ async fn test_split_merge_workflow_with_channels_and_spawn() {
 }
 
 #[tokio::test]
-#[ignore] // Requires running Cadence server
 async fn test_parallel_workflow_with_spawn() {
     // Initialize tracing
     tracing_subscriber::fmt()

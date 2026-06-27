@@ -261,6 +261,10 @@ fn should_retry(error: &ActivityError, retry_policy: &Option<RetryPolicy>, attem
             debug!("timeout error, not retrying");
             false
         }
+        ActivityError::ResultPending => {
+            // Async completion is not a failure; never retry.
+            false
+        }
         ActivityError::Retryable(_) | ActivityError::RetryableWithDelay(_, _) => {
             debug!("error is retryable");
             true
@@ -307,6 +311,7 @@ mod tests {
     use crabdance_workflow::LocalActivityOptions;
     use std::future::Future;
     use std::pin::Pin;
+    use std::sync::atomic::{AtomicI32, Ordering};
     use std::time::{Duration, SystemTime};
     use tokio::sync::oneshot;
 
@@ -495,7 +500,7 @@ mod tests {
     // Test activity that fails twice then succeeds
     #[derive(Clone)]
     struct RetryableActivity {
-        attempts: Arc<std::sync::atomic::AtomicI32>,
+        attempts: Arc<AtomicI32>,
     }
     impl Activity for RetryableActivity {
         fn execute(
@@ -507,7 +512,7 @@ mod tests {
             let attempts = self.attempts.clone();
 
             Box::pin(async move {
-                let prev_attempts = attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let prev_attempts = attempts.fetch_add(1, Ordering::SeqCst);
 
                 if prev_attempts < 2 {
                     Err(ActivityError::retryable(format!(
@@ -524,7 +529,7 @@ mod tests {
     #[tokio::test]
     async fn test_execute_with_retry() {
         let registry = Arc::new(WorkflowRegistry::new());
-        let attempts = Arc::new(std::sync::atomic::AtomicI32::new(0));
+        let attempts = Arc::new(AtomicI32::new(0));
         registry.register_activity(
             "RetryableActivity",
             Box::new(RetryableActivity {
@@ -574,7 +579,7 @@ mod tests {
         assert_eq!(result.unwrap(), b"success after retries");
 
         // Verify it actually retried
-        let total_attempts = attempts.load(std::sync::atomic::Ordering::SeqCst);
+        let total_attempts = attempts.load(Ordering::SeqCst);
         assert_eq!(total_attempts, 3, "Should have made 3 attempts total");
 
         // Close queue to stop executor

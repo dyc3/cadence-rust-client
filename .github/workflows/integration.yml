@@ -23,6 +23,19 @@ jobs:
           -e HEAP_NEWSIZE=1M
           -e MAX_HEAP_SIZE=2048M
 
+      # Backs the sqlx/Postgres resource integration test (schemaless queries).
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
       cadence:
         image: ubercadence/server:master-auto-setup
         ports:
@@ -83,7 +96,11 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run integration tests
-        run: cargo test -p crabdance --tests -- --ignored --test-threads=1
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: |
+          cargo test -p crabdance_client --features integration -- --test-threads=1
+          cargo test -p crabdance --features integration --tests -- --test-threads=1
 
       - name: Show Cadence logs on failure
         if: failure()

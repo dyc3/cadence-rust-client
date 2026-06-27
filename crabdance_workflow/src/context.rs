@@ -7,9 +7,10 @@ use crate::commands::{
     RecordMarkerCommand, ScheduleActivityCommand, ScheduleLocalActivityCommand,
     StartChildWorkflowCommand, StartTimerCommand, WorkflowCommand,
 };
+use crate::local_activity::LocalActivityMarkerData;
 use crabdance_core::{
-    ActivityOptions, ChildWorkflowOptions, DataConverter, JsonDataConverter, RetryPolicy,
-    WorkflowInfo,
+    ActivityOptions, ChildWorkflowOptions, DataConverter, JsonDataConverter, PropagationContext,
+    RetryPolicy, WorkflowInfo,
 };
 use futures::future::poll_fn;
 use serde::Serialize;
@@ -26,7 +27,7 @@ use tracing::debug;
 type PendingSpawnTasks = Arc<Mutex<Option<Arc<Mutex<Vec<WorkflowTask>>>>>>;
 type CompletedResults = Arc<Mutex<Option<Arc<Mutex<HashMap<u64, Box<dyn Any + Send>>>>>>>;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 
 use crate::channel::{channel, Receiver, Sender};
 use crate::dispatcher::{WorkflowDispatcher, WorkflowTask};
@@ -40,6 +41,39 @@ pub const VERSION_MARKER_NAME: &str = "Version";
 /// Default version constant (-1) used when no version is specified
 pub const DEFAULT_VERSION: i32 = -1;
 
+/// Search-attribute key under which `get_version` records the change/version pairs,
+/// matching the Go client's `CadenceChangeVersion`.
+pub const CADENCE_CHANGE_VERSION_SEARCH_ATTRIBUTE: &str = "CadenceChangeVersion";
+
+/// First-execution options for [`WorkflowContext::get_version_with_options`],
+/// mirroring Go's `GetVersionOption` (`ExecuteWithVersion` / `ExecuteWithMinVersion`).
+///
+/// These only affect the version chosen the *first* time a changeID is seen during
+/// live execution; cached and replayed versions are unaffected.
+#[derive(Debug, Clone, Default)]
+pub struct GetVersionOptions {
+    custom_version: Option<i32>,
+    use_min_version: bool,
+}
+
+impl GetVersionOptions {
+    /// Force a specific version on first execution (Go's `ExecuteWithVersion`).
+    pub fn execute_with_version(version: i32) -> Self {
+        Self {
+            custom_version: Some(version),
+            use_min_version: false,
+        }
+    }
+
+    /// Force `min_supported` on first execution (Go's `ExecuteWithMinVersion`).
+    pub fn execute_with_min_version() -> Self {
+        Self {
+            custom_version: None,
+            use_min_version: true,
+        }
+    }
+}
+
 /// Type alias for query handlers
 pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
 
@@ -52,8 +86,7 @@ pub struct WorkflowContextBuilder {
     side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
     mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     change_versions: Arc<Mutex<HashMap<String, i32>>>,
-    local_activity_results:
-        Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
+    local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
 }
 
 impl WorkflowContextBuilder {
@@ -106,9 +139,7 @@ impl WorkflowContextBuilder {
 
     pub fn local_activity_results(
         mut self,
-        local_activity_results: Arc<
-            Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>,
-        >,
+        local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
     ) -> Self {
         self.local_activity_results = local_activity_results;
         self
@@ -135,6 +166,25 @@ pub trait CommandSink: Send + Sync {
         &self,
         command: WorkflowCommand,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, DefaultWorkflowError>> + Send>>;
+
+    /// Submit a fire-and-forget command synchronously and in order, without yielding
+    /// to the async runtime.
+    ///
+    /// This exists for markers recorded from *synchronous* workflow APIs such as
+    /// [`WorkflowContext::get_version`], where spawning a detached `tokio` task would
+    /// escape the deterministic dispatcher (the marker could be recorded out of order,
+    /// late, or not at all — a replay-corrupting bug). Marker submissions resolve
+    /// immediately, so the default implementation drives the returned future with a
+    /// single no-op poll, recording the command in place before returning.
+    fn submit_now(&self, command: WorkflowCommand) {
+        let mut future = self.submit(command);
+        let waker = futures::task::noop_waker();
+        let mut cx = std::task::Context::from_waker(&waker);
+        // Markers complete on the first poll; we deliberately do not loop, since a
+        // Pending result would mean a non-marker (genuinely async) command was routed
+        // through the synchronous path.
+        let _ = future.as_mut().poll(&mut cx);
+    }
 }
 
 /// No-op command sink for testing/initialization
@@ -156,19 +206,32 @@ pub struct WorkflowContext {
     sequence: Arc<AtomicU64>,
     signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
     query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
-    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    cancelled: Arc<AtomicBool>,
     // Side effect result caches for replay
     side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
     mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     // Replay flag - true when workflow is being replayed from history
-    is_replay: Arc<std::sync::atomic::AtomicBool>,
+    is_replay: Arc<AtomicBool>,
+    // When false (default), workflow logs are suppressed during replay (Go's
+    // EnableLoggingInReplay). The worker sets this from its options.
+    log_in_replay: Arc<AtomicBool>,
     // Deterministic time - current time in nanoseconds (unix epoch)
-    current_time_nanos: Arc<std::sync::atomic::AtomicI64>,
+    current_time_nanos: Arc<AtomicI64>,
     // Version markers cache for workflow versioning
     change_versions: Arc<Mutex<HashMap<String, i32>>>,
+    // Search attributes, seeded from WorkflowInfo and updated by upsert_search_attributes.
+    search_attributes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    // Cron: result of the previous run, if this workflow was started by a cron schedule.
+    last_completion_result: Arc<Mutex<Option<Vec<u8>>>>,
+    // Propagated trace context / baggage, extracted from the workflow's start header by
+    // the worker (see ContextPropagator). Available to workflow code and injectable into
+    // outbound activity/child headers.
+    propagation_context: Arc<Mutex<PropagationContext>>,
+    // History size accounting for the current decision task (set by the worker).
+    history_count: Arc<AtomicU64>,
+    total_history_bytes: Arc<AtomicU64>,
     // Local activity results cache for replay
-    local_activity_results:
-        Arc<Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>>,
+    local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
     // Dispatcher for managing spawned tasks
     dispatcher: Arc<Mutex<Option<Arc<Mutex<WorkflowDispatcher>>>>>,
     // Pending tasks queue (shared with dispatcher for lock-free spawning)
@@ -184,10 +247,16 @@ pub struct WorkflowContext {
     converter: Arc<dyn DataConverter>,
 }
 
+/// Build the initial search-attribute cache from a workflow's `WorkflowInfo`.
+fn seed_search_attributes(workflow_info: &WorkflowInfo) -> HashMap<String, Vec<u8>> {
+    workflow_info.search_attributes.clone().unwrap_or_default()
+}
+
 impl WorkflowContext {
     pub fn new(workflow_info: WorkflowInfo) -> Self {
         // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
+        let search_attributes = seed_search_attributes(&workflow_info);
 
         Self {
             workflow_info,
@@ -195,12 +264,18 @@ impl WorkflowContext {
             sequence: Arc::new(AtomicU64::new(0)),
             signals: Arc::new(Mutex::new(HashMap::new())),
             query_handlers: Arc::new(Mutex::new(HashMap::new())),
-            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cancelled: Arc::new(AtomicBool::new(false)),
             side_effect_results: Arc::new(Mutex::new(HashMap::new())),
             mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
-            is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
+            is_replay: Arc::new(AtomicBool::new(false)),
+            log_in_replay: Arc::new(AtomicBool::new(false)),
+            current_time_nanos: Arc::new(AtomicI64::new(start_time_nanos)),
             change_versions: Arc::new(Mutex::new(HashMap::new())),
+            search_attributes: Arc::new(Mutex::new(search_attributes)),
+            last_completion_result: Arc::new(Mutex::new(None)),
+            propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
+            history_count: Arc::new(AtomicU64::new(0)),
+            total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
             dispatcher: Arc::new(Mutex::new(None)),
             pending_spawn_tasks: Arc::new(Mutex::new(None)),
@@ -222,13 +297,12 @@ impl WorkflowContext {
         side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
         mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
         change_versions: Arc<Mutex<HashMap<String, i32>>>,
-        local_activity_results: Arc<
-            Mutex<HashMap<String, crate::local_activity::LocalActivityMarkerData>>,
-        >,
+        local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
         resources: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Self {
         // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
+        let search_attributes = seed_search_attributes(&workflow_info);
 
         Self {
             workflow_info,
@@ -236,12 +310,18 @@ impl WorkflowContext {
             sequence: Arc::new(AtomicU64::new(0)),
             signals,
             query_handlers,
-            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cancelled: Arc::new(AtomicBool::new(false)),
             side_effect_results,
             mutable_side_effects,
-            is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
+            is_replay: Arc::new(AtomicBool::new(false)),
+            log_in_replay: Arc::new(AtomicBool::new(false)),
+            current_time_nanos: Arc::new(AtomicI64::new(start_time_nanos)),
             change_versions,
+            search_attributes: Arc::new(Mutex::new(search_attributes)),
+            last_completion_result: Arc::new(Mutex::new(None)),
+            propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
+            history_count: Arc::new(AtomicU64::new(0)),
+            total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results,
             dispatcher: Arc::new(Mutex::new(None)),
             pending_spawn_tasks: Arc::new(Mutex::new(None)),
@@ -306,19 +386,13 @@ impl WorkflowContext {
     }
 
     /// Set local activity results cache (used during replay)
-    pub fn set_local_activity_results(
-        &self,
-        results: HashMap<String, crate::local_activity::LocalActivityMarkerData>,
-    ) {
+    pub fn set_local_activity_results(&self, results: HashMap<String, LocalActivityMarkerData>) {
         let mut cache = self.local_activity_results.lock().unwrap();
         *cache = results;
     }
 
     /// Get local activity result from cache (used during replay)
-    fn get_local_activity_result(
-        &self,
-        activity_id: &str,
-    ) -> Option<crate::local_activity::LocalActivityMarkerData> {
+    fn get_local_activity_result(&self, activity_id: &str) -> Option<LocalActivityMarkerData> {
         let cache = self.local_activity_results.lock().unwrap();
         cache.get(activity_id).cloned()
     }
@@ -418,6 +492,17 @@ impl WorkflowContext {
     /// Get a signal channel for receiving signals
     pub fn get_signal_channel(&self, signal_name: &str) -> SignalChannel {
         SignalChannel::new(signal_name, self.signals.clone())
+    }
+
+    /// Deliver a signal to the workflow (used by the worker on signal events and by the
+    /// test environment to inject signals before a run).
+    pub fn add_signal(&self, signal_name: &str, payload: Vec<u8>) {
+        self.signals
+            .lock()
+            .unwrap()
+            .entry(signal_name.to_string())
+            .or_default()
+            .push(payload);
     }
 
     /// Signal an external workflow
@@ -692,34 +777,62 @@ impl WorkflowContext {
     /// // Original code continues...
     /// ```
     pub fn get_version(&self, change_id: &str, min_supported: i32, max_supported: i32) -> i32 {
-        // Step 1: Check if version already cached for this changeID
+        self.get_version_with_options(
+            change_id,
+            min_supported,
+            max_supported,
+            GetVersionOptions::default(),
+        )
+    }
+
+    /// [`get_version`](Self::get_version) with explicit first-execution options.
+    ///
+    /// Mirrors Go's `GetVersion(ctx, changeID, min, max, opts...)`:
+    /// - cached changeID → the recorded version (validated against the range);
+    /// - replay (uncached) → `DEFAULT_VERSION`;
+    /// - [`GetVersionOptions::execute_with_version`] → the supplied version;
+    /// - [`GetVersionOptions::execute_with_min_version`] → `min_supported`;
+    /// - otherwise → `max_supported`.
+    ///
+    /// On first execution (not replay) of a non-default version, the version marker is
+    /// recorded through the deterministic command pipeline and the `CadenceChangeVersion`
+    /// search attribute is upserted, matching Go.
+    pub fn get_version_with_options(
+        &self,
+        change_id: &str,
+        min_supported: i32,
+        max_supported: i32,
+        options: GetVersionOptions,
+    ) -> i32 {
+        // Step 1: a version already assigned to this changeID is stable for the run.
         {
             let versions = self.change_versions.lock().unwrap();
             if let Some(&version) = versions.get(change_id) {
-                // Validate cached version is still in supported range
                 Self::validate_version(change_id, version, min_supported, max_supported);
                 return version;
             }
         }
 
-        // Step 2: Determine version based on context
+        // Step 2: choose the version for this first execution.
         let is_replay = self.is_replay.load(Ordering::SeqCst);
-
         let version = if is_replay {
-            // During replay mode: use DEFAULT_VERSION
-            // The actual version will be loaded from history markers
+            // The actual version is loaded from history markers (seeded into the cache);
+            // an uncached changeID during replay predates this change → DEFAULT_VERSION.
             DEFAULT_VERSION
+        } else if let Some(custom) = options.custom_version {
+            custom
+        } else if options.use_min_version {
+            min_supported
         } else {
-            // During execution: use max_supported
-            // This allows new code to execute the latest version
             max_supported
         };
 
-        // Step 3: Validate version is in acceptable range
+        // Step 3: validate the chosen version is in range.
         Self::validate_version(change_id, version, min_supported, max_supported);
 
-        // Step 4: Record version marker if not in replay and not DEFAULT_VERSION
-        // Note: We don't await here to match Go client's synchronous behavior
+        // Step 4: on first non-replay execution of a non-default version, record the
+        // marker (synchronously and in order via submit_now — not a detached spawn) and
+        // upsert the CadenceChangeVersion search attribute, matching Go.
         if !is_replay && version != DEFAULT_VERSION {
             use crate::side_effect_serialization::encode_version_details;
 
@@ -729,23 +842,45 @@ impl WorkflowContext {
                 details,
                 header: None,
             };
+            self.command_sink
+                .submit_now(WorkflowCommand::RecordMarker(command));
 
-            // Submit command without awaiting (Go client is synchronous)
-            let command_sink = self.command_sink.clone();
-            tokio::spawn(async move {
-                let _ = command_sink
-                    .submit(WorkflowCommand::RecordMarker(command))
-                    .await;
-            });
+            self.upsert_change_version_search_attribute(change_id, version);
         }
 
-        // Step 5: Cache version for this changeID
+        // Step 5: record the version so it is stable for the rest of the run.
         {
             let mut versions = self.change_versions.lock().unwrap();
             versions.insert(change_id.to_string(), version);
         }
 
         version
+    }
+
+    /// Upsert the `CadenceChangeVersion` search attribute (a JSON array of
+    /// `"<changeID>-<version>"` entries for this and all prior changes), matching Go.
+    fn upsert_change_version_search_attribute(&self, change_id: &str, version: i32) {
+        let mut entries = vec![format!("{change_id}-{version}")];
+        {
+            let versions = self.change_versions.lock().unwrap();
+            for (existing_id, existing_version) in versions.iter() {
+                // Skip the change being recorded (added above) and any default-version
+                // entries, which are not meaningful recorded versions.
+                if existing_id == change_id || *existing_version == DEFAULT_VERSION {
+                    continue;
+                }
+                entries.push(format!("{existing_id}-{existing_version}"));
+            }
+        }
+        // Sort for a deterministic payload — HashMap iteration order is unspecified,
+        // and this attribute is recorded through the deterministic command pipeline.
+        entries.sort();
+        if let Ok(encoded) = serde_json::to_vec(&entries) {
+            self.upsert_search_attributes(vec![(
+                CADENCE_CHANGE_VERSION_SEARCH_ATTRIBUTE.to_string(),
+                encoded,
+            )]);
+        }
     }
 
     /// Validate version is within supported range
@@ -778,9 +913,120 @@ impl WorkflowContext {
         handlers.insert(query_type.to_string(), Box::new(handler));
     }
 
-    /// Upsert search attributes
-    pub fn upsert_search_attributes(&self, _search_attributes: Vec<(String, Vec<u8>)>) {
-        // TODO: Implement search attributes upsert
+    /// Upsert (insert or update) workflow search attributes.
+    ///
+    /// The attributes are merged into the workflow's search-attribute set and, during
+    /// execution, an `UpsertWorkflowSearchAttributes` decision is emitted through the
+    /// deterministic command pipeline (synchronously and in order, like a marker — not
+    /// a detached task). On replay the local set is updated from the seeded value and
+    /// no decision is re-emitted, mirroring how versions and side effects replay.
+    pub fn upsert_search_attributes(&self, search_attributes: Vec<(String, Vec<u8>)>) {
+        if search_attributes.is_empty() {
+            return;
+        }
+
+        // Merge into the local set so get_search_attributes reflects the upsert
+        // immediately, on both the execution and replay paths.
+        {
+            let mut current = self.search_attributes.lock().unwrap();
+            for (key, value) in &search_attributes {
+                current.insert(key.clone(), value.clone());
+            }
+        }
+
+        // Emit the decision only during execution; on replay it is already in history.
+        if !self.is_replay.load(Ordering::SeqCst) {
+            let command = crate::commands::UpsertSearchAttributesCommand { search_attributes };
+            self.command_sink
+                .submit_now(WorkflowCommand::UpsertSearchAttributes(command));
+        }
+    }
+
+    /// Get the workflow's current search attributes (initial set merged with any
+    /// upserts performed during the workflow).
+    pub fn get_search_attributes(&self) -> HashMap<String, Vec<u8>> {
+        self.search_attributes.lock().unwrap().clone()
+    }
+
+    /// Whether the workflow is currently replaying history (Go's `IsReplaying`).
+    ///
+    /// Use this to suppress non-replay-safe side effects (e.g. external logging) when
+    /// the dispatcher is re-deriving state from history rather than executing live.
+    pub fn is_replaying(&self) -> bool {
+        self.is_replay.load(Ordering::SeqCst)
+    }
+
+    /// Whether this run has a previous-run result available (cron workflows).
+    pub fn has_last_completion_result(&self) -> bool {
+        self.last_completion_result.lock().unwrap().is_some()
+    }
+
+    /// The encoded result of the previous run, if this workflow was started by a cron
+    /// schedule and the previous run completed successfully (Go's `LastCompletionResult`).
+    pub fn get_last_completion_result(&self) -> Option<Vec<u8>> {
+        self.last_completion_result.lock().unwrap().clone()
+    }
+
+    /// Set the previous-run result (called by the worker from the started event).
+    pub fn set_last_completion_result(&self, result: Option<Vec<u8>>) {
+        *self.last_completion_result.lock().unwrap() = result;
+    }
+
+    /// Number of events in the workflow's history for the current decision task.
+    pub fn get_history_count(&self) -> u64 {
+        self.history_count.load(Ordering::SeqCst)
+    }
+
+    /// Approximate size, in bytes, of the workflow's history for the current decision
+    /// task. This is a best-effort serialized size (the server-tracked figure is not
+    /// surfaced on the poll path); use it for relative growth signals, not exact limits.
+    pub fn get_total_history_bytes(&self) -> u64 {
+        self.total_history_bytes.load(Ordering::SeqCst)
+    }
+
+    /// Set the history-size accounting (called by the worker per decision task).
+    pub fn set_history_size(&self, count: u64, total_bytes: u64) {
+        self.history_count.store(count, Ordering::SeqCst);
+        self.total_history_bytes
+            .store(total_bytes, Ordering::SeqCst);
+    }
+
+    /// Wrap a single encoded payload in an [`EncodedValue`](crabdance_core::EncodedValue)
+    /// for lazy, typed decoding (Go's `workflow.NewValue`).
+    pub fn new_value(&self, data: Vec<u8>) -> crabdance_core::EncodedValue {
+        crabdance_core::EncodedValue::new(data)
+    }
+
+    /// Wrap an encoded multi-value payload in an
+    /// [`EncodedValues`](crabdance_core::EncodedValues) (Go's `workflow.NewValues`).
+    pub fn new_values(&self, data: Vec<u8>) -> crabdance_core::EncodedValues {
+        crabdance_core::EncodedValues::new(data)
+    }
+
+    /// Set the propagated trace context / baggage, called by the worker after extracting
+    /// it from the workflow's start header through the configured `ContextPropagator`s.
+    pub fn set_propagation_context(&self, context: PropagationContext) {
+        *self.propagation_context.lock().unwrap() = context;
+    }
+
+    /// The propagated trace context / baggage available to this workflow (Go's header
+    /// values exposed to workflow code).
+    pub fn propagation_context(&self) -> PropagationContext {
+        self.propagation_context.lock().unwrap().clone()
+    }
+
+    /// Build a header carrier for an outbound boundary (scheduling an activity or child
+    /// workflow) by injecting the current propagation context through `propagators`.
+    pub fn inject_propagation(
+        &self,
+        propagators: &[Arc<dyn crabdance_core::ContextPropagator>],
+    ) -> crabdance_core::PropagationCarrier {
+        let context = self.propagation_context.lock().unwrap();
+        let mut carrier = crabdance_core::PropagationCarrier::new();
+        for propagator in propagators {
+            propagator.inject(&context, &mut carrier);
+        }
+        carrier
     }
 
     /// Sleep for a duration (workflow-aware)
@@ -812,15 +1058,80 @@ impl WorkflowContext {
         })
     }
 
-    /// Get logger
-    pub fn get_logger(&self) -> Box<dyn Logger> {
-        Box::new(ConsoleLogger)
+    /// Enable or disable workflow log emission during replay (Go's
+    /// `EnableLoggingInReplay`). Disabled by default, so replayed history does not
+    /// re-emit logs. The worker sets this from its options.
+    pub fn set_logging_enabled_in_replay(&self, enabled: bool) {
+        self.log_in_replay.store(enabled, Ordering::SeqCst);
     }
 
-    /// Get metrics scope
-    pub fn get_metrics_scope(&self) -> Box<dyn MetricsScope> {
-        Box::new(NoopMetricsScope)
+    /// Whether a workflow log statement should be emitted right now: always during live
+    /// execution, and during replay only when logging-in-replay is enabled.
+    pub fn should_log(&self) -> bool {
+        !self.is_replay.load(Ordering::SeqCst) || self.log_in_replay.load(Ordering::SeqCst)
     }
+
+    /// Emit a workflow log event through `tracing`, suppressed during replay unless
+    /// logging-in-replay is enabled. Events are tagged with the workflow id, run id and
+    /// type so they can be correlated.
+    ///
+    /// Prefer these over calling `tracing` directly from workflow code, since they
+    /// honor the replay-aware emission guard (the analogue of Go's injected logger).
+    pub fn log_debug(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::debug!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
+    }
+
+    /// See [`log_debug`](Self::log_debug).
+    pub fn log_info(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::info!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
+    }
+
+    /// See [`log_debug`](Self::log_debug).
+    pub fn log_warn(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::warn!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
+    }
+
+    /// See [`log_debug`](Self::log_debug).
+    pub fn log_error(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::error!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
+    }
+
+    // Metrics are native via the `metrics` facade. The worker emits parity metrics
+    // (poller/task/panic/quota) directly; workflow code can emit its own with the
+    // `metrics` crate, guarding with `should_log()` to honor replay-aware emission. The
+    // previous no-op MetricsScope/Counter/Timer/Gauge traits were removed.
 
     /// Continue workflow as new
     pub async fn continue_as_new(
@@ -1053,7 +1364,7 @@ impl std::fmt::Display for JoinError {
 impl std::error::Error for JoinError {}
 
 /// Continue as new options
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ContinueAsNewOptions {
     pub task_list: String,
     pub execution_start_to_close_timeout: Duration,
@@ -1104,11 +1415,11 @@ impl SignalChannel {
 
 /// Cancellation channel
 pub struct CancellationChannel {
-    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl CancellationChannel {
-    pub fn new(cancelled: Arc<std::sync::atomic::AtomicBool>) -> Self {
+    pub fn new(cancelled: Arc<AtomicBool>) -> Self {
         Self { cancelled }
     }
 
@@ -1129,85 +1440,13 @@ pub use crate::future::{
     ActivityError, DefaultActivityError, DefaultWorkflowError, TimerFuture, WorkflowError,
 };
 
-/// Logger trait
-pub trait Logger: Send + Sync {
-    fn debug(&self, msg: &str);
-    fn info(&self, msg: &str);
-    fn warn(&self, msg: &str);
-    fn error(&self, msg: &str);
-}
+// Workflow logging is native via `tracing` — see WorkflowContext::log_info etc., which
+// emit through `tracing` with a replay-aware guard. The previous `Logger`/`ConsoleLogger`
+// trait stubs were removed in favor of the ecosystem-standard facade.
 
-/// Console logger implementation
-struct ConsoleLogger;
-
-impl Logger for ConsoleLogger {
-    fn debug(&self, msg: &str) {
-        tracing::debug!("{}", msg);
-    }
-
-    fn info(&self, msg: &str) {
-        tracing::info!("{}", msg);
-    }
-
-    fn warn(&self, msg: &str) {
-        tracing::warn!("{}", msg);
-    }
-
-    fn error(&self, msg: &str) {
-        tracing::error!("{}", msg);
-    }
-}
-
-/// Metrics scope trait
-pub trait MetricsScope: Send + Sync {
-    fn counter(&self, name: &str) -> Box<dyn Counter>;
-    fn timer(&self, name: &str) -> Box<dyn Timer>;
-    fn gauge(&self, name: &str) -> Box<dyn Gauge>;
-}
-
-pub trait Counter: Send + Sync {
-    fn inc(&self, delta: i64);
-}
-
-pub trait Timer: Send + Sync {
-    fn record(&self, duration: Duration);
-}
-
-pub trait Gauge: Send + Sync {
-    fn update(&self, value: f64);
-}
-
-/// Noop metrics scope
-struct NoopMetricsScope;
-
-impl MetricsScope for NoopMetricsScope {
-    fn counter(&self, _name: &str) -> Box<dyn Counter> {
-        Box::new(NoopCounter)
-    }
-
-    fn timer(&self, _name: &str) -> Box<dyn Timer> {
-        Box::new(NoopTimer)
-    }
-
-    fn gauge(&self, _name: &str) -> Box<dyn Gauge> {
-        Box::new(NoopGauge)
-    }
-}
-
-struct NoopCounter;
-impl Counter for NoopCounter {
-    fn inc(&self, _delta: i64) {}
-}
-
-struct NoopTimer;
-impl Timer for NoopTimer {
-    fn record(&self, _duration: Duration) {}
-}
-
-struct NoopGauge;
-impl Gauge for NoopGauge {
-    fn update(&self, _value: f64) {}
-}
+// Metrics are emitted natively through the `metrics` facade (see crabdance_worker's
+// `metrics` module for the parity metric names). The previous MetricsScope/Counter/
+// Timer/Gauge trait stubs were removed in favor of the ecosystem-standard facade.
 
 #[cfg(test)]
 mod tests {

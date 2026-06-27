@@ -293,11 +293,14 @@ pub struct ActivityRegisterOptions {
     pub disable_already_registered_check: bool,
 }
 
-/// Error indicating activity result is pending (async completion)
+/// Error indicating activity result is pending (async completion).
 ///
-/// An activity can return this error to indicate that it will complete
-/// asynchronously. The activity can then be completed later using
-/// Client::complete_activity() or Client::complete_activity_by_id().
+/// An activity can return this to indicate it will complete asynchronously, then be
+/// completed later via `Client::complete_activity` / `complete_activity_by_id`.
+///
+/// The canonical mechanism honored by the worker is
+/// `crabdance_workflow::ActivityError::result_pending()` (the activity's error type);
+/// this marker is retained for convenience.
 #[derive(Debug, thiserror::Error)]
 #[error("Activity result is pending - will be completed asynchronously")]
 pub struct ErrResultPending;

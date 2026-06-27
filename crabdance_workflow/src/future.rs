@@ -171,6 +171,40 @@ impl WorkflowError<BoxError> {
     }
 }
 
+impl<E> WorkflowError<E>
+where
+    E: fmt::Display + fmt::Debug + Send + Sync + Clone + 'static,
+{
+    /// Whether this represents a workflow business failure (an execution/generic/
+    /// activity/child/signal/cancel failure or a panic) — as opposed to a control-flow
+    /// signal such as cancellation or continue-as-new. This is the Rust analogue of
+    /// treating an error as a real workflow error rather than a lifecycle outcome.
+    pub fn is_workflow_error(&self) -> bool {
+        !matches!(
+            self,
+            WorkflowError::Cancelled | WorkflowError::ContinueAsNew
+        )
+    }
+
+    /// Whether this is a cancellation (Go's `IsCanceledError`).
+    ///
+    /// Only `Cancelled` counts — `CancelFailed` means a cancel *request* failed and is
+    /// a genuine workflow error, so it is excluded.
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, WorkflowError::Cancelled)
+    }
+
+    /// Whether this is a continue-as-new signal (Go's `IsContinueAsNewError`).
+    pub fn is_continue_as_new(&self) -> bool {
+        matches!(self, WorkflowError::ContinueAsNew)
+    }
+
+    /// Whether this is a non-determinism error (replay mismatch).
+    pub fn is_non_deterministic(&self) -> bool {
+        matches!(self, WorkflowError::NonDeterministic(_))
+    }
+}
+
 /// Activity error
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ActivityError<E = BoxError>
@@ -193,9 +227,32 @@ where
     Cancelled,
     #[error("Activity timed out: {0:?}")]
     Timeout(ProtoTimeoutType),
+    /// Not an error: the activity will be completed asynchronously (out of band) via
+    /// `Client::complete_activity` / `complete_activity_by_id`. The worker must NOT
+    /// auto-respond to the server when an activity returns this. Rust analogue of Go's
+    /// `ErrActivityResultPending`.
+    #[error("activity result pending - will be completed asynchronously")]
+    ResultPending,
 }
 
 pub type DefaultActivityError = ActivityError<BoxError>;
+
+impl<E> ActivityError<E>
+where
+    E: fmt::Display + fmt::Debug + Send + Sync + Clone + 'static,
+{
+    /// Signal that the activity will be completed asynchronously (out of band). The
+    /// worker will not auto-respond; complete it later via the client. Go's
+    /// `ErrActivityResultPending`.
+    pub fn result_pending() -> Self {
+        Self::ResultPending
+    }
+
+    /// Whether this is the result-pending sentinel (async completion requested).
+    pub fn is_result_pending(&self) -> bool {
+        matches!(self, ActivityError::ResultPending)
+    }
+}
 
 impl ActivityError<BoxError> {
     /// Create a retryable error

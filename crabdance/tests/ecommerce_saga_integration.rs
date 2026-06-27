@@ -1,3 +1,5 @@
+#![cfg(feature = "integration")]
+
 use crabdance::activity::ActivityContext;
 use crabdance::client::GrpcWorkflowServiceClient;
 use crabdance::core::{ActivityOptions, TransportError};
@@ -588,7 +590,6 @@ fn assert_compensation_executed(history: &crabdance_proto::shared::History) -> b
 // ============================================================================
 
 #[tokio::test]
-#[ignore]
 async fn test_order_saga_payment_failure_with_compensation() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -758,7 +759,6 @@ async fn test_order_saga_payment_failure_with_compensation() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_order_saga_success_path() {
     println!("\n=== Testing Order Saga Success Path ===");
 

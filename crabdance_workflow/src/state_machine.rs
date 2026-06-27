@@ -10,6 +10,7 @@ use crabdance_proto::shared::{
     RecordMarkerDecisionAttributes, RequestCancelExternalWorkflowExecutionDecisionAttributes,
     ScheduleActivityTaskDecisionAttributes, SignalExternalWorkflowExecutionDecisionAttributes,
     StartChildWorkflowExecutionDecisionAttributes, StartTimerDecisionAttributes,
+    UpsertWorkflowSearchAttributesDecisionAttributes,
 };
 use std::collections::HashMap;
 
@@ -928,6 +929,90 @@ impl DecisionStateMachine for MarkerDecisionStateMachine {
         if self.base.state == DecisionState::Created {
             self.base.transition_to(DecisionState::DecisionSent);
             // Markers complete immediately since they're synchronous
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+}
+
+/// State machine for an upsert-search-attributes decision.
+///
+/// Like a marker, this decision is synchronous: it is emitted immediately and
+/// considered complete once sent (it has no server-side lifecycle to await).
+pub struct UpsertSearchAttributesDecisionStateMachine {
+    base: DecisionStateMachineBase,
+    attributes: UpsertWorkflowSearchAttributesDecisionAttributes,
+}
+
+impl UpsertSearchAttributesDecisionStateMachine {
+    pub fn new(id: String, attributes: UpsertWorkflowSearchAttributesDecisionAttributes) -> Self {
+        Self {
+            base: DecisionStateMachineBase::new(DecisionId::new(
+                StateMachineDecisionType::UpsertSearchAttributes,
+                id,
+            )),
+            attributes,
+        }
+    }
+}
+
+impl DecisionStateMachine for UpsertSearchAttributesDecisionStateMachine {
+    fn state(&self) -> DecisionState {
+        self.base.state
+    }
+
+    fn id(&self) -> &DecisionId {
+        &self.base.id
+    }
+
+    fn is_done(&self) -> bool {
+        matches!(
+            self.base.state,
+            DecisionState::Completed | DecisionState::DecisionSent
+        )
+    }
+
+    fn get_decision(&self) -> Option<ProtoDecision> {
+        if self.base.state == DecisionState::Created {
+            Some(ProtoDecision {
+                decision_type: ProtoDecisionType::UpsertWorkflowSearchAttributes,
+                attributes: Some(
+                    DecisionAttributes::UpsertWorkflowSearchAttributesDecisionAttributes(Box::new(
+                        self.attributes.clone(),
+                    )),
+                ),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&mut self) {}
+
+    fn handle_started_event(&mut self) {}
+
+    fn handle_cancel_initiated_event(&mut self) {}
+
+    fn handle_canceled_event(&mut self) {}
+
+    fn handle_cancel_failed_event(&mut self) {}
+
+    fn handle_completion_event(&mut self) {
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+
+    fn handle_initiation_failed_event(&mut self) {}
+
+    fn handle_initiated_event(&mut self) {
+        if self.base.state == DecisionState::DecisionSent {
+            self.base.transition_to(DecisionState::Completed);
+        }
+    }
+
+    fn handle_decision_sent(&mut self) {
+        if self.base.state == DecisionState::Created {
+            self.base.transition_to(DecisionState::DecisionSent);
             self.base.transition_to(DecisionState::Completed);
         }
     }
