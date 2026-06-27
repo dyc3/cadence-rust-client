@@ -428,6 +428,39 @@ mod tests {
     }
 
     #[test]
+    fn continue_as_new_replays_without_blocking() {
+        // A continue-as-new workflow parks its root task forever after emitting the
+        // terminal command. Replay must treat that as a terminal outcome, not as
+        // BlockedDuringReplay.
+        async fn cron_like(ctx: WorkflowContext) -> Result<Vec<u8>, DefaultWorkflowError> {
+            ctx.execute_activity("work", None, Default::default())
+                .await?;
+            ctx.continue_as_new("cron_like", None, Default::default())
+                .await
+        }
+
+        let history = RecordedHistory {
+            start_time_nanos: 0,
+            events: vec![RecordedEvent::ActivityCompleted {
+                activity_id: "0".to_string(),
+                result: b"ok".to_vec(),
+            }],
+            expected_commands: vec![
+                CommandRecord::ScheduleActivity {
+                    activity_id: "0".to_string(),
+                    activity_type: "work".to_string(),
+                },
+                CommandRecord::ContinueAsNewWorkflow {
+                    workflow_type: "cron_like".to_string(),
+                },
+            ],
+        };
+
+        replay_workflow(&history, "cron_like", cron_like)
+            .expect("continue-as-new must replay without blocking");
+    }
+
+    #[test]
     fn blocks_when_recorded_result_missing() {
         // History records no result for the activity, so replay cannot make progress.
         let history = RecordedHistory {

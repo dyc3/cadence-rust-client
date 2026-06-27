@@ -244,20 +244,22 @@ pub struct TestRunResult {
 }
 
 impl TestRunResult {
-    /// The workflow's result, or `None` if it blocked on an undelivered external event.
+    /// The workflow's result, or `None` if it continued-as-new or blocked on an
+    /// undelivered external event.
     pub fn output_result(&self) -> Option<Result<&Vec<u8>, &DefaultWorkflowError>> {
         match &self.outcome {
             DriverOutcome::Completed(Ok(bytes)) => Some(Ok(bytes)),
             DriverOutcome::Completed(Err(e)) => Some(Err(e)),
-            DriverOutcome::Blocked => None,
+            DriverOutcome::ContinuedAsNew(_) | DriverOutcome::Blocked => None,
         }
     }
 
-    /// The successful output bytes; panics if the workflow failed or blocked.
+    /// The successful output bytes; panics if the workflow failed, continued-as-new, or blocked.
     pub fn unwrap_output(self) -> Vec<u8> {
         match self.outcome {
             DriverOutcome::Completed(Ok(bytes)) => bytes,
             DriverOutcome::Completed(Err(e)) => panic!("workflow failed: {e}"),
+            DriverOutcome::ContinuedAsNew(_) => panic!("workflow continued as new"),
             DriverOutcome::Blocked => panic!("workflow blocked on an external event"),
         }
     }
@@ -270,6 +272,11 @@ impl TestRunResult {
     /// Whether the workflow blocked waiting on an external event (e.g. a missing signal).
     pub fn is_blocked(&self) -> bool {
         self.outcome.is_blocked()
+    }
+
+    /// The continue-as-new details if the workflow terminated by continuing as new.
+    pub fn continued_as_new(&self) -> Option<&crabdance_workflow::ContinuedAsNew> {
+        self.outcome.continued_as_new()
     }
 
     /// The activity types the workflow scheduled, in order.
@@ -396,6 +403,23 @@ mod tests {
         });
 
         assert_eq!(run.unwrap_output(), b"v1".to_vec());
+    }
+
+    #[test]
+    fn reports_continue_as_new() {
+        let mut env = WorkflowTestEnv::new();
+        env.on_activity("work", b"ok".to_vec());
+
+        let run = env.execute(|ctx| async move {
+            ctx.execute_activity("work", None, Default::default())
+                .await?;
+            ctx.continue_as_new("again", None, Default::default()).await
+        });
+
+        let continued = run.continued_as_new().expect("should continue as new");
+        assert_eq!(continued.workflow_type, "again");
+        assert!(run.was_activity_executed("work"));
+        assert!(!run.is_blocked());
     }
 
     #[test]

@@ -1356,7 +1356,7 @@ impl std::fmt::Display for JoinError {
 impl std::error::Error for JoinError {}
 
 /// Continue as new options
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ContinueAsNewOptions {
     pub task_list: String,
     pub execution_start_to_close_timeout: Duration,

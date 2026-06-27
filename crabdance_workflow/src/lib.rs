@@ -20,7 +20,8 @@ pub use crabdance_core::FromResources;
 pub use crabdance_macros::{call_activity, workflow};
 pub use dispatcher::*;
 pub use driver::{
-    CommandRecord, CommandResolver, DriverOutcome, InMemoryCommandSink, Resolution, WorkflowDriver,
+    CommandRecord, CommandResolver, ContinuedAsNew, DriverOutcome, InMemoryCommandSink, Resolution,
+    WorkflowDriver,
 };
 pub use future::*;
 pub use local_activity::*;

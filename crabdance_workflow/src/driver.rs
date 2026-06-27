@@ -165,6 +165,13 @@ struct TimerEntry {
     fired: bool,
 }
 
+/// Details of a continue-as-new emitted by the workflow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContinuedAsNew {
+    pub workflow_type: String,
+    pub input: Option<Vec<u8>>,
+}
+
 struct SinkInner {
     /// Current mock-clock time in unix-epoch nanoseconds.
     clock_nanos: i64,
@@ -174,6 +181,10 @@ struct SinkInner {
     next_timer_key: u64,
     /// Ordered log of every submitted command.
     commands: Vec<CommandRecord>,
+    /// Set when the workflow emits a `ContinueAsNewWorkflow` command. This is a terminal
+    /// outcome: `continue_as_new` parks the root task forever after submitting, so
+    /// without this the driver would otherwise mistake it for a blocked workflow.
+    continued_as_new: Option<ContinuedAsNew>,
 }
 
 /// A [`CommandSink`] that resolves timers against a mock clock, acknowledges markers,
@@ -191,6 +202,7 @@ impl InMemoryCommandSink {
                 timers: BTreeMap::new(),
                 next_timer_key: 0,
                 commands: Vec::new(),
+                continued_as_new: None,
             })),
             resolver,
         }
@@ -215,6 +227,11 @@ impl InMemoryCommandSink {
             .filter(|(_, t)| !t.fired)
             .min_by_key(|(key, t)| (t.deadline_nanos, **key))
             .map(|(key, t)| (*key, t.deadline_nanos))
+    }
+
+    /// The continue-as-new the workflow emitted, if any (a terminal outcome).
+    fn continued_as_new(&self) -> Option<ContinuedAsNew> {
+        self.inner.lock().unwrap().continued_as_new.clone()
     }
 
     /// Fire the given timer and advance the mock clock to `new_clock_nanos`.
@@ -263,6 +280,16 @@ impl CommandSink for InMemoryCommandSink {
             WorkflowCommand::RecordMarker(_) | WorkflowCommand::UpsertSearchAttributes(_) => {
                 Box::pin(async { Ok(Vec::new()) })
             }
+            // Continue-as-new is terminal: record it (the workflow then parks forever)
+            // and acknowledge so the submitting `.await` resolves.
+            WorkflowCommand::ContinueAsNewWorkflow(c) => {
+                let mut inner = self.inner.lock().unwrap();
+                inner.continued_as_new = Some(ContinuedAsNew {
+                    workflow_type: c.workflow_type,
+                    input: c.input,
+                });
+                Box::pin(async { Ok(Vec::new()) })
+            }
             other => match self.resolver.resolve(&other) {
                 Resolution::Done(result) => Box::pin(async move { result }),
                 Resolution::Blocked => Box::pin(std::future::pending()),
@@ -294,22 +321,32 @@ impl Future for InMemoryTimerFuture {
 pub enum DriverOutcome {
     /// The workflow's root task completed with this result.
     Completed(Result<Vec<u8>, DefaultWorkflowError>),
+    /// The workflow terminated by continuing as new (a terminal outcome, not a block).
+    ContinuedAsNew(ContinuedAsNew),
     /// The workflow is blocked on an external event (e.g. a signal) that this run
     /// will never deliver, with no timer left to fire.
     Blocked,
 }
 
 impl DriverOutcome {
-    /// Returns the completion result, or `None` if the run blocked.
+    /// Returns the completion result, or `None` if the run continued-as-new or blocked.
     pub fn into_completed(self) -> Option<Result<Vec<u8>, DefaultWorkflowError>> {
         match self {
             DriverOutcome::Completed(result) => Some(result),
-            DriverOutcome::Blocked => None,
+            DriverOutcome::ContinuedAsNew(_) | DriverOutcome::Blocked => None,
         }
     }
 
     pub fn is_blocked(&self) -> bool {
         matches!(self, DriverOutcome::Blocked)
+    }
+
+    /// The continue-as-new details if the workflow terminated by continuing as new.
+    pub fn continued_as_new(&self) -> Option<&ContinuedAsNew> {
+        match self {
+            DriverOutcome::ContinuedAsNew(c) => Some(c),
+            _ => None,
+        }
     }
 }
 
@@ -397,6 +434,12 @@ impl WorkflowDriver {
                     .downcast::<Result<Vec<u8>, DefaultWorkflowError>>()
                     .expect("root task output must be Result<Vec<u8>, DefaultWorkflowError>");
                 return DriverOutcome::Completed(result);
+            }
+
+            // Continue-as-new is terminal: the root task parks forever after emitting
+            // the command, so treat it as a completed (continued) run rather than blocked.
+            if let Some(continued) = self.sink.continued_as_new() {
+                return DriverOutcome::ContinuedAsNew(continued);
             }
 
             // Blocked: advance the mock clock to the earliest pending timer, if any.
@@ -748,6 +791,34 @@ mod tests {
             assert_eq!(v, 2);
             Ok(Vec::new())
         });
+    }
+
+    #[test]
+    fn continue_as_new_is_terminal_not_blocked() {
+        // Regression: continue_as_new submits its command then parks the root task
+        // forever. The driver must treat that as a terminal ContinuedAsNew outcome, not
+        // mistake the parked task for a blocked workflow.
+        let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = driver.context();
+
+        let outcome = driver.run(async move {
+            ctx.continue_as_new("NextRun", Some(b"carry".to_vec()), Default::default())
+                .await
+        });
+
+        match outcome {
+            DriverOutcome::ContinuedAsNew(c) => {
+                assert_eq!(c.workflow_type, "NextRun");
+                assert_eq!(c.input.as_deref(), Some(b"carry".as_slice()));
+            }
+            other => panic!("expected ContinuedAsNew, got {other:?}"),
+        }
+
+        // The terminal command is recorded in the emitted sequence.
+        assert!(driver
+            .recorded_commands()
+            .iter()
+            .any(|c| matches!(c, CommandRecord::ContinueAsNewWorkflow { .. })));
     }
 
     #[test]
