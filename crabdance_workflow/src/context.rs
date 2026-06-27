@@ -214,6 +214,9 @@ pub struct WorkflowContext {
     mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     // Replay flag - true when workflow is being replayed from history
     is_replay: Arc<std::sync::atomic::AtomicBool>,
+    // When false (default), workflow logs are suppressed during replay (Go's
+    // EnableLoggingInReplay). The worker sets this from its options.
+    log_in_replay: Arc<std::sync::atomic::AtomicBool>,
     // Deterministic time - current time in nanoseconds (unix epoch)
     current_time_nanos: Arc<std::sync::atomic::AtomicI64>,
     // Version markers cache for workflow versioning
@@ -264,6 +267,7 @@ impl WorkflowContext {
             side_effect_results: Arc::new(Mutex::new(HashMap::new())),
             mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            log_in_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions: Arc::new(Mutex::new(HashMap::new())),
             search_attributes: Arc::new(Mutex::new(search_attributes)),
@@ -310,6 +314,7 @@ impl WorkflowContext {
             side_effect_results,
             mutable_side_effects,
             is_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            log_in_replay: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             current_time_nanos: Arc::new(std::sync::atomic::AtomicI64::new(start_time_nanos)),
             change_versions,
             search_attributes: Arc::new(Mutex::new(search_attributes)),
@@ -1012,9 +1017,74 @@ impl WorkflowContext {
         })
     }
 
-    /// Get logger
-    pub fn get_logger(&self) -> Box<dyn Logger> {
-        Box::new(ConsoleLogger)
+    /// Enable or disable workflow log emission during replay (Go's
+    /// `EnableLoggingInReplay`). Disabled by default, so replayed history does not
+    /// re-emit logs. The worker sets this from its options.
+    pub fn set_logging_enabled_in_replay(&self, enabled: bool) {
+        self.log_in_replay.store(enabled, Ordering::SeqCst);
+    }
+
+    /// Whether a workflow log statement should be emitted right now: always during live
+    /// execution, and during replay only when logging-in-replay is enabled.
+    pub fn should_log(&self) -> bool {
+        !self.is_replay.load(Ordering::SeqCst) || self.log_in_replay.load(Ordering::SeqCst)
+    }
+
+    /// Emit a workflow log event through `tracing`, suppressed during replay unless
+    /// logging-in-replay is enabled. Events are tagged with the workflow id, run id and
+    /// type so they can be correlated.
+    ///
+    /// Prefer these over calling `tracing` directly from workflow code, since they
+    /// honor the replay-aware emission guard (the analogue of Go's injected logger).
+    pub fn log_debug(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::debug!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
+    }
+
+    /// See [`log_debug`](Self::log_debug).
+    pub fn log_info(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::info!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
+    }
+
+    /// See [`log_debug`](Self::log_debug).
+    pub fn log_warn(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::warn!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
+    }
+
+    /// See [`log_debug`](Self::log_debug).
+    pub fn log_error(&self, message: &str) {
+        if self.should_log() {
+            let exec = &self.workflow_info.workflow_execution;
+            tracing::error!(
+                workflow_id = %exec.workflow_id,
+                run_id = %exec.run_id,
+                workflow_type = %self.workflow_info.workflow_type.name,
+                "{message}"
+            );
+        }
     }
 
     /// Get metrics scope
@@ -1329,34 +1399,9 @@ pub use crate::future::{
     ActivityError, DefaultActivityError, DefaultWorkflowError, TimerFuture, WorkflowError,
 };
 
-/// Logger trait
-pub trait Logger: Send + Sync {
-    fn debug(&self, msg: &str);
-    fn info(&self, msg: &str);
-    fn warn(&self, msg: &str);
-    fn error(&self, msg: &str);
-}
-
-/// Console logger implementation
-struct ConsoleLogger;
-
-impl Logger for ConsoleLogger {
-    fn debug(&self, msg: &str) {
-        tracing::debug!("{}", msg);
-    }
-
-    fn info(&self, msg: &str) {
-        tracing::info!("{}", msg);
-    }
-
-    fn warn(&self, msg: &str) {
-        tracing::warn!("{}", msg);
-    }
-
-    fn error(&self, msg: &str) {
-        tracing::error!("{}", msg);
-    }
-}
+// Workflow logging is native via `tracing` — see WorkflowContext::log_info etc., which
+// emit through `tracing` with a replay-aware guard. The previous `Logger`/`ConsoleLogger`
+// trait stubs were removed in favor of the ecosystem-standard facade.
 
 /// Metrics scope trait
 pub trait MetricsScope: Send + Sync {

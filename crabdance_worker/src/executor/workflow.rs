@@ -607,7 +607,6 @@ impl CommandSink for ReplayCommandSink {
 pub struct WorkflowExecutor {
     registry: Arc<dyn Registry>,
     cache: Arc<WorkflowCache>,
-    #[expect(dead_code)]
     options: WorkerOptions,
     task_list: String,
     local_activity_queue: LocalActivityQueue,
@@ -820,6 +819,7 @@ impl WorkflowExecutor {
 
         // Set replay mode and cancellation
         context.set_replay_mode(is_replay);
+        context.set_logging_enabled_in_replay(self.options.enable_logging_in_replay);
         if cancel_requested {
             context.set_cancelled(true);
         }

@@ -81,6 +81,9 @@ pub struct WorkerOptions {
     pub deadlock_detection_timeout: Duration,
     /// Max cached workflows
     pub max_cached_workflows: usize,
+    /// Emit workflow logs during replay (Go's `EnableLoggingInReplay`). Off by default,
+    /// so replayed history does not re-emit logs.
+    pub enable_logging_in_replay: bool,
 }
 
 impl Default for WorkerOptions {
@@ -107,6 +110,7 @@ impl Default for WorkerOptions {
             ),
             deadlock_detection_timeout: Duration::from_secs(0), // Disabled by default
             max_cached_workflows: 1000,
+            enable_logging_in_replay: false,
         }
     }
 }

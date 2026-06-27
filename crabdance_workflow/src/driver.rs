@@ -624,6 +624,27 @@ mod tests {
     }
 
     #[test]
+    fn replay_aware_logging_guard() {
+        let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = driver.context();
+
+        // Live execution: always log.
+        assert!(ctx.should_log());
+
+        // Replay: suppressed by default...
+        ctx.set_replay_mode(true);
+        assert!(!ctx.should_log());
+
+        // ...unless logging-in-replay is enabled (Go's EnableLoggingInReplay).
+        ctx.set_logging_enabled_in_replay(true);
+        assert!(ctx.should_log());
+
+        // These must not panic regardless of guard state.
+        ctx.log_info("hello");
+        ctx.log_error("oops");
+    }
+
+    #[test]
     fn workflow_error_predicates() {
         use crate::future::WorkflowError;
 
