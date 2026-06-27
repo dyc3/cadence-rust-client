@@ -648,6 +648,36 @@ mod tests {
     }
 
     #[test]
+    fn propagation_context_round_trips_through_propagator() {
+        use crabdance_core::{
+            ContextPropagator, PropagationContext, W3CTraceContextPropagator, TRACEPARENT_HEADER,
+        };
+
+        let driver = WorkflowDriver::new(test_workflow_info(), echo_resolver());
+        let ctx = driver.context();
+
+        // The worker would set this after extracting the start header.
+        let mut incoming = PropagationContext::new();
+        incoming.set(TRACEPARENT_HEADER, b"00-abc-def-01".to_vec());
+        ctx.set_propagation_context(incoming);
+
+        // Workflow code can read the propagated trace context...
+        assert_eq!(
+            ctx.propagation_context().get(TRACEPARENT_HEADER),
+            Some(&b"00-abc-def-01"[..])
+        );
+
+        // ...and inject it into an outbound activity/child carrier.
+        let propagators: Vec<Arc<dyn ContextPropagator>> =
+            vec![Arc::new(W3CTraceContextPropagator)];
+        let carrier = ctx.inject_propagation(&propagators);
+        assert_eq!(
+            carrier.get(TRACEPARENT_HEADER).map(|v| v.as_slice()),
+            Some(&b"00-abc-def-01"[..])
+        );
+    }
+
+    #[test]
     fn activity_result_pending_sentinel() {
         use crate::future::{ActivityError, DefaultActivityError};
 

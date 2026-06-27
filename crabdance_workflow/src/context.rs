@@ -225,6 +225,10 @@ pub struct WorkflowContext {
     search_attributes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     // Cron: result of the previous run, if this workflow was started by a cron schedule.
     last_completion_result: Arc<Mutex<Option<Vec<u8>>>>,
+    // Propagated trace context / baggage, extracted from the workflow's start header by
+    // the worker (see ContextPropagator). Available to workflow code and injectable into
+    // outbound activity/child headers.
+    propagation_context: Arc<Mutex<crabdance_core::PropagationContext>>,
     // History size accounting for the current decision task (set by the worker).
     history_count: Arc<AtomicU64>,
     total_history_bytes: Arc<AtomicU64>,
@@ -272,6 +276,7 @@ impl WorkflowContext {
             change_versions: Arc::new(Mutex::new(HashMap::new())),
             search_attributes: Arc::new(Mutex::new(search_attributes)),
             last_completion_result: Arc::new(Mutex::new(None)),
+            propagation_context: Arc::new(Mutex::new(crabdance_core::PropagationContext::new())),
             history_count: Arc::new(AtomicU64::new(0)),
             total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
@@ -319,6 +324,7 @@ impl WorkflowContext {
             change_versions,
             search_attributes: Arc::new(Mutex::new(search_attributes)),
             last_completion_result: Arc::new(Mutex::new(None)),
+            propagation_context: Arc::new(Mutex::new(crabdance_core::PropagationContext::new())),
             history_count: Arc::new(AtomicU64::new(0)),
             total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results,
@@ -987,6 +993,32 @@ impl WorkflowContext {
     /// [`EncodedValues`](crabdance_core::EncodedValues) (Go's `workflow.NewValues`).
     pub fn new_values(&self, data: Vec<u8>) -> crabdance_core::EncodedValues {
         crabdance_core::EncodedValues::new(data)
+    }
+
+    /// Set the propagated trace context / baggage, called by the worker after extracting
+    /// it from the workflow's start header through the configured `ContextPropagator`s.
+    pub fn set_propagation_context(&self, context: crabdance_core::PropagationContext) {
+        *self.propagation_context.lock().unwrap() = context;
+    }
+
+    /// The propagated trace context / baggage available to this workflow (Go's header
+    /// values exposed to workflow code).
+    pub fn propagation_context(&self) -> crabdance_core::PropagationContext {
+        self.propagation_context.lock().unwrap().clone()
+    }
+
+    /// Build a header carrier for an outbound boundary (scheduling an activity or child
+    /// workflow) by injecting the current propagation context through `propagators`.
+    pub fn inject_propagation(
+        &self,
+        propagators: &[Arc<dyn crabdance_core::ContextPropagator>],
+    ) -> crabdance_core::PropagationCarrier {
+        let context = self.propagation_context.lock().unwrap();
+        let mut carrier = crabdance_core::PropagationCarrier::new();
+        for propagator in propagators {
+            propagator.inject(&context, &mut carrier);
+        }
+        carrier
     }
 
     /// Sleep for a duration (workflow-aware)
