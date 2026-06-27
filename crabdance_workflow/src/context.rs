@@ -505,6 +505,17 @@ impl WorkflowContext {
         SignalChannel::new(signal_name, self.signals.clone())
     }
 
+    /// Deliver a signal to the workflow (used by the worker on signal events and by the
+    /// test environment to inject signals before a run).
+    pub fn add_signal(&self, signal_name: &str, payload: Vec<u8>) {
+        self.signals
+            .lock()
+            .unwrap()
+            .entry(signal_name.to_string())
+            .or_default()
+            .push(payload);
+    }
+
     /// Signal an external workflow
     pub async fn signal_external_workflow(
         &self,

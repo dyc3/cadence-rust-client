@@ -74,6 +74,13 @@ impl Default for TestSuite {
 }
 
 /// Test workflow environment for running workflow tests
+/// Legacy mimic-based test environment.
+///
+/// **Superseded by [`crate::env::WorkflowTestEnv`]**, which drives the *real*
+/// [`WorkflowContext`](crabdance_workflow::context::WorkflowContext) so it can test the
+/// workflows you actually deploy. This type reimplements a parallel
+/// [`TestWorkflowContext`] and is retained only for backward compatibility; prefer the
+/// real-context environment for new tests. Physical removal is tracked separately.
 pub struct TestWorkflowEnvironment {
     workflow_id: String,
     run_id: String,
