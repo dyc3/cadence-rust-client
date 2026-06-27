@@ -864,9 +864,17 @@ impl WorkflowContext {
         {
             let versions = self.change_versions.lock().unwrap();
             for (existing_id, existing_version) in versions.iter() {
+                // Skip the change being recorded (added above) and any default-version
+                // entries, which are not meaningful recorded versions.
+                if existing_id == change_id || *existing_version == DEFAULT_VERSION {
+                    continue;
+                }
                 entries.push(format!("{existing_id}-{existing_version}"));
             }
         }
+        // Sort for a deterministic payload — HashMap iteration order is unspecified,
+        // and this attribute is recorded through the deterministic command pipeline.
+        entries.sort();
         if let Ok(encoded) = serde_json::to_vec(&entries) {
             self.upsert_search_attributes(vec![(
                 CADENCE_CHANGE_VERSION_SEARCH_ATTRIBUTE.to_string(),

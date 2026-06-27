@@ -20,8 +20,9 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-use crabdance_core::WorkflowInfo;
 use serde::{Deserialize, Serialize};
+
+use crabdance_core::WorkflowInfo;
 
 use crate::commands::{StartTimerCommand, WorkflowCommand};
 use crate::context::{CommandSink, WorkflowContext, WorkflowContextBuilder};

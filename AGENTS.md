@@ -167,8 +167,10 @@ use crate::registry::WorkflowRegistry;
   Gate a whole integration test file with a top-of-file inner attribute
   `#![cfg(feature = "integration")]`; gate individual server-backed tests (and any
   helpers/constants only they use) in a mixed module with `#[cfg(feature = "integration")]`.
-  Run them with `just integration` (the default `cargo test` skips them; clippy's
-  `--all-features` still compile-checks them).
+  Run them with `just integration` (the default `cargo test` skips them; CI's
+  `cargo clippy --all-features --all-targets` still compile-checks them — note
+  `--all-targets`/`--tests` is required, since plain `--all-features` does not build
+  test targets).
 - Use descriptive test names: `test_<scenario>_<expected_behavior>()`
 
 ## Workspace Structure

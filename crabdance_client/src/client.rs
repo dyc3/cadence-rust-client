@@ -803,8 +803,18 @@ impl Client for WorkflowClient {
                 .search_attributes
                 .map(|s| SearchAttributes { indexed_fields: s }),
             header: options.header.map(|h| Header { fields: h }),
-            delay_start_seconds: options.delay_start.map(|d| d.as_secs() as i32),
-            jitter_start_seconds: options.jitter_start.map(|d| d.as_secs() as i32),
+            // first_run_at overrides delay_start/jitter_start for the first run, so omit
+            // them when it is set to keep the request payload internally consistent.
+            delay_start_seconds: if options.first_run_at.is_some() {
+                None
+            } else {
+                options.delay_start.map(|d| d.as_secs() as i32)
+            },
+            jitter_start_seconds: if options.first_run_at.is_some() {
+                None
+            } else {
+                options.jitter_start.map(|d| d.as_secs() as i32)
+            },
             first_execution_run_id: None,
             first_decision_task_backoff_seconds: None,
             partition_config: None,
@@ -858,8 +868,18 @@ impl Client for WorkflowClient {
                 .search_attributes
                 .map(|s| SearchAttributes { indexed_fields: s }),
             header: options.header.map(|h| Header { fields: h }),
-            delay_start_seconds: options.delay_start.map(|d| d.as_secs() as i32),
-            jitter_start_seconds: options.jitter_start.map(|d| d.as_secs() as i32),
+            // first_run_at overrides delay_start/jitter_start for the first run, so omit
+            // them when it is set to keep the request payload internally consistent.
+            delay_start_seconds: if options.first_run_at.is_some() {
+                None
+            } else {
+                options.delay_start.map(|d| d.as_secs() as i32)
+            },
+            jitter_start_seconds: if options.first_run_at.is_some() {
+                None
+            } else {
+                options.jitter_start.map(|d| d.as_secs() as i32)
+            },
             first_execution_run_id: None,
             first_decision_task_backoff_seconds: None,
             partition_config: None,
@@ -2088,7 +2108,7 @@ mod tests {
     // ---- Integration tests (require a running Cadence server) ------------
     //
     // Mirror the connection pattern in `crabdance/tests/grpc_integration.rs`.
-    // Run with: cargo test -p crabdance_client -- --ignored --test-threads=1
+    // Run with: cargo test -p crabdance_client --features integration -- --test-threads=1
 
     #[cfg(feature = "integration")]
     const CADENCE_GRPC_ENDPOINT: &str = "http://localhost:7833";

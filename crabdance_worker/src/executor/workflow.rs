@@ -663,13 +663,38 @@ impl WorkflowExecutor {
         &self,
         task: PollForDecisionTaskResponse,
     ) -> Result<(Vec<Decision>, HashMap<String, WorkflowQueryResult>), CadenceError> {
-        let decision_started_at = std::time::Instant::now();
+        let started_at = std::time::Instant::now();
         crate::metrics::incr(
             crate::metrics::DECISION_TASK_STARTED,
             crate::metrics::TAG_TASK_LIST,
             &self.task_list,
         );
 
+        let result = self.execute_decision_task_inner(task).await;
+
+        // Emit a terminal metric + latency on every exit path — success or any of the
+        // early `?` error returns (missing history/type, unknown workflow, replay or
+        // dispatcher failures) — so the started/completed/failed series stays balanced.
+        let terminal = if result.is_ok() {
+            crate::metrics::DECISION_TASK_COMPLETED
+        } else {
+            crate::metrics::DECISION_TASK_FAILED
+        };
+        crate::metrics::incr(terminal, crate::metrics::TAG_TASK_LIST, &self.task_list);
+        crate::metrics::record_latency(
+            crate::metrics::DECISION_TASK_LATENCY,
+            crate::metrics::TAG_TASK_LIST,
+            &self.task_list,
+            started_at.elapsed(),
+        );
+
+        result
+    }
+
+    async fn execute_decision_task_inner(
+        &self,
+        task: PollForDecisionTaskResponse,
+    ) -> Result<(Vec<Decision>, HashMap<String, WorkflowQueryResult>), CadenceError> {
         let history = task
             .history
             .ok_or_else(|| CadenceError::Other("No history in task".into()))?;
@@ -927,11 +952,15 @@ impl WorkflowExecutor {
                             }
                             Err(e) => {
                                 error!(error = %e, "workflow failed");
-                                crate::metrics::incr(
-                                    crate::metrics::WORKFLOW_PANIC,
-                                    crate::metrics::TAG_TASK_LIST,
-                                    &self.task_list,
-                                );
+                                // Only count true panics here; a normal Err return is a
+                                // workflow failure, not a panic.
+                                if matches!(e, WorkflowError::Panic(_)) {
+                                    crate::metrics::incr(
+                                        crate::metrics::WORKFLOW_PANIC,
+                                        crate::metrics::TAG_TASK_LIST,
+                                        &self.task_list,
+                                    );
+                                }
                                 engine
                                     .decisions_helper
                                     .fail_workflow_execution(e.to_string(), "".to_string());
@@ -1216,18 +1245,6 @@ impl WorkflowExecutor {
         if let Some(d) = decisions.first() {
             debug!(decision_type = ?d.decision_type, "first decision type");
         }
-
-        crate::metrics::incr(
-            crate::metrics::DECISION_TASK_COMPLETED,
-            crate::metrics::TAG_TASK_LIST,
-            &self.task_list,
-        );
-        crate::metrics::record_latency(
-            crate::metrics::DECISION_TASK_LATENCY,
-            crate::metrics::TAG_TASK_LIST,
-            &self.task_list,
-            decision_started_at.elapsed(),
-        );
 
         Ok((decisions, query_results))
     }

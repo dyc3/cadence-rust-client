@@ -10,7 +10,7 @@ plus three new follow-ups) remain open and tracked.
 
 ```bash
 cargo build --workspace
-cargo test --workspace          # all unit/integration tests (server-backed ones are #[ignore])
+cargo test --workspace          # unit + in-process tests (server-backed ones are gated behind the `integration` feature)
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 just replay-gate                # the determinism gate specifically (#13)

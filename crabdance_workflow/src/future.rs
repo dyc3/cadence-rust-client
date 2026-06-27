@@ -187,11 +187,11 @@ where
     }
 
     /// Whether this is a cancellation (Go's `IsCanceledError`).
+    ///
+    /// Only `Cancelled` counts — `CancelFailed` means a cancel *request* failed and is
+    /// a genuine workflow error, so it is excluded.
     pub fn is_cancelled(&self) -> bool {
-        matches!(
-            self,
-            WorkflowError::Cancelled | WorkflowError::CancelFailed(_)
-        )
+        matches!(self, WorkflowError::Cancelled)
     }
 
     /// Whether this is a continue-as-new signal (Go's `IsContinueAsNewError`).

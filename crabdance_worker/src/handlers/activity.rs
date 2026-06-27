@@ -109,6 +109,18 @@ impl ActivityTaskHandler {
                     })
                     .await;
 
+                // Terminal metric for the started counter on this failure path.
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
                 return Err(CadenceError::Other(format!(
                     "Activity '{}' not registered",
                     activity_type

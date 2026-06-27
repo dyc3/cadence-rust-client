@@ -214,11 +214,12 @@ pub fn decode<T: DeserializeOwned>(data: &[u8]) -> Result<T, EncodingError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use serde::Deserialize;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    use serde::Deserialize;
+
+    use super::*;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     struct TestStruct {

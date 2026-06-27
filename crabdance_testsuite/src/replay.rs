@@ -9,11 +9,12 @@
 //! the exact recorded sequence of *schedulable* commands — any divergence is
 //! non-determinism.
 //!
-//! In replay mode the workflow's deterministic side-channels (side effects, mutable
-//! side effects, versions, local activities) are served from the seeded caches and do
-//! **not** re-emit marker commands, so the asserted command sequence contains only the
-//! schedulable commands: activities, timers, child workflows, and external
-//! signal/cancel requests. This mirrors how the production worker reconciles replay.
+//! In replay mode the workflow's deterministic side-channels that this harness seeds —
+//! side effects and versions — are served from the seeded caches and do **not** re-emit
+//! marker commands, so the asserted command sequence contains only the schedulable
+//! commands: activities, timers, child workflows, and external signal/cancel requests.
+//! (Mutable side effects and local activities are not yet encoded in the history model;
+//! a workflow using them will block during replay rather than diverge silently.)
 //!
 //! The same `CommandSink` seam powers the production replay path (the worker's
 //! `ReplayCommandSink`, which resolves from real Cadence history) and the unit-test
@@ -45,6 +46,21 @@ pub struct RecordedHistory {
     pub events: Vec<RecordedEvent>,
     /// The exact sequence of schedulable commands the workflow must emit on replay.
     pub expected_commands: Vec<CommandRecord>,
+    /// The recorded terminal outcome. When set, replay also asserts the workflow's
+    /// final completion/failure matches — so a changed terminal *decision* (different
+    /// returned bytes, or success vs failure) is caught even if the schedulable command
+    /// sequence is unchanged. Optional for backward compatibility.
+    #[serde(default)]
+    pub expected_outcome: Option<RecordedOutcome>,
+}
+
+/// A workflow's recorded terminal outcome.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum RecordedOutcome {
+    /// Completed successfully with these result bytes.
+    Completed(Vec<u8>),
+    /// Failed (returned an error).
+    Failed,
 }
 
 /// A single recorded outcome the workflow observed.
@@ -89,6 +105,10 @@ pub enum ReplayError {
     /// workflow diverged onto a path with no recorded outcome.
     #[error("workflow blocked during replay (missing recorded result or divergent path)")]
     BlockedDuringReplay,
+    /// The replayed workflow's terminal outcome differs from the recorded one (a changed
+    /// completion/failure decision), even though the command sequence matched.
+    #[error("terminal-outcome mismatch on replay: expected {expected:?}")]
+    OutcomeMismatch { expected: RecordedOutcome },
 }
 
 impl ReplayError {
@@ -271,6 +291,23 @@ where
         return Err(ReplayError::BlockedDuringReplay);
     }
 
+    // Assert the terminal outcome too, so a changed completion/failure decision is
+    // caught even when the schedulable command sequence is unchanged.
+    if let Some(expected) = &history.expected_outcome {
+        let matches = match (expected, &outcome) {
+            (RecordedOutcome::Completed(bytes), DriverOutcome::Completed(Ok(actual))) => {
+                actual == bytes
+            }
+            (RecordedOutcome::Failed, DriverOutcome::Completed(Err(_))) => true,
+            _ => false,
+        };
+        if !matches {
+            return Err(ReplayError::OutcomeMismatch {
+                expected: expected.clone(),
+            });
+        }
+    }
+
     Ok(())
 }
 
@@ -317,6 +354,8 @@ mod tests {
                     activity_type: "charge".to_string(),
                 },
             ],
+            // The golden workflow returns the activity result verbatim.
+            expected_outcome: Some(RecordedOutcome::Completed(b"charged".to_vec())),
         }
     }
 
@@ -383,10 +422,31 @@ mod tests {
                 activity_id: "0".to_string(),
                 activity_type: "charge".to_string(),
             }],
+            expected_outcome: None,
         };
 
         replay_workflow(&history, "upsert_workflow", upsert_then_activity)
             .expect("upsert must not be re-emitted on replay");
+    }
+
+    #[test]
+    fn detects_changed_terminal_outcome() {
+        // Same schedulable command sequence as the golden, but a different terminal
+        // decision (different returned bytes). The command-sequence check passes; the
+        // terminal-outcome assertion must catch it.
+        async fn wrong_output(ctx: WorkflowContext) -> Result<Vec<u8>, DefaultWorkflowError> {
+            let _version = ctx.get_version("charge-v1", DEFAULT_VERSION, 1);
+            ctx.sleep(Duration::from_secs(60)).await;
+            let _charged = ctx
+                .execute_activity("charge", None, Default::default())
+                .await?;
+            Ok(b"different".to_vec())
+        }
+
+        let history = golden_history();
+        let err = replay_workflow(&history, "order_workflow", wrong_output)
+            .expect_err("changed terminal output must be detected");
+        assert!(matches!(err, ReplayError::OutcomeMismatch { .. }));
     }
 
     #[test]
@@ -421,6 +481,7 @@ mod tests {
                 activity_id: "0".to_string(),
                 activity_type: "new_path".to_string(),
             }],
+            expected_outcome: Some(RecordedOutcome::Completed(b"done".to_vec())),
         };
 
         replay_workflow(&history, "versioned", versioned)
@@ -454,6 +515,7 @@ mod tests {
                     workflow_type: "cron_like".to_string(),
                 },
             ],
+            expected_outcome: None,
         };
 
         replay_workflow(&history, "cron_like", cron_like)
@@ -470,6 +532,7 @@ mod tests {
                 activity_id: "0".to_string(),
                 activity_type: "charge".to_string(),
             }],
+            expected_outcome: None,
         };
 
         async fn just_activity(ctx: WorkflowContext) -> Result<Vec<u8>, DefaultWorkflowError> {

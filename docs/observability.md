@@ -45,7 +45,7 @@ suffixed `_total`; histograms are in seconds. Names are exported as constants in
 | `cadence_activity_task_completed_total` | counter | `activity_type` | Activity tasks completed |
 | `cadence_activity_task_failed_total` | counter | `activity_type` | Activity tasks failed |
 | `cadence_activity_task_execution_latency_seconds` | histogram | `activity_type` | Activity task latency |
-| `cadence_workflow_panic_total` | counter | `task_list` | Workflow executions that returned an error |
+| `cadence_workflow_panic_total` | counter | `task_list` | Workflow code panics (the `Panic` error variant) — not ordinary workflow failures |
 | `cadence_poller_start_total` | counter | `task_list` | Pollers started |
 | `cadence_concurrent_task_quota` | gauge | `task_list` | Configured concurrent decision-task quota |
 

@@ -8,7 +8,7 @@ pub mod replay;
 pub mod suite;
 
 pub use env::{TestRunResult, WorkflowTestEnv};
-pub use replay::{RecordedEvent, RecordedHistory, ReplayError};
+pub use replay::{RecordedEvent, RecordedHistory, RecordedOutcome, ReplayError};
 pub use suite::*;
 
 // Re-export WorkflowError for convenience

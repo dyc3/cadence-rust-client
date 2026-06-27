@@ -340,6 +340,11 @@ impl Worker for CadenceWorker {
                 &identity,
                 activity_handler.clone(),
             );
+            crate::metrics::incr(
+                crate::metrics::POLLER_START,
+                crate::metrics::TAG_TASK_LIST,
+                &self.task_list,
+            );
             poller_manager.add_activity_poller(Arc::new(poller));
         }
 

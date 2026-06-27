@@ -152,7 +152,7 @@ impl From<api::UpdateDomainRequest> for pb::UpdateDomainRequest {
             history_archival_uri: String::new(),
             visibility_archival_status: 0,
             visibility_archival_uri: String::new(),
-            delete_bad_binary: req.delete_bad_binary.unwrap_or_default(),
+            delete_bad_binary: String::new(),
             active_cluster_name: String::new(),
             clusters: Vec::new(),
             failover_timeout: None,
@@ -209,6 +209,12 @@ impl From<api::UpdateDomainRequest> for pb::UpdateDomainRequest {
                 .collect();
             paths.push("active_cluster_name".to_string());
             paths.push("clusters".to_string());
+        }
+
+        // Apply delete-bad-binary (a standalone updatable field).
+        if let Some(bad) = req.delete_bad_binary {
+            update_req.delete_bad_binary = bad;
+            paths.push("delete_bad_binary".to_string());
         }
 
         if !paths.is_empty() {

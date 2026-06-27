@@ -232,8 +232,11 @@ impl DomainClient for DomainClientImpl {
 // ============================================================================
 
 /// Convert a retention [`Duration`] to Cadence's wire unit of whole days.
+///
+/// Sub-day remainders are truncated (the wire format is whole days). The cast
+/// saturates rather than wrapping for absurdly large durations (> ~5.8M years).
 fn duration_to_days(period: Duration) -> i32 {
-    (period.as_secs() / SECONDS_PER_DAY) as i32
+    (period.as_secs() / SECONDS_PER_DAY).min(i32::MAX as u64) as i32
 }
 
 /// Convert Cadence's wire unit of whole days back to a [`Duration`].

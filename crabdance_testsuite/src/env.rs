@@ -32,7 +32,9 @@ use std::sync::{Arc, Mutex};
 use crabdance_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
 use crabdance_workflow::commands::WorkflowCommand;
 use crabdance_workflow::context::WorkflowContext;
-use crabdance_workflow::future::{DefaultWorkflowError, WorkflowError};
+use crabdance_workflow::future::{
+    ActivityFailureInfo, ActivityFailureType, DefaultWorkflowError, WorkflowError,
+};
 use crabdance_workflow::{
     CommandRecord, CommandResolver, DriverOutcome, Resolution, WorkflowDriver,
 };
@@ -101,6 +103,13 @@ impl WorkflowTestEnv {
     pub fn on_child_workflow(&mut self, workflow_id: &str, result: Vec<u8>) -> &mut Self {
         self.child_results
             .insert(workflow_id.to_string(), Ok(result));
+        self
+    }
+
+    /// Mock a child workflow (by workflow id) to fail with `reason`.
+    pub fn on_child_workflow_error(&mut self, workflow_id: &str, reason: &str) -> &mut Self {
+        self.child_results
+            .insert(workflow_id.to_string(), Err(reason.to_string()));
         self
     }
 
@@ -193,6 +202,17 @@ struct MockResolver {
     executed_activities: Arc<Mutex<Vec<String>>>,
 }
 
+/// Build a production-equivalent activity failure (so a workflow that matches on
+/// `WorkflowError::ActivityFailed` behaves the same in-test as on a real worker).
+fn activity_failure(reason: impl Into<String>) -> DefaultWorkflowError {
+    WorkflowError::ActivityFailed(ActivityFailureInfo {
+        failure_type: ActivityFailureType::ExecutionFailed,
+        message: reason.into(),
+        details: None,
+        retryable: false,
+    })
+}
+
 impl CommandResolver for MockResolver {
     fn resolve(&self, command: &WorkflowCommand) -> Resolution {
         match command {
@@ -204,12 +224,14 @@ impl CommandResolver for MockResolver {
                 match self.activity_mocks.get(&c.activity_type) {
                     Some(ActivityMock::Value(Ok(bytes))) => Resolution::Done(Ok(bytes.clone())),
                     Some(ActivityMock::Value(Err(reason))) => {
-                        Resolution::Done(Err(WorkflowError::message(reason.clone())))
+                        Resolution::Done(Err(activity_failure(reason.clone())))
                     }
                     Some(ActivityMock::Func(func)) => match func(c.args.clone()) {
                         Ok(bytes) => Resolution::Done(Ok(bytes)),
-                        Err(reason) => Resolution::Done(Err(WorkflowError::message(reason))),
+                        Err(reason) => Resolution::Done(Err(activity_failure(reason))),
                     },
+                    // No mock registered is a harness misconfiguration, not a simulated
+                    // failure, so surface it as a plain error.
                     None => Resolution::Done(Err(WorkflowError::message(format!(
                         "no mock registered for activity '{}'",
                         c.activity_type
@@ -220,7 +242,7 @@ impl CommandResolver for MockResolver {
                 match self.child_results.get(&c.workflow_id) {
                     Some(Ok(bytes)) => Resolution::Done(Ok(bytes.clone())),
                     Some(Err(reason)) => {
-                        Resolution::Done(Err(WorkflowError::message(reason.clone())))
+                        Resolution::Done(Err(WorkflowError::child_workflow_failed(reason.clone())))
                     }
                     None => Resolution::Done(Err(WorkflowError::message(format!(
                         "no mock registered for child workflow '{}'",
