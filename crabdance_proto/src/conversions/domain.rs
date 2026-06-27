@@ -76,9 +76,10 @@ impl From<pb::DescribeDomainResponse> for api::DescribeDomainResponse {
         if let Some(d) = resp.domain {
             let domain_info = Some(api::DomainInfo {
                 name: d.name.clone(),
+                // Proto DomainStatus: 0=Invalid, 1=Registered, 2=Deprecated, 3=Deleted.
                 status: Some(match d.status {
-                    1 => api::DomainStatus::Deprecated,
-                    2 => api::DomainStatus::Deleted,
+                    2 => api::DomainStatus::Deprecated,
+                    3 => api::DomainStatus::Deleted,
                     _ => api::DomainStatus::Registered,
                 }),
                 description: d.description.clone(),
@@ -158,11 +159,20 @@ impl From<api::UpdateDomainRequest> for pb::UpdateDomainRequest {
             active_clusters: None,
         };
 
+        // The server only updates fields named in the update_mask. Without it, an
+        // UpdateDomain is interpreted as touching every field — including replication
+        // config — which Cadence rejects on local domains. Collect the proto field
+        // paths for exactly the sections the caller provided.
+        let mut paths: Vec<String> = Vec::new();
+
         // Apply updated_info fields
         if let Some(info) = req.updated_info {
             update_req.description = info.description;
             update_req.owner_email = info.owner_email;
             update_req.data = info.data;
+            paths.push("description".to_string());
+            paths.push("owner_email".to_string());
+            paths.push("data".to_string());
         }
 
         // Apply configuration fields
@@ -180,6 +190,11 @@ impl From<api::UpdateDomainRequest> for pb::UpdateDomainRequest {
                 .map(|s| s as i32)
                 .unwrap_or(0);
             update_req.visibility_archival_uri = config.visibility_archival_uri;
+            paths.push("workflow_execution_retention_period".to_string());
+            paths.push("history_archival_status".to_string());
+            paths.push("history_archival_uri".to_string());
+            paths.push("visibility_archival_status".to_string());
+            paths.push("visibility_archival_uri".to_string());
         }
 
         // Apply replication configuration
@@ -192,6 +207,12 @@ impl From<api::UpdateDomainRequest> for pb::UpdateDomainRequest {
                     cluster_name: c.cluster_name,
                 })
                 .collect();
+            paths.push("active_cluster_name".to_string());
+            paths.push("clusters".to_string());
+        }
+
+        if !paths.is_empty() {
+            update_req.update_mask = Some(::prost_types::FieldMask { paths });
         }
 
         update_req
@@ -203,9 +224,10 @@ impl From<pb::UpdateDomainResponse> for api::UpdateDomainResponse {
         if let Some(d) = resp.domain {
             let domain_info = Some(api::DomainInfo {
                 name: d.name.clone(),
+                // Proto DomainStatus: 0=Invalid, 1=Registered, 2=Deprecated, 3=Deleted.
                 status: Some(match d.status {
-                    1 => api::DomainStatus::Deprecated,
-                    2 => api::DomainStatus::Deleted,
+                    2 => api::DomainStatus::Deprecated,
+                    3 => api::DomainStatus::Deleted,
                     _ => api::DomainStatus::Registered,
                 }),
                 description: d.description.clone(),

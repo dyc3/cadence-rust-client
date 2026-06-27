@@ -2097,6 +2097,30 @@ mod tests {
 
     #[cfg(feature = "integration")]
     async fn connect_test_client() -> WorkflowClient {
+        use crate::domain::{DomainClient, DomainClientImpl, RegisterDomainRequest};
+
+        // Ensure the test domain exists; visibility queries require a registered
+        // domain. Registration is idempotent here — an AlreadyExists error is ignored.
+        let service = std::sync::Arc::new(
+            crate::grpc::GrpcWorkflowServiceClient::connect(
+                CADENCE_GRPC_ENDPOINT,
+                TEST_DOMAIN,
+                None,
+            )
+            .await
+            .expect("should connect to local Cadence server"),
+        );
+        let domain_client = DomainClientImpl::new(service);
+        let _ = domain_client
+            .register(RegisterDomainRequest {
+                name: TEST_DOMAIN.to_string(),
+                workflow_execution_retention_period: std::time::Duration::from_secs(24 * 60 * 60),
+                ..Default::default()
+            })
+            .await;
+        // Allow the domain to propagate through the server cache.
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
         WorkflowClient::connect(CADENCE_GRPC_ENDPOINT, TEST_DOMAIN, ClientOptions::default())
             .await
             .expect("should connect to local Cadence server")

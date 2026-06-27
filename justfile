@@ -15,7 +15,7 @@ replay-gate:
 # Run every integration test (requires live services: a Cadence server, and
 # Postgres for the sqlx test). Gated behind the `integration` feature.
 integration:
-    cargo test -p crabdance_client --features integration
+    cargo test -p crabdance_client --features integration -- --test-threads=1
     cargo test -p crabdance --features integration --tests -- --test-threads=1 --nocapture
 
 # Run gRPC integration tests

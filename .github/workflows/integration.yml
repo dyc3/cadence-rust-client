@@ -84,7 +84,7 @@ jobs:
 
       - name: Run integration tests
         run: |
-          cargo test -p crabdance_client --features integration
+          cargo test -p crabdance_client --features integration -- --test-threads=1
           cargo test -p crabdance --features integration --tests -- --test-threads=1
 
       - name: Show Cadence logs on failure
