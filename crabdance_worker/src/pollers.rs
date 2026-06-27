@@ -143,6 +143,9 @@ pub struct ActivityTaskPoller {
     domain: String,
     task_list: String,
     identity: String,
+    /// Server-side per-task-list activities/sec (Go's `TaskListActivitiesPerSecond`).
+    /// `None` when unlimited.
+    task_list_activities_per_second: Option<f64>,
     handler: Arc<ActivityTaskHandler>,
 }
 
@@ -159,8 +162,20 @@ impl ActivityTaskPoller {
             domain: domain.into(),
             task_list: task_list.into(),
             identity: identity.into(),
+            task_list_activities_per_second: None,
             handler,
         }
+    }
+
+    /// Set the server-side per-task-list activity rate limit sent on each poll.
+    /// Rates at or above the unlimited sentinel leave it unset.
+    pub fn with_task_list_activities_per_second(mut self, rate: f64) -> Self {
+        self.task_list_activities_per_second = if rate >= crate::autoscaler::UNLIMITED_RPS {
+            None
+        } else {
+            Some(rate)
+        };
+        self
     }
 
     /// Poll for activity task
@@ -176,7 +191,11 @@ impl ActivityTaskPoller {
                 kind: crabdance_proto::shared::TaskListKind::Normal,
             }),
             identity: self.identity.clone(),
-            task_list_metadata: None,
+            task_list_metadata: self.task_list_activities_per_second.map(|rate| {
+                crabdance_proto::workflow_service::TaskListMetadata {
+                    max_tasks_per_second: Some(rate),
+                }
+            }),
         };
 
         match self.service.poll_for_activity_task(request).await {

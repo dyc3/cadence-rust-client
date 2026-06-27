@@ -93,6 +93,17 @@ pub struct WorkerOptions {
     /// between `min_pollers` and `max_pollers` based on observed poll latency.
     /// Disabled by default (a fixed pool of `max_concurrent_*_task_pollers`).
     pub autoscaler: AutoScalerOptions,
+    /// Disable the workflow (decision) worker — no decision pollers are started.
+    /// Mirrors Go's `DisableWorkflowWorker`. default: false
+    pub disable_workflow_worker: bool,
+    /// Disable the activity worker — no activity pollers or local-activity
+    /// executor are started. Mirrors Go's `DisableActivityWorker`. default: false
+    pub disable_activity_worker: bool,
+    /// Server-side rate limit on activities dispatched per second for the whole
+    /// task list (Go's `TaskListActivitiesPerSecond`), sent to the server on each
+    /// activity poll. Distinct from `worker_activities_per_second`, which is a
+    /// per-worker client-side limit. default: 100k (unlimited)
+    pub task_list_activities_per_second: f64,
 }
 
 impl Default for WorkerOptions {
@@ -122,6 +133,9 @@ impl Default for WorkerOptions {
             sticky_cache_idle_ttl: Duration::ZERO, // Idle expiration disabled by default
             enable_logging_in_replay: false,
             autoscaler: AutoScalerOptions::default(),
+            disable_workflow_worker: false,
+            disable_activity_worker: false,
+            task_list_activities_per_second: 100_000.0, // Unlimited
         }
     }
 }
@@ -351,54 +365,61 @@ impl Worker for CadenceWorker {
             )
         };
 
-        // Create decision pollers
-        for i in 0..decision_poller_count {
-            let identity = format!("{}-decision-{}", self.options.identity, i);
-            let mut poller = DecisionTaskPoller::new(
-                self.service.clone(),
-                &self.domain,
-                &self.task_list,
-                &identity,
-                decision_handler.clone(),
-            );
+        // Create decision pollers (unless the workflow worker is disabled).
+        if !self.options.disable_workflow_worker {
+            for i in 0..decision_poller_count {
+                let identity = format!("{}-decision-{}", self.options.identity, i);
+                let mut poller = DecisionTaskPoller::new(
+                    self.service.clone(),
+                    &self.domain,
+                    &self.task_list,
+                    &identity,
+                    decision_handler.clone(),
+                );
 
-            if !self.options.disable_sticky_execution {
-                let sticky_task_list =
-                    format!("{}-{}-sticky", self.task_list, self.options.identity);
-                poller = poller.with_sticky_task_list(sticky_task_list);
+                if !self.options.disable_sticky_execution {
+                    let sticky_task_list =
+                        format!("{}-{}-sticky", self.task_list, self.options.identity);
+                    poller = poller.with_sticky_task_list(sticky_task_list);
+                }
+
+                crate::metrics::incr(
+                    crate::metrics::POLLER_START,
+                    crate::metrics::TAG_TASK_LIST,
+                    &self.task_list,
+                );
+                poller_manager.add_decision_poller(Arc::new(poller));
             }
-
-            crate::metrics::incr(
-                crate::metrics::POLLER_START,
-                crate::metrics::TAG_TASK_LIST,
-                &self.task_list,
-            );
-            poller_manager.add_decision_poller(Arc::new(poller));
         }
 
-        // Create activity pollers
-        for i in 0..activity_poller_count {
-            let identity = format!("{}-activity-{}", self.options.identity, i);
-            let poller = ActivityTaskPoller::new(
-                self.service.clone(),
-                &self.domain,
-                &self.task_list,
-                &identity,
-                activity_handler.clone(),
-            );
-            crate::metrics::incr(
-                crate::metrics::POLLER_START,
-                crate::metrics::TAG_TASK_LIST,
-                &self.task_list,
-            );
-            poller_manager.add_activity_poller(Arc::new(poller));
+        // Create activity pollers (unless the activity worker is disabled).
+        if !self.options.disable_activity_worker {
+            for i in 0..activity_poller_count {
+                let identity = format!("{}-activity-{}", self.options.identity, i);
+                let poller = ActivityTaskPoller::new(
+                    self.service.clone(),
+                    &self.domain,
+                    &self.task_list,
+                    &identity,
+                    activity_handler.clone(),
+                )
+                .with_task_list_activities_per_second(self.options.task_list_activities_per_second);
+                crate::metrics::incr(
+                    crate::metrics::POLLER_START,
+                    crate::metrics::TAG_TASK_LIST,
+                    &self.task_list,
+                );
+                poller_manager.add_activity_poller(Arc::new(poller));
+            }
         }
 
-        // Spawn local activity executor
-        let executor_handle = tokio::spawn(async move {
-            local_activity_executor.run().await;
-        });
-        poller_manager.add_join_handle(executor_handle);
+        // Spawn the local activity executor (part of the activity worker).
+        if !self.options.disable_activity_worker {
+            let executor_handle = tokio::spawn(async move {
+                local_activity_executor.run().await;
+            });
+            poller_manager.add_join_handle(executor_handle);
+        }
 
         // Start pollers
         poller_manager.start();
