@@ -25,7 +25,7 @@ pub struct ActivityTaskHandler {
     interceptors: InterceptorChain,
     context_propagators: Vec<Arc<dyn ContextPropagator>>,
     /// Set on the session worker; handles the internal session creation/completion
-    /// activities (token acquire/release + signal-back).
+    /// activities (token acquire/release).
     session_environment: Option<Arc<crate::session::SessionEnvironment>>,
 }
 
