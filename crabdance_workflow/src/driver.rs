@@ -648,6 +648,17 @@ mod tests {
     }
 
     #[test]
+    fn activity_result_pending_sentinel() {
+        use crate::future::{ActivityError, DefaultActivityError};
+
+        let pending: DefaultActivityError = ActivityError::result_pending();
+        assert!(pending.is_result_pending());
+
+        let failed = ActivityError::retryable("boom");
+        assert!(!failed.is_result_pending());
+    }
+
+    #[test]
     fn workflow_error_predicates() {
         use crate::future::WorkflowError;
 

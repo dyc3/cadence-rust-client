@@ -261,6 +261,10 @@ fn should_retry(error: &ActivityError, retry_policy: &Option<RetryPolicy>, attem
             debug!("timeout error, not retrying");
             false
         }
+        ActivityError::ResultPending => {
+            // Async completion is not a failure; never retry.
+            false
+        }
         ActivityError::Retryable(_) | ActivityError::RetryableWithDelay(_, _) => {
             debug!("error is retryable");
             true

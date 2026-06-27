@@ -227,9 +227,32 @@ where
     Cancelled,
     #[error("Activity timed out: {0:?}")]
     Timeout(ProtoTimeoutType),
+    /// Not an error: the activity will be completed asynchronously (out of band) via
+    /// `Client::complete_activity` / `complete_activity_by_id`. The worker must NOT
+    /// auto-respond to the server when an activity returns this. Rust analogue of Go's
+    /// `ErrActivityResultPending`.
+    #[error("activity result pending - will be completed asynchronously")]
+    ResultPending,
 }
 
 pub type DefaultActivityError = ActivityError<BoxError>;
+
+impl<E> ActivityError<E>
+where
+    E: fmt::Display + fmt::Debug + Send + Sync + Clone + 'static,
+{
+    /// Signal that the activity will be completed asynchronously (out of band). The
+    /// worker will not auto-respond; complete it later via the client. Go's
+    /// `ErrActivityResultPending`.
+    pub fn result_pending() -> Self {
+        Self::ResultPending
+    }
+
+    /// Whether this is the result-pending sentinel (async completion requested).
+    pub fn is_result_pending(&self) -> bool {
+        matches!(self, ActivityError::ResultPending)
+    }
+}
 
 impl ActivityError<BoxError> {
     /// Create a retryable error

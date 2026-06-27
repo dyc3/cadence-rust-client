@@ -79,6 +79,14 @@ fn activity_error_to_failure_info(error: &crate::registry::ActivityError) -> Act
             details: None,
             retryable: false,
         },
+        // Result-pending is an async-completion signal handled at the activity-task
+        // boundary, not in workflow decisions; surface defensively as a failure here.
+        ActivityError::ResultPending => ActivityFailureInfo {
+            failure_type: ActivityFailureType::ExecutionFailed,
+            message: "Activity result pending".to_string(),
+            details: None,
+            retryable: false,
+        },
         ActivityError::Timeout(timeout_type) => {
             let failure_type = match timeout_type {
                 crabdance_proto::shared::TimeoutType::StartToClose => ActivityFailureType::Timeout(

@@ -261,6 +261,15 @@ impl ActivityTaskHandler {
                 );
                 Ok(response)
             }
+            // Async completion: the activity asked not to be auto-responded. The result
+            // will be delivered out of band via Client::complete_activity[_by_id].
+            Err(err) if err.is_result_pending() => {
+                info!(
+                    activity_type = %activity_type,
+                    "activity result pending; not auto-responding (async completion)"
+                );
+                Ok(RespondActivityTaskCompletedResponse {})
+            }
             Err(err) => {
                 let (reason, details) = match &err {
                     ActivityError::ExecutionFailed(err) => (
@@ -288,6 +297,8 @@ impl ActivityTaskHandler {
                     ),
                     ActivityError::Cancelled => ("Cancelled".to_string(), None),
                     ActivityError::Timeout(t) => (format!("Timeout: {:?}", t), None),
+                    // Intercepted above; included for exhaustiveness.
+                    ActivityError::ResultPending => ("ResultPending".to_string(), None),
                 };
 
                 let _ = self
