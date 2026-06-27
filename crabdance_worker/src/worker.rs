@@ -11,7 +11,9 @@ use crate::handlers::decision::DecisionTaskHandler;
 use crate::local_activity_queue::LocalActivityQueue;
 use crate::pollers::{ActivityTaskPoller, DecisionTaskPoller, PollerManager};
 use crate::registry::Registry;
-use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, TransportError};
+use crabdance_core::{
+    CadenceError, ContextPropagator, DataConverter, Interceptor, JsonDataConverter, TransportError,
+};
 use crabdance_proto::workflow_service::WorkflowService;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -104,6 +106,14 @@ pub struct WorkerOptions {
     /// activity poll. Distinct from `worker_activities_per_second`, which is a
     /// per-worker client-side limit. default: 100k (unlimited)
     pub task_list_activities_per_second: f64,
+    /// Around-execution interceptors applied at the activity and workflow
+    /// (decision-task) boundaries (Go's `WorkflowInterceptorChainFactories`,
+    /// reduced to the lean timing/fault-injection/policy-gate seam). default: none
+    pub interceptors: Vec<Arc<dyn Interceptor>>,
+    /// Context propagators carrying trace context / baggage across the
+    /// workflow → activity / child-workflow boundary (Go's `ContextPropagators`).
+    /// default: none
+    pub context_propagators: Vec<Arc<dyn ContextPropagator>>,
 }
 
 impl Default for WorkerOptions {
@@ -136,6 +146,8 @@ impl Default for WorkerOptions {
             disable_workflow_worker: false,
             disable_activity_worker: false,
             task_list_activities_per_second: 100_000.0, // Unlimited
+            interceptors: Vec::new(),
+            context_propagators: Vec::new(),
         }
     }
 }
@@ -322,7 +334,9 @@ impl Worker for CadenceWorker {
                 self.options.identity.clone(),
                 self.resources.clone(),
             )
-            .with_data_converter(self.data_converter.clone()),
+            .with_data_converter(self.data_converter.clone())
+            .with_interceptors(self.options.interceptors.clone())
+            .with_context_propagators(self.options.context_propagators.clone()),
         );
 
         // Publish the configured concurrent decision-task quota as a gauge.

@@ -1,8 +1,12 @@
 //! Activity task handler for processing activity tasks.
 
 use crate::heartbeat::HeartbeatManager;
+use crate::interceptor::extract_propagation;
 use crate::registry::{ActivityError, Registry};
-use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, TransportError};
+use crabdance_core::{
+    CadenceError, ContextPropagator, DataConverter, InterceptorChain, InterceptorContext,
+    JsonDataConverter, Operation, Outcome, TransportError,
+};
 use crabdance_proto::workflow_service::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -18,6 +22,8 @@ pub struct ActivityTaskHandler {
     identity: String,
     resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
     data_converter: Arc<dyn DataConverter>,
+    interceptors: InterceptorChain,
+    context_propagators: Vec<Arc<dyn ContextPropagator>>,
 }
 
 struct ActivityRuntimeImpl {
@@ -51,6 +57,8 @@ impl ActivityTaskHandler {
             identity,
             resources,
             data_converter: Arc::new(JsonDataConverter),
+            interceptors: InterceptorChain::default(),
+            context_propagators: Vec::new(),
         }
     }
 
@@ -58,6 +66,26 @@ impl ActivityTaskHandler {
     /// `ActivityContext` this handler builds.
     pub fn with_data_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
         self.data_converter = converter;
+        self
+    }
+
+    /// Inject the worker's around-execution interceptors. They wrap each activity
+    /// execution (before/veto + after/timing).
+    pub fn with_interceptors(
+        mut self,
+        interceptors: Vec<Arc<dyn crabdance_core::Interceptor>>,
+    ) -> Self {
+        self.interceptors = InterceptorChain::new(interceptors);
+        self
+    }
+
+    /// Inject the worker's context propagators, used to extract the propagation
+    /// context from the activity task header for interceptors.
+    pub fn with_context_propagators(
+        mut self,
+        propagators: Vec<Arc<dyn ContextPropagator>>,
+    ) -> Self {
+        self.context_propagators = propagators;
         self
     }
 
@@ -92,6 +120,54 @@ impl ActivityTaskHandler {
             crate::metrics::TAG_ACTIVITY_TYPE,
             &activity_type,
         );
+
+        // Build the interceptor context once (only when interceptors are configured).
+        let interceptor_ctx = if self.interceptors.is_empty() {
+            None
+        } else {
+            let (workflow_id, run_id) = task
+                .workflow_execution
+                .as_ref()
+                .map(|we| (we.workflow_id.clone(), we.run_id.clone()))
+                .unwrap_or_default();
+            Some(InterceptorContext {
+                operation: Operation::Activity,
+                name: activity_type.clone(),
+                workflow_id,
+                run_id,
+                is_replaying: false,
+                propagation: extract_propagation(&task.header, &self.context_propagators),
+            })
+        };
+
+        // before-hook: a veto fails the activity without executing it (policy gate /
+        // fault injection).
+        if let Some(ictx) = &interceptor_ctx {
+            if let Err(veto) = self.interceptors.before(ictx) {
+                warn!(activity_type = %activity_type, error = %veto, "activity vetoed by interceptor");
+                let _ = self
+                    .service
+                    .respond_activity_task_failed(RespondActivityTaskFailedRequest {
+                        task_token: task.task_token.clone(),
+                        reason: Some(format!("Activity vetoed by interceptor: {veto}")),
+                        details: None,
+                        identity: self.identity.clone(),
+                    })
+                    .await;
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
+                return Err(veto);
+            }
+        }
 
         // Look up activity in registry
         let activity = match self.registry.get_activity(&activity_type) {
@@ -245,6 +321,17 @@ impl ActivityTaskHandler {
                 ))
             }
         };
+
+        // after-hook: report the wall-clock outcome (timing / accounting).
+        if let Some(ictx) = &interceptor_ctx {
+            self.interceptors.after(
+                ictx,
+                &Outcome {
+                    duration: activity_started_at.elapsed(),
+                    success: execution_result.is_ok(),
+                },
+            );
+        }
 
         // Send response based on result
         match execution_result {

@@ -8,6 +8,7 @@ pub mod autoscaler;
 pub mod executor;
 pub mod handlers;
 pub mod heartbeat;
+pub mod interceptor;
 pub mod local_activity_queue;
 pub mod metrics;
 pub mod pollers;
@@ -17,6 +18,7 @@ pub mod replay_verifier;
 mod resource_tests;
 pub mod worker;
 
+pub use interceptor::TimingInterceptor;
 pub use local_activity_queue::*;
 pub use registry::*;
 pub use replay_verifier::*;

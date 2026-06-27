@@ -72,5 +72,42 @@ PrometheusBuilder::new()
 A sample Prometheus scrape config lives in [`prometheus/`](../prometheus/) and Grafana
 dashboards in [`grafana/`](../grafana/).
 
+## Interceptors
+
+Around-execution interceptors (`crabdance_worker::interceptor`) wrap the
+execution of activities and workflow decision tasks — the lean Rust analogue of
+the Go client's `WorkflowInterceptor`, reduced to the one capability native
+observability does not already provide: a generic **timing / fault-injection /
+policy-gate** seam.
+
+An `Interceptor` has two synchronous hooks:
+
+- `before(ctx)` runs before the operation; returning `Err` **vetoes** it (the
+  operation is skipped and fails with that error).
+- `after(ctx, outcome)` runs after it completes, with the wall-clock `Outcome`.
+
+Register interceptors on the worker; they fire `before` in order and `after` in
+reverse (middleware nesting):
+
+```rust
+use std::sync::Arc;
+use crabdance_worker::{WorkerOptions, TimingInterceptor};
+
+let options = WorkerOptions {
+    interceptors: vec![Arc::new(TimingInterceptor)],
+    ..Default::default()
+};
+```
+
+Each `InterceptorContext` carries the operation's `PropagationContext`, so an
+interceptor composes with the configured `ContextPropagator`s (it can read the
+propagated trace context / baggage for the boundary it wraps).
+
+**Determinism.** Hooks are synchronous and run on the worker, not inside
+replayed workflow code, so wall-clock work (timing, reading a feature flag) is
+allowed. A workflow-boundary interceptor wraps a *decision-task execution*; it
+must not mutate workflow state or emit commands, and a veto there fails the
+decision task rather than the workflow logic.
+
 > **Deferred (M2, TD-2):** OpenTelemetry/OTLP export and W3C `traceparent` propagation,
 > riding on the `ContextPropagator` seam.

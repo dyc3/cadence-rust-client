@@ -4,7 +4,10 @@ use crate::local_activity_queue::LocalActivityQueue;
 use crate::registry::Registry;
 use crate::replay_verifier::match_replay_with_history;
 use crate::WorkerOptions;
-use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, ReplayContext, WorkflowInfo};
+use crabdance_core::{
+    CadenceError, DataConverter, InterceptorChain, InterceptorContext, JsonDataConverter,
+    Operation, Outcome, ReplayContext, WorkflowInfo,
+};
 use crabdance_proto::shared::{
     ActivityType, ContinueAsNewWorkflowExecutionDecisionAttributes, Decision, EventType,
     HistoryEvent, RequestCancelExternalWorkflowExecutionDecisionAttributes,
@@ -670,7 +673,48 @@ impl WorkflowExecutor {
             &self.task_list,
         );
 
-        let result = self.execute_decision_task_inner(task).await;
+        // Apply around-execution interceptors at the workflow (decision-task)
+        // boundary. A veto in `before` fails the decision task without executing it;
+        // `after` reports the wall-clock outcome. The chain wraps the worker-side
+        // decision-task processing (not replayed user code), so wall-clock timing is
+        // fine; a vetoing interceptor must not depend on workflow state.
+        let interceptors = InterceptorChain::new(self.options.interceptors.clone());
+        let result = if interceptors.is_empty() {
+            self.execute_decision_task_inner(task).await
+        } else {
+            let workflow_type = task
+                .workflow_type
+                .as_ref()
+                .map(|wt| wt.name.clone())
+                .unwrap_or_default();
+            let (workflow_id, run_id) = task
+                .workflow_execution
+                .as_ref()
+                .map(|we| (we.workflow_id.clone(), we.run_id.clone()))
+                .unwrap_or_default();
+            let ictx = InterceptorContext {
+                operation: Operation::Workflow,
+                name: workflow_type,
+                workflow_id,
+                run_id,
+                is_replaying: false,
+                propagation: crabdance_core::PropagationContext::new(),
+            };
+            match interceptors.before(&ictx) {
+                Ok(()) => {
+                    let r = self.execute_decision_task_inner(task).await;
+                    interceptors.after(
+                        &ictx,
+                        &Outcome {
+                            duration: started_at.elapsed(),
+                            success: r.is_ok(),
+                        },
+                    );
+                    r
+                }
+                Err(veto) => Err(veto),
+            }
+        };
 
         // Emit a terminal metric + latency on every exit path — success or any of the
         // early `?` error returns (missing history/type, unknown workflow, replay or
