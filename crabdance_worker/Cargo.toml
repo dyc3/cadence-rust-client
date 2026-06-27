@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 tracing = { workspace = true }
+metrics = { workspace = true }
 dashmap = { workspace = true }
 dyn-clone = { workspace = true }
 

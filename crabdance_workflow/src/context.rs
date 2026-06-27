@@ -973,7 +973,8 @@ impl WorkflowContext {
     /// Set the history-size accounting (called by the worker per decision task).
     pub fn set_history_size(&self, count: u64, total_bytes: u64) {
         self.history_count.store(count, Ordering::SeqCst);
-        self.total_history_bytes.store(total_bytes, Ordering::SeqCst);
+        self.total_history_bytes
+            .store(total_bytes, Ordering::SeqCst);
     }
 
     /// Wrap a single encoded payload in an [`EncodedValue`](crabdance_core::EncodedValue)
@@ -1087,10 +1088,10 @@ impl WorkflowContext {
         }
     }
 
-    /// Get metrics scope
-    pub fn get_metrics_scope(&self) -> Box<dyn MetricsScope> {
-        Box::new(NoopMetricsScope)
-    }
+    // Metrics are native via the `metrics` facade. The worker emits parity metrics
+    // (poller/task/panic/quota) directly; workflow code can emit its own with the
+    // `metrics` crate, guarding with `should_log()` to honor replay-aware emission. The
+    // previous no-op MetricsScope/Counter/Timer/Gauge traits were removed.
 
     /// Continue workflow as new
     pub async fn continue_as_new(
@@ -1403,56 +1404,9 @@ pub use crate::future::{
 // emit through `tracing` with a replay-aware guard. The previous `Logger`/`ConsoleLogger`
 // trait stubs were removed in favor of the ecosystem-standard facade.
 
-/// Metrics scope trait
-pub trait MetricsScope: Send + Sync {
-    fn counter(&self, name: &str) -> Box<dyn Counter>;
-    fn timer(&self, name: &str) -> Box<dyn Timer>;
-    fn gauge(&self, name: &str) -> Box<dyn Gauge>;
-}
-
-pub trait Counter: Send + Sync {
-    fn inc(&self, delta: i64);
-}
-
-pub trait Timer: Send + Sync {
-    fn record(&self, duration: Duration);
-}
-
-pub trait Gauge: Send + Sync {
-    fn update(&self, value: f64);
-}
-
-/// Noop metrics scope
-struct NoopMetricsScope;
-
-impl MetricsScope for NoopMetricsScope {
-    fn counter(&self, _name: &str) -> Box<dyn Counter> {
-        Box::new(NoopCounter)
-    }
-
-    fn timer(&self, _name: &str) -> Box<dyn Timer> {
-        Box::new(NoopTimer)
-    }
-
-    fn gauge(&self, _name: &str) -> Box<dyn Gauge> {
-        Box::new(NoopGauge)
-    }
-}
-
-struct NoopCounter;
-impl Counter for NoopCounter {
-    fn inc(&self, _delta: i64) {}
-}
-
-struct NoopTimer;
-impl Timer for NoopTimer {
-    fn record(&self, _duration: Duration) {}
-}
-
-struct NoopGauge;
-impl Gauge for NoopGauge {
-    fn update(&self, _value: f64) {}
-}
+// Metrics are emitted natively through the `metrics` facade (see crabdance_worker's
+// `metrics` module for the parity metric names). The previous MetricsScope/Counter/
+// Timer/Gauge trait stubs were removed in favor of the ecosystem-standard facade.
 
 #[cfg(test)]
 mod tests {

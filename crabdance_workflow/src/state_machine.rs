@@ -976,9 +976,9 @@ impl DecisionStateMachine for UpsertSearchAttributesDecisionStateMachine {
             Some(ProtoDecision {
                 decision_type: ProtoDecisionType::UpsertWorkflowSearchAttributes,
                 attributes: Some(
-                    DecisionAttributes::UpsertWorkflowSearchAttributesDecisionAttributes(
-                        Box::new(self.attributes.clone()),
-                    ),
+                    DecisionAttributes::UpsertWorkflowSearchAttributesDecisionAttributes(Box::new(
+                        self.attributes.clone(),
+                    )),
                 ),
             })
         } else {

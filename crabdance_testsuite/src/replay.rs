@@ -28,7 +28,9 @@ use crabdance_core::{WorkflowExecution, WorkflowInfo, WorkflowType};
 use crabdance_workflow::commands::WorkflowCommand;
 use crabdance_workflow::context::WorkflowContext;
 use crabdance_workflow::future::{DefaultWorkflowError, WorkflowError};
-use crabdance_workflow::{CommandRecord, CommandResolver, DriverOutcome, Resolution, WorkflowDriver};
+use crabdance_workflow::{
+    CommandRecord, CommandResolver, DriverOutcome, Resolution, WorkflowDriver,
+};
 use serde::{Deserialize, Serialize};
 
 /// A recorded workflow history sufficient to replay a workflow and assert its
@@ -49,15 +51,24 @@ pub struct RecordedHistory {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RecordedEvent {
     /// An activity (by deterministic id) completed with this result.
-    ActivityCompleted { activity_id: String, result: Vec<u8> },
+    ActivityCompleted {
+        activity_id: String,
+        result: Vec<u8>,
+    },
     /// An activity failed with this reason.
     ActivityFailed { activity_id: String, reason: String },
     /// A child workflow (by id) completed with this result.
-    ChildWorkflowCompleted { workflow_id: String, result: Vec<u8> },
+    ChildWorkflowCompleted {
+        workflow_id: String,
+        result: Vec<u8>,
+    },
     /// A child workflow failed with this reason.
     ChildWorkflowFailed { workflow_id: String, reason: String },
     /// A recorded side-effect result (replayed from cache).
-    SideEffect { side_effect_id: u64, result: Vec<u8> },
+    SideEffect {
+        side_effect_id: u64,
+        result: Vec<u8>,
+    },
     /// A recorded version marker (replayed from cache).
     Version { change_id: String, version: i32 },
 }
@@ -97,7 +108,8 @@ struct ReplayResolver {
 impl CommandResolver for ReplayResolver {
     fn resolve(&self, command: &WorkflowCommand) -> Resolution {
         match command {
-            WorkflowCommand::ScheduleActivity(c) => match self.activity_results.get(&c.activity_id) {
+            WorkflowCommand::ScheduleActivity(c) => match self.activity_results.get(&c.activity_id)
+            {
                 Some(Ok(bytes)) => Resolution::Done(Ok(bytes.clone())),
                 Some(Err(reason)) => Resolution::Done(Err(WorkflowError::message(reason.clone()))),
                 None => Resolution::Blocked,
@@ -217,7 +229,10 @@ where
         child_results,
     });
 
-    let driver = WorkflowDriver::new(workflow_info(workflow_name, history.start_time_nanos), resolver);
+    let driver = WorkflowDriver::new(
+        workflow_info(workflow_name, history.start_time_nanos),
+        resolver,
+    );
     let ctx = driver.context();
 
     // Configure the context for replay: seed deterministic caches and flip replay mode.
@@ -326,7 +341,8 @@ mod tests {
         // History expects a timer then an activity, but this workflow skips the timer
         // and schedules a *different* activity — a non-deterministic change.
         async fn diverged(ctx: WorkflowContext) -> Result<Vec<u8>, DefaultWorkflowError> {
-            ctx.execute_activity("refund", None, Default::default()).await
+            ctx.execute_activity("refund", None, Default::default())
+                .await
         }
 
         let history = golden_history();
@@ -337,10 +353,7 @@ mod tests {
                 index, expected, ..
             } => {
                 assert_eq!(index, 0);
-                assert!(matches!(
-                    expected,
-                    Some(CommandRecord::StartTimer { .. })
-                ));
+                assert!(matches!(expected, Some(CommandRecord::StartTimer { .. })));
             }
             other => panic!("expected NonDeterministic, got {other:?}"),
         }
@@ -356,7 +369,8 @@ mod tests {
         ) -> Result<Vec<u8>, DefaultWorkflowError> {
             ctx.upsert_search_attributes(vec![("CustomKeyword".to_string(), b"\"x\"".to_vec())]);
             assert!(ctx.get_search_attributes().contains_key("CustomKeyword"));
-            ctx.execute_activity("charge", None, Default::default()).await
+            ctx.execute_activity("charge", None, Default::default())
+                .await
         }
 
         let history = RecordedHistory {
@@ -383,9 +397,11 @@ mod tests {
         async fn versioned(ctx: WorkflowContext) -> Result<Vec<u8>, DefaultWorkflowError> {
             let version = ctx.get_version("add-step", DEFAULT_VERSION, 2);
             if version >= 1 {
-                ctx.execute_activity("new_path", None, Default::default()).await
+                ctx.execute_activity("new_path", None, Default::default())
+                    .await
             } else {
-                ctx.execute_activity("old_path", None, Default::default()).await
+                ctx.execute_activity("old_path", None, Default::default())
+                    .await
             }
         }
 
@@ -424,7 +440,8 @@ mod tests {
         };
 
         async fn just_activity(ctx: WorkflowContext) -> Result<Vec<u8>, DefaultWorkflowError> {
-            ctx.execute_activity("charge", None, Default::default()).await
+            ctx.execute_activity("charge", None, Default::default())
+                .await
         }
 
         let err = replay_workflow(&history, "order_workflow", just_activity)

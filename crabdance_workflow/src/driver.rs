@@ -243,9 +243,7 @@ impl CommandSink for InMemoryCommandSink {
                     let mut inner = self.inner.lock().unwrap();
                     let key = inner.next_timer_key;
                     inner.next_timer_key += 1;
-                    let deadline = inner
-                        .clock_nanos
-                        .saturating_add(duration.as_nanos() as i64);
+                    let deadline = inner.clock_nanos.saturating_add(duration.as_nanos() as i64);
                     inner.timers.insert(
                         key,
                         TimerEntry {
@@ -335,7 +333,8 @@ impl WorkflowDriver {
         let sink = Arc::new(InMemoryCommandSink::new(start_nanos, resolver));
 
         let context =
-            WorkflowContextBuilder::new(workflow_info, sink.clone() as Arc<dyn CommandSink>).build();
+            WorkflowContextBuilder::new(workflow_info, sink.clone() as Arc<dyn CommandSink>)
+                .build();
         context.set_current_time_nanos(start_nanos);
 
         let dispatcher = Arc::new(Mutex::new(WorkflowDispatcher::new()));
@@ -492,7 +491,10 @@ mod tests {
 
         let result = outcome.into_completed().expect("should complete").unwrap();
         let observed: i64 = String::from_utf8(result).unwrap().parse().unwrap();
-        assert_eq!(observed, start_nanos + Duration::from_secs(60).as_nanos() as i64);
+        assert_eq!(
+            observed,
+            start_nanos + Duration::from_secs(60).as_nanos() as i64
+        );
     }
 
     #[test]
@@ -541,7 +543,8 @@ mod tests {
 
         let _ = driver.run(async move {
             let _v = ctx.get_version("change-1", crate::context::DEFAULT_VERSION, 1);
-            ctx.execute_activity("after", None, Default::default()).await?;
+            ctx.execute_activity("after", None, Default::default())
+                .await?;
             Ok(Vec::new())
         });
 

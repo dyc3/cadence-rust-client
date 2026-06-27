@@ -571,11 +571,12 @@ impl CommandSink for ReplayCommandSink {
 
                     let indexed_fields = cmd.search_attributes.into_iter().collect();
 
-                    let attrs = crabdance_proto::shared::UpsertWorkflowSearchAttributesDecisionAttributes {
-                        search_attributes: Some(crabdance_proto::shared::SearchAttributes {
-                            indexed_fields,
-                        }),
-                    };
+                    let attrs =
+                        crabdance_proto::shared::UpsertWorkflowSearchAttributesDecisionAttributes {
+                            search_attributes: Some(crabdance_proto::shared::SearchAttributes {
+                                indexed_fields,
+                            }),
+                        };
 
                     let decision_id = format!(
                         "upsert_search_attributes_{}",
@@ -652,6 +653,13 @@ impl WorkflowExecutor {
         &self,
         task: PollForDecisionTaskResponse,
     ) -> Result<(Vec<Decision>, HashMap<String, WorkflowQueryResult>), CadenceError> {
+        let decision_started_at = std::time::Instant::now();
+        crate::metrics::incr(
+            crate::metrics::DECISION_TASK_STARTED,
+            crate::metrics::TAG_TASK_LIST,
+            &self.task_list,
+        );
+
         let history = task
             .history
             .ok_or_else(|| CadenceError::Other("No history in task".into()))?;
@@ -909,6 +917,11 @@ impl WorkflowExecutor {
                             }
                             Err(e) => {
                                 error!(error = %e, "workflow failed");
+                                crate::metrics::incr(
+                                    crate::metrics::WORKFLOW_PANIC,
+                                    crate::metrics::TAG_TASK_LIST,
+                                    &self.task_list,
+                                );
                                 engine
                                     .decisions_helper
                                     .fail_workflow_execution(e.to_string(), "".to_string());
@@ -1020,8 +1033,7 @@ impl WorkflowExecutor {
 
                             // The activity_id is already deterministic and unique, so it
                             // alone yields a stable, replay-safe marker ID (no wall-clock).
-                            let marker_id =
-                                format!("local_activity_{}", submission.activity_id);
+                            let marker_id = format!("local_activity_{}", submission.activity_id);
 
                             let decision = Box::new(
                                 crabdance_workflow::state_machine::MarkerDecisionStateMachine::new(
@@ -1194,6 +1206,18 @@ impl WorkflowExecutor {
         if let Some(d) = decisions.first() {
             debug!(decision_type = ?d.decision_type, "first decision type");
         }
+
+        crate::metrics::incr(
+            crate::metrics::DECISION_TASK_COMPLETED,
+            crate::metrics::TAG_TASK_LIST,
+            &self.task_list,
+        );
+        crate::metrics::record_latency(
+            crate::metrics::DECISION_TASK_LATENCY,
+            crate::metrics::TAG_TASK_LIST,
+            &self.task_list,
+            decision_started_at.elapsed(),
+        );
 
         Ok((decisions, query_results))
     }

@@ -86,6 +86,12 @@ impl ActivityTaskHandler {
             .clone();
 
         info!(activity_type = %activity_type, "handling activity task");
+        let activity_started_at = std::time::Instant::now();
+        crate::metrics::incr(
+            crate::metrics::ACTIVITY_TASK_STARTED,
+            crate::metrics::TAG_ACTIVITY_TYPE,
+            &activity_type,
+        );
 
         // Look up activity in registry
         let activity = match self.registry.get_activity(&activity_type) {
@@ -242,6 +248,17 @@ impl ActivityTaskHandler {
                     .await?;
 
                 tracing::info!("Activity '{}' completed successfully", activity_type);
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_COMPLETED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
                 Ok(response)
             }
             Err(err) => {
@@ -284,6 +301,17 @@ impl ActivityTaskHandler {
                     .await?;
 
                 tracing::error!(activity_type, ?err, "Activity failed");
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
                 Err(CadenceError::Other(err.to_string()))
             }
         }
