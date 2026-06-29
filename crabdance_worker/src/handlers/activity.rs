@@ -48,6 +48,56 @@ impl crabdance_activity::ActivityRuntime for ActivityRuntimeImpl {
     }
 }
 
+/// The terminal outcome of an activity invocation — the small interface the
+/// lifecycle reports from. The server response, the terminal metric + latency,
+/// and the interceptor `after`-hook are all derived from this in one place
+/// ([`ActivityTaskHandler::report_disposition`]), so the started/terminal balance
+/// can't drift per exit path.
+enum ActivityDisposition {
+    /// The activity completed with this result payload.
+    Completed(Vec<u8>),
+    /// The activity failed; `reason`/`details` go to the server, `error` is returned.
+    Failed {
+        reason: String,
+        details: Option<Vec<u8>>,
+        error: CadenceError,
+    },
+    /// Async/external completion requested — **non-terminal on this worker**: no
+    /// response, no terminal metric, no `after`-hook. The result arrives later via
+    /// `Client::complete_activity[_by_id]`.
+    Pending,
+}
+
+/// Map an activity error to the server-facing `(reason, details)` pair.
+fn activity_failure_reason(err: &ActivityError) -> (String, Option<Vec<u8>>) {
+    match err {
+        ActivityError::ExecutionFailed(e) => (
+            "ExecutionFailed".to_string(),
+            Some(e.to_string().into_bytes()),
+        ),
+        ActivityError::Panic(e) => (
+            "Panic".to_string(),
+            Some(format!("Activity panicked: {e}").into_bytes()),
+        ),
+        ActivityError::Retryable(e) => ("Retryable".to_string(), Some(e.to_string().into_bytes())),
+        ActivityError::NonRetryable(e) => {
+            ("NonRetryable".to_string(), Some(e.to_string().into_bytes()))
+        }
+        ActivityError::Application(e) => (
+            "ApplicationError".to_string(),
+            Some(e.to_string().into_bytes()),
+        ),
+        ActivityError::RetryableWithDelay(e, _delay) => (
+            "RetryableWithDelay".to_string(),
+            Some(e.to_string().into_bytes()),
+        ),
+        ActivityError::Cancelled => ("Cancelled".to_string(), None),
+        ActivityError::Timeout(t) => (format!("Timeout: {t:?}"), None),
+        // ResultPending is intercepted before this point; here for exhaustiveness.
+        ActivityError::ResultPending => ("ResultPending".to_string(), None),
+    }
+}
+
 impl ActivityTaskHandler {
     pub fn new(
         service: Arc<dyn WorkflowService<Error = TransportError> + Send + Sync>,
@@ -88,6 +138,8 @@ impl ActivityTaskHandler {
         &self,
         task: &PollForActivityTaskResponse,
         env: &Arc<crate::session::SessionEnvironment>,
+        activity_type: &str,
+        started: Instant,
     ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
         let session_id =
             String::from_utf8(task.input.clone().unwrap_or_default()).unwrap_or_default();
@@ -102,11 +154,7 @@ impl ActivityTaskHandler {
                     identity: self.identity.clone(),
                 })
                 .await;
-            crate::metrics::incr(
-                crate::metrics::ACTIVITY_TASK_FAILED,
-                crate::metrics::TAG_ACTIVITY_TYPE,
-                crabdance_workflow::SESSION_CREATION_ACTIVITY,
-            );
+            self.record_terminal(activity_type, started, false);
             return Err(CadenceError::Other(
                 "too many outstanding sessions".to_string(),
             ));
@@ -135,22 +183,14 @@ impl ActivityTaskHandler {
 
         match send {
             Ok(response) => {
-                crate::metrics::incr(
-                    crate::metrics::ACTIVITY_TASK_COMPLETED,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    crabdance_workflow::SESSION_CREATION_ACTIVITY,
-                );
+                self.record_terminal(activity_type, started, true);
                 Ok(response)
             }
             Err(e) => {
                 // The session was never confirmed to the workflow; roll the token back
                 // so the retry can re-acquire cleanly.
                 env.release(&session_id);
-                crate::metrics::incr(
-                    crate::metrics::ACTIVITY_TASK_FAILED,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    crabdance_workflow::SESSION_CREATION_ACTIVITY,
-                );
+                self.record_terminal(activity_type, started, false);
                 Err(e)
             }
         }
@@ -162,15 +202,13 @@ impl ActivityTaskHandler {
         &self,
         task: &PollForActivityTaskResponse,
         env: &Arc<crate::session::SessionEnvironment>,
+        activity_type: &str,
+        started: Instant,
     ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
         let session_id =
             String::from_utf8(task.input.clone().unwrap_or_default()).unwrap_or_default();
         env.release(&session_id);
-        crate::metrics::incr(
-            crate::metrics::ACTIVITY_TASK_COMPLETED,
-            crate::metrics::TAG_ACTIVITY_TYPE,
-            crabdance_workflow::SESSION_COMPLETION_ACTIVITY,
-        );
+        self.record_terminal(activity_type, started, true);
         self.service
             .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
                 task_token: task.task_token.clone(),
@@ -208,7 +246,8 @@ impl ActivityTaskHandler {
         self
     }
 
-    /// Handle an activity task
+    /// Handle an activity task. Owns the lifecycle: emit `started`, run the activity
+    /// to an [`ActivityDisposition`], then report that disposition once.
     pub async fn handle(
         &self,
         task: PollForActivityTaskResponse,
@@ -218,13 +257,11 @@ impl ActivityTaskHandler {
             "received activity task"
         );
 
-        // Check if task has actual work (not an empty poll response)
+        // Malformed-poll guards: not a real activity invocation, so no lifecycle metrics.
         if task.task_token.is_empty() {
             warn!("empty task token, skipping activity task");
             return Err(CadenceError::Other("Empty task token received".to_string()));
         }
-
-        // Extract activity name from task
         let activity_type = task
             .activity_type
             .as_ref()
@@ -233,21 +270,25 @@ impl ActivityTaskHandler {
             .clone();
 
         info!(activity_type = %activity_type, "handling activity task");
-        let activity_started_at = std::time::Instant::now();
+        let started = std::time::Instant::now();
         crate::metrics::incr(
             crate::metrics::ACTIVITY_TASK_STARTED,
             crate::metrics::TAG_ACTIVITY_TYPE,
             &activity_type,
         );
 
-        // Internal session activities are served by the session worker, not the
-        // user registry.
+        // Internal session activities have a distinct lifecycle (no interceptors /
+        // registry); they report their own terminal metric via `record_terminal`.
         if let Some(env) = self.session_environment.clone() {
             if activity_type == crabdance_workflow::SESSION_CREATION_ACTIVITY {
-                return self.handle_session_creation(&task, &env).await;
+                return self
+                    .handle_session_creation(&task, &env, &activity_type, started)
+                    .await;
             }
             if activity_type == crabdance_workflow::SESSION_COMPLETION_ACTIVITY {
-                return self.handle_session_completion(&task, &env).await;
+                return self
+                    .handle_session_completion(&task, &env, &activity_type, started)
+                    .await;
             }
         }
 
@@ -270,78 +311,53 @@ impl ActivityTaskHandler {
             })
         };
 
+        let disposition = self
+            .run_activity(&task, &activity_type, interceptor_ctx.as_ref())
+            .await;
+        self.report_disposition(
+            &task,
+            &activity_type,
+            interceptor_ctx.as_ref(),
+            started,
+            disposition,
+        )
+        .await
+    }
+
+    /// Run the activity to a terminal [`ActivityDisposition`] — interceptor veto,
+    /// registry lookup, and execution. Performs **no** server I/O and emits **no**
+    /// terminal metric, so it can be exercised through its return value.
+    async fn run_activity(
+        &self,
+        task: &PollForActivityTaskResponse,
+        activity_type: &str,
+        interceptor_ctx: Option<&InterceptorContext>,
+    ) -> ActivityDisposition {
         // before-hook: a veto fails the activity without executing it (policy gate /
         // fault injection).
-        if let Some(ictx) = &interceptor_ctx {
+        if let Some(ictx) = interceptor_ctx {
             if let Err(veto) = self.interceptors.before(ictx) {
-                warn!(activity_type = %activity_type, error = %veto, "activity vetoed by interceptor");
-                let _ = self
-                    .service
-                    .respond_activity_task_failed(RespondActivityTaskFailedRequest {
-                        task_token: task.task_token.clone(),
-                        reason: Some(format!("Activity vetoed by interceptor: {veto}")),
-                        details: None,
-                        identity: self.identity.clone(),
-                    })
-                    .await;
-                crate::metrics::incr(
-                    crate::metrics::ACTIVITY_TASK_FAILED,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                );
-                crate::metrics::record_latency(
-                    crate::metrics::ACTIVITY_TASK_LATENCY,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                    activity_started_at.elapsed(),
-                );
-                return Err(veto);
+                warn!(activity_type, error = %veto, "activity vetoed by interceptor");
+                return ActivityDisposition::Failed {
+                    reason: "InterceptorVeto".to_string(),
+                    details: Some(format!("Activity vetoed by interceptor: {veto}").into_bytes()),
+                    error: veto,
+                };
             }
         }
 
         // Look up activity in registry
-        let activity = match self.registry.get_activity(&activity_type) {
+        let activity = match self.registry.get_activity(activity_type) {
             Some(a) => a,
             None => {
-                // Activity not registered - send failure response
-                tracing::warn!("Activity '{}' not registered in registry", activity_type);
-                let _ = self
-                    .service
-                    .respond_activity_task_failed(RespondActivityTaskFailedRequest {
-                        task_token: task.task_token.clone(),
-                        reason: Some(format!("Activity '{}' not registered", activity_type)),
-                        details: None,
-                        identity: self.identity.clone(),
-                    })
-                    .await;
-
-                // Terminal metric for the started counter on this failure path.
-                crate::metrics::incr(
-                    crate::metrics::ACTIVITY_TASK_FAILED,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                );
-                crate::metrics::record_latency(
-                    crate::metrics::ACTIVITY_TASK_LATENCY,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                    activity_started_at.elapsed(),
-                );
-                // after-hook: the not-registered failure is still a terminal outcome
-                // the (already-fired) before-hook's interceptors should observe.
-                if let Some(ictx) = &interceptor_ctx {
-                    self.interceptors.after(
-                        ictx,
-                        &Outcome {
-                            duration: activity_started_at.elapsed(),
-                            success: false,
-                        },
-                    );
-                }
-                return Err(CadenceError::Other(format!(
-                    "Activity '{}' not registered",
-                    activity_type
-                )));
+                tracing::warn!("Activity '{activity_type}' not registered in registry");
+                return ActivityDisposition::Failed {
+                    reason: format!("Activity '{activity_type}' not registered"),
+                    details: None,
+                    error: CadenceError::Other(format!(
+                        "Activity '{activity_type}' not registered"
+                    )),
+                };
             }
         };
 
@@ -367,7 +383,7 @@ impl ActivityTaskHandler {
         // Create activity info
         let activity_info = crabdance_activity::ActivityInfo {
             activity_id: task.activity_id.clone(),
-            activity_type: activity_type.clone(),
+            activity_type: activity_type.to_string(),
             task_token: task.task_token.clone(),
             workflow_execution: crabdance_activity::WorkflowExecution {
                 workflow_id: task
@@ -384,7 +400,7 @@ impl ActivityTaskHandler {
             attempt: task.attempt,
             scheduled_time: chrono::Utc::now(), // TODO: Extract correctly from task metadata if available
             started_time: chrono::Utc::now(),
-            deadline: self.calculate_deadline(&task),
+            deadline: self.calculate_deadline(task),
             heartbeat_timeout: Duration::from_secs(
                 task.heartbeat_timeout_seconds.unwrap_or(0) as u64
             ),
@@ -470,86 +486,75 @@ impl ActivityTaskHandler {
             }
         };
 
-        // after-hook: report the wall-clock outcome (timing / accounting).
-        if let Some(ictx) = &interceptor_ctx {
+        // Map the execution result to a terminal disposition.
+        match execution_result {
+            Ok(output) => ActivityDisposition::Completed(output),
+            // Async completion: the activity asked not to be auto-responded.
+            Err(err) if err.is_result_pending() => ActivityDisposition::Pending,
+            Err(err) => {
+                tracing::error!(activity_type, ?err, "activity failed");
+                let (reason, details) = activity_failure_reason(&err);
+                ActivityDisposition::Failed {
+                    reason,
+                    details,
+                    error: CadenceError::Other(err.to_string()),
+                }
+            }
+        }
+    }
+
+    /// Report a terminal [`ActivityDisposition`] once: fire the interceptor
+    /// `after`-hook, emit the terminal metric + latency, and send the server
+    /// response. [`ActivityDisposition::Pending`] is non-terminal — it does none of
+    /// these (the result is delivered out of band).
+    async fn report_disposition(
+        &self,
+        task: &PollForActivityTaskResponse,
+        activity_type: &str,
+        interceptor_ctx: Option<&InterceptorContext>,
+        started: Instant,
+        disposition: ActivityDisposition,
+    ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
+        if let ActivityDisposition::Pending = disposition {
+            info!(
+                activity_type,
+                "activity result pending; not auto-responding (async completion)"
+            );
+            return Ok(RespondActivityTaskCompletedResponse {});
+        }
+
+        let success = matches!(disposition, ActivityDisposition::Completed(_));
+
+        // after-hook: every terminal outcome the before-hook saw gets an after.
+        if let Some(ictx) = interceptor_ctx {
             self.interceptors.after(
                 ictx,
                 &Outcome {
-                    duration: activity_started_at.elapsed(),
-                    success: execution_result.is_ok(),
+                    duration: started.elapsed(),
+                    success,
                 },
             );
         }
+        self.record_terminal(activity_type, started, success);
 
-        // Send response based on result
-        match execution_result {
-            Ok(output) => {
-                info!(activity_type = %activity_type, "sending activity complete response");
-                let response = self
-                    .service
+        match disposition {
+            ActivityDisposition::Completed(output) => {
+                info!(activity_type, "sending activity complete response");
+                self.service
                     .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
                         task_token: task.task_token.clone(),
                         result: Some(output),
                         identity: self.identity.clone(),
                     })
-                    .await?;
-
-                tracing::info!("Activity '{}' completed successfully", activity_type);
-                crate::metrics::incr(
-                    crate::metrics::ACTIVITY_TASK_COMPLETED,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                );
-                crate::metrics::record_latency(
-                    crate::metrics::ACTIVITY_TASK_LATENCY,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                    activity_started_at.elapsed(),
-                );
-                Ok(response)
+                    .await
+                    .map_err(CadenceError::from)
             }
-            // Async completion: the activity asked not to be auto-responded. The result
-            // will be delivered out of band via Client::complete_activity[_by_id].
-            Err(err) if err.is_result_pending() => {
-                info!(
-                    activity_type = %activity_type,
-                    "activity result pending; not auto-responding (async completion)"
-                );
-                Ok(RespondActivityTaskCompletedResponse {})
-            }
-            Err(err) => {
-                let (reason, details) = match &err {
-                    ActivityError::ExecutionFailed(err) => (
-                        "ExecutionFailed".to_string(),
-                        Some(err.to_string().into_bytes()),
-                    ),
-                    ActivityError::Panic(err) => (
-                        "Panic".to_string(),
-                        Some(format!("Activity panicked: {}", err).into_bytes()),
-                    ),
-                    ActivityError::Retryable(err) => {
-                        ("Retryable".to_string(), Some(err.to_string().into_bytes()))
-                    }
-                    ActivityError::NonRetryable(err) => (
-                        "NonRetryable".to_string(),
-                        Some(err.to_string().into_bytes()),
-                    ),
-                    ActivityError::Application(err) => (
-                        "ApplicationError".to_string(),
-                        Some(err.to_string().into_bytes()),
-                    ),
-                    ActivityError::RetryableWithDelay(err, _delay) => (
-                        "RetryableWithDelay".to_string(),
-                        Some(err.to_string().into_bytes()),
-                    ),
-                    ActivityError::Cancelled => ("Cancelled".to_string(), None),
-                    ActivityError::Timeout(t) => (format!("Timeout: {:?}", t), None),
-                    // Intercepted above; included for exhaustiveness.
-                    ActivityError::ResultPending => ("ResultPending".to_string(), None),
-                };
-
-                let _ = self
-                    .service
+            ActivityDisposition::Failed {
+                reason,
+                details,
+                error,
+            } => {
+                self.service
                     .respond_activity_task_failed(RespondActivityTaskFailedRequest {
                         task_token: task.task_token.clone(),
                         reason: Some(reason),
@@ -557,22 +562,27 @@ impl ActivityTaskHandler {
                         identity: self.identity.clone(),
                     })
                     .await?;
-
-                tracing::error!(activity_type, ?err, "Activity failed");
-                crate::metrics::incr(
-                    crate::metrics::ACTIVITY_TASK_FAILED,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                );
-                crate::metrics::record_latency(
-                    crate::metrics::ACTIVITY_TASK_LATENCY,
-                    crate::metrics::TAG_ACTIVITY_TYPE,
-                    &activity_type,
-                    activity_started_at.elapsed(),
-                );
-                Err(CadenceError::Other(err.to_string()))
+                Err(error)
             }
+            ActivityDisposition::Pending => unreachable!("pending handled above"),
         }
+    }
+
+    /// Emit the terminal counter (`completed`/`failed`) + latency for an activity
+    /// type. The one place the started/terminal balance is kept.
+    fn record_terminal(&self, activity_type: &str, started: Instant, success: bool) {
+        let counter = if success {
+            crate::metrics::ACTIVITY_TASK_COMPLETED
+        } else {
+            crate::metrics::ACTIVITY_TASK_FAILED
+        };
+        crate::metrics::incr(counter, crate::metrics::TAG_ACTIVITY_TYPE, activity_type);
+        crate::metrics::record_latency(
+            crate::metrics::ACTIVITY_TASK_LATENCY,
+            crate::metrics::TAG_ACTIVITY_TYPE,
+            activity_type,
+            started.elapsed(),
+        );
     }
 
     /// Calculate activity deadline from task timeouts
@@ -584,5 +594,39 @@ impl ActivityTaskHandler {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crabdance_workflow::future::boxed_error;
+
+    fn details_string(details: Option<Vec<u8>>) -> String {
+        String::from_utf8(details.expect("expected details")).unwrap()
+    }
+
+    #[test]
+    fn failure_reason_maps_each_variant() {
+        let (reason, details) =
+            activity_failure_reason(&ActivityError::ExecutionFailed(boxed_error("boom")));
+        assert_eq!(reason, "ExecutionFailed");
+        assert!(details_string(details).contains("boom"));
+
+        let (reason, details) =
+            activity_failure_reason(&ActivityError::Panic(boxed_error("kaboom")));
+        assert_eq!(reason, "Panic");
+        let d = details_string(details);
+        assert!(d.contains("Activity panicked") && d.contains("kaboom"));
+
+        let (reason, details) =
+            activity_failure_reason(&ActivityError::NonRetryable(boxed_error("nope")));
+        assert_eq!(reason, "NonRetryable");
+        assert!(details_string(details).contains("nope"));
+
+        // Control-flow variants carry no details.
+        let (reason, details) = activity_failure_reason(&ActivityError::Cancelled);
+        assert_eq!(reason, "Cancelled");
+        assert!(details.is_none());
     }
 }
