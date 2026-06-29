@@ -520,6 +520,13 @@ impl ActivityTaskHandler {
                 activity_type,
                 "activity result pending; not auto-responding (async completion)"
             );
+            // Non-terminal: no completed/failed, no after-hook. Counted distinctly so
+            // the started/terminal tallies still reconcile.
+            crate::metrics::incr(
+                crate::metrics::ACTIVITY_TASK_ASYNC_PENDING,
+                crate::metrics::TAG_ACTIVITY_TYPE,
+                activity_type,
+            );
             return Ok(RespondActivityTaskCompletedResponse {});
         }
 
