@@ -77,86 +77,40 @@ impl GetVersionOptions {
 /// Type alias for query handlers
 pub type QueryHandler = Box<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
 
-/// Builder for WorkflowContext creation with command sink
-pub struct WorkflowContextBuilder {
-    workflow_info: WorkflowInfo,
-    sink: Arc<dyn CommandSink>,
-    signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
-    query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
-    side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
-    mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    change_versions: Arc<Mutex<HashMap<String, i32>>>,
-    local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
+/// The recorded-history seed a [`WorkflowContext`] starts from — the caches and
+/// flags a decision-task replay reconstructs before workflow code runs. The worker
+/// produces one from its `ReplayEngine`; the in-memory driver/testsuite use
+/// [`ReplayState::empty`]. Consuming it ([`WorkflowContext::with_replay_state`]) is
+/// the single deep entry point for building a seeded context, replacing nine
+/// positional caches plus a handful of post-construction setters.
+pub struct ReplayState {
+    pub signals: HashMap<String, Vec<Vec<u8>>>,
+    pub side_effect_results: HashMap<u64, Vec<u8>>,
+    pub mutable_side_effects: HashMap<String, Vec<u8>>,
+    pub change_versions: HashMap<String, i32>,
+    /// Shared with the producing engine (an `Arc` clone), so a local activity
+    /// completing mid-task is visible to both.
+    pub local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
+    pub is_replay: bool,
+    pub cancel_requested: bool,
+    /// Deterministic "now" in unix-epoch nanoseconds.
+    pub current_time_nanos: i64,
 }
 
-impl WorkflowContextBuilder {
-    pub fn new(workflow_info: WorkflowInfo, sink: Arc<dyn CommandSink>) -> Self {
+impl ReplayState {
+    /// An empty seed (no recorded history) starting the clock at `current_time_nanos`
+    /// — for in-memory runs that have no replay engine.
+    pub fn empty(current_time_nanos: i64) -> Self {
         Self {
-            workflow_info,
-            sink,
-            signals: Arc::new(Mutex::new(HashMap::new())),
-            query_handlers: Arc::new(Mutex::new(HashMap::new())),
-            side_effect_results: Arc::new(Mutex::new(HashMap::new())),
-            mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
-            change_versions: Arc::new(Mutex::new(HashMap::new())),
+            signals: HashMap::new(),
+            side_effect_results: HashMap::new(),
+            mutable_side_effects: HashMap::new(),
+            change_versions: HashMap::new(),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
+            is_replay: false,
+            cancel_requested: false,
+            current_time_nanos,
         }
-    }
-
-    pub fn signals(mut self, signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>) -> Self {
-        self.signals = signals;
-        self
-    }
-
-    pub fn query_handlers(
-        mut self,
-        query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
-    ) -> Self {
-        self.query_handlers = query_handlers;
-        self
-    }
-
-    pub fn side_effect_results(
-        mut self,
-        side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
-    ) -> Self {
-        self.side_effect_results = side_effect_results;
-        self
-    }
-
-    pub fn mutable_side_effects(
-        mut self,
-        mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    ) -> Self {
-        self.mutable_side_effects = mutable_side_effects;
-        self
-    }
-
-    pub fn change_versions(mut self, change_versions: Arc<Mutex<HashMap<String, i32>>>) -> Self {
-        self.change_versions = change_versions;
-        self
-    }
-
-    pub fn local_activity_results(
-        mut self,
-        local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
-    ) -> Self {
-        self.local_activity_results = local_activity_results;
-        self
-    }
-
-    pub fn build(self) -> WorkflowContext {
-        WorkflowContext::with_sink(
-            self.workflow_info,
-            self.sink,
-            self.signals,
-            self.query_handlers,
-            self.side_effect_results,
-            self.mutable_side_effects,
-            self.change_versions,
-            self.local_activity_results,
-            None,
-        )
     }
 }
 
@@ -257,77 +211,48 @@ fn seed_search_attributes(workflow_info: &WorkflowInfo) -> HashMap<String, Vec<u
 
 impl WorkflowContext {
     pub fn new(workflow_info: WorkflowInfo) -> Self {
-        // Initialize with start time from workflow info
         let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
-        let search_attributes = seed_search_attributes(&workflow_info);
-
-        Self {
+        Self::with_replay_state(
             workflow_info,
-            command_sink: Arc::new(NoopCommandSink),
-            sequence: Arc::new(AtomicU64::new(0)),
-            signals: Arc::new(Mutex::new(HashMap::new())),
-            query_handlers: Arc::new(Mutex::new(HashMap::new())),
-            cancelled: Arc::new(AtomicBool::new(false)),
-            side_effect_results: Arc::new(Mutex::new(HashMap::new())),
-            mutable_side_effects: Arc::new(Mutex::new(HashMap::new())),
-            is_replay: Arc::new(AtomicBool::new(false)),
-            log_in_replay: Arc::new(AtomicBool::new(false)),
-            current_time_nanos: Arc::new(AtomicI64::new(start_time_nanos)),
-            change_versions: Arc::new(Mutex::new(HashMap::new())),
-            search_attributes: Arc::new(Mutex::new(search_attributes)),
-            last_completion_result: Arc::new(Mutex::new(None)),
-            propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
-            current_session: Arc::new(Mutex::new(None)),
-            history_count: Arc::new(AtomicU64::new(0)),
-            total_history_bytes: Arc::new(AtomicU64::new(0)),
-            local_activity_results: Arc::new(Mutex::new(HashMap::new())),
-            dispatcher: Arc::new(Mutex::new(None)),
-            pending_spawn_tasks: Arc::new(Mutex::new(None)),
-            completed_results: Arc::new(Mutex::new(None)),
-            // Start task_sequence at 1 because root workflow task is ID 0
-            task_sequence: Arc::new(AtomicU64::new(1)),
-            channel_sequence: Arc::new(AtomicU64::new(0)),
-            resources: None,
-            converter: Arc::new(JsonDataConverter),
-        }
+            Arc::new(NoopCommandSink),
+            ReplayState::empty(start_time_nanos),
+            None,
+        )
     }
 
-    #[expect(clippy::too_many_arguments)]
-    pub fn with_sink(
+    /// Build a context seeded from a [`ReplayState`] — the single deep constructor.
+    /// It wraps the seed's caches into the context's shared cells and applies the
+    /// replay flags and deterministic clock, so callers state the seed, not the
+    /// wiring. The `ReplayState`'s plain maps are wrapped here exactly once (no
+    /// per-call-site repackaging).
+    pub fn with_replay_state(
         workflow_info: WorkflowInfo,
         sink: Arc<dyn CommandSink>,
-        signals: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
-        query_handlers: Arc<Mutex<HashMap<String, QueryHandler>>>,
-        side_effect_results: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
-        mutable_side_effects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-        change_versions: Arc<Mutex<HashMap<String, i32>>>,
-        local_activity_results: Arc<Mutex<HashMap<String, LocalActivityMarkerData>>>,
+        state: ReplayState,
         resources: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Self {
-        // Initialize with start time from workflow info
-        let start_time_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
         let search_attributes = seed_search_attributes(&workflow_info);
 
         Self {
             workflow_info,
             command_sink: sink,
             sequence: Arc::new(AtomicU64::new(0)),
-            signals,
-            query_handlers,
-            cancelled: Arc::new(AtomicBool::new(false)),
-            side_effect_results,
-            mutable_side_effects,
-            is_replay: Arc::new(AtomicBool::new(false)),
+            signals: Arc::new(Mutex::new(state.signals)),
+            query_handlers: Arc::new(Mutex::new(HashMap::new())),
+            cancelled: Arc::new(AtomicBool::new(state.cancel_requested)),
+            side_effect_results: Arc::new(Mutex::new(state.side_effect_results)),
+            mutable_side_effects: Arc::new(Mutex::new(state.mutable_side_effects)),
+            is_replay: Arc::new(AtomicBool::new(state.is_replay)),
             log_in_replay: Arc::new(AtomicBool::new(false)),
-            current_time_nanos: Arc::new(AtomicI64::new(start_time_nanos)),
-            change_versions,
+            current_time_nanos: Arc::new(AtomicI64::new(state.current_time_nanos)),
+            change_versions: Arc::new(Mutex::new(state.change_versions)),
             search_attributes: Arc::new(Mutex::new(search_attributes)),
             last_completion_result: Arc::new(Mutex::new(None)),
             propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
             current_session: Arc::new(Mutex::new(None)),
             history_count: Arc::new(AtomicU64::new(0)),
             total_history_bytes: Arc::new(AtomicU64::new(0)),
-            local_activity_results,
+            local_activity_results: state.local_activity_results,
             dispatcher: Arc::new(Mutex::new(None)),
             pending_spawn_tasks: Arc::new(Mutex::new(None)),
             completed_results: Arc::new(Mutex::new(None)),
@@ -337,6 +262,12 @@ impl WorkflowContext {
             resources,
             converter: Arc::new(JsonDataConverter),
         }
+    }
+
+    /// A handle to the shared query-handler registry — the worker reads it after the
+    /// workflow runs to dispatch queries.
+    pub fn query_handlers_handle(&self) -> Arc<Mutex<HashMap<String, QueryHandler>>> {
+        self.query_handlers.clone()
     }
 
     pub fn with_resources(mut self, resources: Option<Arc<dyn Any + Send + Sync>>) -> Self {

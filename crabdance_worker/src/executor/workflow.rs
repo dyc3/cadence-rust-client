@@ -896,42 +896,18 @@ impl WorkflowExecutor {
             propagators: self.options.context_propagators.clone(),
         });
 
-        // Extract signals and side effect caches from engine (requires lock)
-        let (
-            signals_map,
-            cancel_requested,
-            side_effect_results,
-            mutable_side_effects,
-            change_versions,
-            local_activity_results_arc,
-            is_replay,
-        ) = {
+        // Seed the context from the replay engine in one handoff: the engine produces
+        // a ReplayState (its caches + replay flags + deterministic clock), the context
+        // consumes it. No per-call-site cache repackaging or replay-flag setters.
+        let replay_state = {
             let engine = engine_arc.lock().unwrap();
-            (
-                engine.signals.clone(),
-                engine.cancel_requested,
-                engine.side_effect_results.clone(),
-                engine.mutable_side_effects.clone(),
-                engine.change_versions.clone(),
-                engine.local_activity_results.clone(), // Clone the Arc, not the HashMap
-                engine.is_replay,
-            )
+            engine.to_replay_state(current_time_nanos)
         };
-        let signals_arc = Arc::new(Mutex::new(signals_map));
-        let query_handlers_arc = Arc::new(Mutex::new(HashMap::new()));
-        let side_effect_results_arc = Arc::new(Mutex::new(side_effect_results));
-        let mutable_side_effects_arc = Arc::new(Mutex::new(mutable_side_effects));
-        let change_versions_arc = Arc::new(Mutex::new(change_versions));
 
-        let context = WorkflowContext::with_sink(
+        let context = WorkflowContext::with_replay_state(
             workflow_info.clone(),
             sink,
-            signals_arc,
-            query_handlers_arc.clone(),
-            side_effect_results_arc,
-            mutable_side_effects_arc,
-            change_versions_arc,
-            local_activity_results_arc,
+            replay_state,
             self.resources.clone(),
         )
         .with_converter(self.data_converter.clone())
@@ -940,15 +916,9 @@ impl WorkflowExecutor {
         // wire for downstream activities and child workflows.
         .with_shared_propagation(propagation.clone());
 
-        // Set deterministic current time
-        context.set_current_time_nanos(current_time_nanos);
-
-        // Set replay mode and cancellation
-        context.set_replay_mode(is_replay);
+        // Seeding from sources outside the recorded history.
         context.set_logging_enabled_in_replay(self.options.enable_logging_in_replay);
-        if cancel_requested {
-            context.set_cancelled(true);
-        }
+        let query_handlers_arc = context.query_handlers_handle();
 
         // History-size accounting for this decision task. The server-tracked byte
         // figure is not surfaced on the poll path, so total bytes is a best-effort
