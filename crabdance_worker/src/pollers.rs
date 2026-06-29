@@ -3,6 +3,7 @@
 //! This module provides the pollers that continuously poll for new tasks
 //! from the Cadence server and dispatch them for processing.
 
+use crate::autoscaler::{PollerAutoScaler, RateLimiter};
 use crate::handlers::activity::ActivityTaskHandler;
 use crate::handlers::decision::DecisionTaskHandler;
 use async_trait::async_trait;
@@ -142,6 +143,9 @@ pub struct ActivityTaskPoller {
     domain: String,
     task_list: String,
     identity: String,
+    /// Server-side per-task-list activities/sec (Go's `TaskListActivitiesPerSecond`).
+    /// `None` when unlimited.
+    task_list_activities_per_second: Option<f64>,
     handler: Arc<ActivityTaskHandler>,
 }
 
@@ -158,8 +162,20 @@ impl ActivityTaskPoller {
             domain: domain.into(),
             task_list: task_list.into(),
             identity: identity.into(),
+            task_list_activities_per_second: None,
             handler,
         }
+    }
+
+    /// Set the server-side per-task-list activity rate limit sent on each poll.
+    /// Rates at or above the unlimited sentinel leave it unset.
+    pub fn with_task_list_activities_per_second(mut self, rate: f64) -> Self {
+        self.task_list_activities_per_second = if rate >= crate::autoscaler::UNLIMITED_RPS {
+            None
+        } else {
+            Some(rate)
+        };
+        self
     }
 
     /// Poll for activity task
@@ -175,7 +191,11 @@ impl ActivityTaskPoller {
                 kind: crabdance_proto::shared::TaskListKind::Normal,
             }),
             identity: self.identity.clone(),
-            task_list_metadata: None,
+            task_list_metadata: self.task_list_activities_per_second.map(|rate| {
+                crabdance_proto::workflow_service::TaskListMetadata {
+                    max_tasks_per_second: Some(rate),
+                }
+            }),
         };
 
         match self.service.poll_for_activity_task(request).await {
@@ -218,10 +238,19 @@ impl TaskPoller for ActivityTaskPoller {
 
 use tokio::task::JoinHandle;
 
-/// Poller manager that runs multiple pollers
+/// Poller manager that runs multiple pollers.
+///
+/// Each poll loop paces itself through a [`RateLimiter`] (per-second poll limit)
+/// and, when an [`PollerAutoScaler`] is attached, acquires a permit from the
+/// scaler's resizable gate so the active poller count tracks the configured
+/// min/max. Both default to no-ops (unlimited rate, no gate).
 pub struct PollerManager {
     decision_pollers: Vec<Arc<DecisionTaskPoller>>,
     activity_pollers: Vec<Arc<ActivityTaskPoller>>,
+    decision_rate_limiter: Arc<RateLimiter>,
+    activity_rate_limiter: Arc<RateLimiter>,
+    decision_scaler: Option<Arc<PollerAutoScaler>>,
+    activity_scaler: Option<Arc<PollerAutoScaler>>,
     join_handles: Vec<JoinHandle<()>>,
 }
 
@@ -230,8 +259,30 @@ impl PollerManager {
         Self {
             decision_pollers: Vec::new(),
             activity_pollers: Vec::new(),
+            decision_rate_limiter: Arc::new(RateLimiter::new(crate::autoscaler::UNLIMITED_RPS)),
+            activity_rate_limiter: Arc::new(RateLimiter::new(crate::autoscaler::UNLIMITED_RPS)),
+            decision_scaler: None,
+            activity_scaler: None,
             join_handles: Vec::new(),
         }
+    }
+
+    /// Apply per-second poll rate limits (Go's `WorkerDecisionTasksPerSecond` /
+    /// `WorkerActivitiesPerSecond`). Rates at or above the unlimited sentinel
+    /// disable pacing.
+    pub fn with_rate_limits(&mut self, decision_per_second: f64, activity_per_second: f64) {
+        self.decision_rate_limiter = Arc::new(RateLimiter::new(decision_per_second));
+        self.activity_rate_limiter = Arc::new(RateLimiter::new(activity_per_second));
+    }
+
+    /// Attach a decision-poller auto-scaler. Its control loop is started in [`start`].
+    pub fn set_decision_scaler(&mut self, scaler: Arc<PollerAutoScaler>) {
+        self.decision_scaler = Some(scaler);
+    }
+
+    /// Attach an activity-poller auto-scaler. Its control loop is started in [`start`].
+    pub fn set_activity_scaler(&mut self, scaler: Arc<PollerAutoScaler>) {
+        self.activity_scaler = Some(scaler);
     }
 
     /// Add a decision task poller
@@ -253,50 +304,37 @@ impl PollerManager {
     pub fn start(&mut self) {
         // Start decision pollers
         for poller in &self.decision_pollers {
-            let poller = Arc::clone(poller);
-            let handle = tokio::spawn(async move {
-                let mut poll_interval = interval(Duration::from_millis(100));
-                loop {
-                    poll_interval.tick().await;
-
-                    match poller.poll().await {
-                        Ok(Some(task)) => {
-                            if let Err(e) = poller.process(task).await {
-                                tracing::error!("Error processing decision task: {}", e);
-                            }
-                        }
-                        Ok(None) => {} // No task available
-                        Err(e) => {
-                            tracing::error!("Error polling decision task: {}", e);
-                        }
-                    }
-                }
-            });
+            let handle = spawn_poll_loop(
+                Arc::clone(poller),
+                Arc::clone(&self.decision_rate_limiter),
+                self.decision_scaler.clone(),
+                "decision",
+            );
             self.join_handles.push(handle);
         }
 
         // Start activity pollers
         for poller in &self.activity_pollers {
-            let poller = Arc::clone(poller);
-            let handle = tokio::spawn(async move {
-                let mut poll_interval = interval(Duration::from_millis(100));
-                loop {
-                    poll_interval.tick().await;
-
-                    match poller.poll().await {
-                        Ok(Some(task)) => {
-                            if let Err(e) = poller.process(task).await {
-                                tracing::error!("Error processing activity task: {}", e);
-                            }
-                        }
-                        Ok(None) => {} // No task available
-                        Err(e) => {
-                            tracing::error!("Error polling activity task: {}", e);
-                        }
-                    }
-                }
-            });
+            let handle = spawn_poll_loop(
+                Arc::clone(poller),
+                Arc::clone(&self.activity_rate_limiter),
+                self.activity_scaler.clone(),
+                "activity",
+            );
             self.join_handles.push(handle);
+        }
+
+        // Start auto-scaler control loops (one each, even though several pollers
+        // share a scaler).
+        if let Some(scaler) = &self.decision_scaler {
+            let scaler = Arc::clone(scaler);
+            self.join_handles
+                .push(tokio::spawn(async move { scaler.run().await }));
+        }
+        if let Some(scaler) = &self.activity_scaler {
+            let scaler = Arc::clone(scaler);
+            self.join_handles
+                .push(tokio::spawn(async move { scaler.run().await }));
         }
     }
 
@@ -315,39 +353,48 @@ impl Default for PollerManager {
     }
 }
 
-/// Rate limited poller decorator
-pub struct RateLimitedPoller<P: TaskPoller> {
-    inner: P,
-    rate_limiter: tokio::sync::Semaphore,
-}
+/// Spawn one poller's loop. Each iteration: (optionally) acquire an auto-scaler
+/// gate permit, pace through the rate limiter, poll, record the poll latency for
+/// scaling, and process any task. The gate permit is held across processing so
+/// the active count reflects busy pollers.
+fn spawn_poll_loop<P>(
+    poller: Arc<P>,
+    rate_limiter: Arc<RateLimiter>,
+    scaler: Option<Arc<PollerAutoScaler>>,
+    kind: &'static str,
+) -> JoinHandle<()>
+where
+    P: TaskPoller + 'static,
+{
+    let gate = scaler.as_ref().map(|s| s.gate());
+    tokio::spawn(async move {
+        let mut poll_interval = interval(Duration::from_millis(100));
+        loop {
+            poll_interval.tick().await;
 
-impl<P: TaskPoller> RateLimitedPoller<P> {
-    pub fn new(inner: P, max_tasks_per_second: f64) -> Self {
-        let permits = if max_tasks_per_second >= 100_000.0 {
-            // Unlimited
-            1000
-        } else {
-            (max_tasks_per_second as usize).max(1)
-        };
+            let _permit = match &gate {
+                Some(g) => Some(g.acquire().await),
+                None => None,
+            };
+            rate_limiter.acquire().await;
 
-        Self {
-            inner,
-            rate_limiter: tokio::sync::Semaphore::new(permits),
+            let started = std::time::Instant::now();
+            let result = poller.poll().await;
+            if let Some(s) = &scaler {
+                s.record_poll(started.elapsed());
+            }
+
+            match result {
+                Ok(Some(task)) => {
+                    if let Err(e) = poller.process(task).await {
+                        error!(kind, error = %e, "error processing task");
+                    }
+                }
+                Ok(None) => {} // No task available
+                Err(e) => {
+                    error!(kind, error = %e, "error polling task");
+                }
+            }
         }
-    }
-}
-
-#[async_trait]
-impl<P: TaskPoller> TaskPoller for RateLimitedPoller<P> {
-    type Task = P::Task;
-    type Response = P::Response;
-
-    async fn poll(&self) -> Result<Option<Self::Task>, TransportError> {
-        let _permit = self.rate_limiter.acquire().await.unwrap();
-        self.inner.poll().await
-    }
-
-    async fn process(&self, task: Self::Task) -> Result<Self::Response, CadenceError> {
-        self.inner.process(task).await
-    }
+    })
 }

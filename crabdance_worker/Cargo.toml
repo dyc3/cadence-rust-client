@@ -24,4 +24,25 @@ metrics = { workspace = true }
 dashmap = { workspace = true }
 dyn-clone = { workspace = true }
 
+# OpenTelemetry/OTLP export — only compiled under the `otel` feature.
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { workspace = true, features = ["grpc-tonic"], optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"], optional = true }
+
+[features]
+# Enable OpenTelemetry/OTLP span export + W3C trace propagation. Off by default
+# so the SDK does not pull the OTel dependency tree unless an application opts in.
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+    "dep:tracing-subscriber",
+]
+
 [dev-dependencies]
+# `test-util` enables tokio's paused-clock test runtime (`start_paused`), used to
+# assert rate-limiter pacing deterministically without real sleeps.
+tokio = { workspace = true, features = ["full", "test-util"] }

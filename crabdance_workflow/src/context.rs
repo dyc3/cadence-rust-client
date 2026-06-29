@@ -227,6 +227,9 @@ pub struct WorkflowContext {
     // the worker (see ContextPropagator). Available to workflow code and injectable into
     // outbound activity/child headers.
     propagation_context: Arc<Mutex<PropagationContext>>,
+    // The most recently created session (see the `session` module), exposed via
+    // `get_session_info`.
+    current_session: Arc<Mutex<Option<crate::session::SessionInfo>>>,
     // History size accounting for the current decision task (set by the worker).
     history_count: Arc<AtomicU64>,
     total_history_bytes: Arc<AtomicU64>,
@@ -274,6 +277,7 @@ impl WorkflowContext {
             search_attributes: Arc::new(Mutex::new(search_attributes)),
             last_completion_result: Arc::new(Mutex::new(None)),
             propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
+            current_session: Arc::new(Mutex::new(None)),
             history_count: Arc::new(AtomicU64::new(0)),
             total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results: Arc::new(Mutex::new(HashMap::new())),
@@ -320,6 +324,7 @@ impl WorkflowContext {
             search_attributes: Arc::new(Mutex::new(search_attributes)),
             last_completion_result: Arc::new(Mutex::new(None)),
             propagation_context: Arc::new(Mutex::new(PropagationContext::new())),
+            current_session: Arc::new(Mutex::new(None)),
             history_count: Arc::new(AtomicU64::new(0)),
             total_history_bytes: Arc::new(AtomicU64::new(0)),
             local_activity_results,
@@ -1009,6 +1014,19 @@ impl WorkflowContext {
         *self.propagation_context.lock().unwrap() = context;
     }
 
+    /// Share the propagation context with another holder (e.g. the worker's command
+    /// sink, so it can inject the live context into outbound activity / child-workflow
+    /// headers). Builder-style: call immediately after construction, before cloning.
+    pub fn with_shared_propagation(mut self, handle: Arc<Mutex<PropagationContext>>) -> Self {
+        self.propagation_context = handle;
+        self
+    }
+
+    /// A handle to this context's propagation context, for sharing with the command sink.
+    pub fn propagation_handle(&self) -> Arc<Mutex<PropagationContext>> {
+        self.propagation_context.clone()
+    }
+
     /// The propagated trace context / baggage available to this workflow (Go's header
     /// values exposed to workflow code).
     pub fn propagation_context(&self) -> PropagationContext {
@@ -1027,6 +1045,136 @@ impl WorkflowContext {
             propagator.inject(&context, &mut carrier);
         }
         carrier
+    }
+
+    // ---- Sessions (see the `session` module) ----
+
+    /// The most recently created session, if any (Go's `GetSessionInfo`).
+    pub fn get_session_info(&self) -> Option<crate::session::SessionInfo> {
+        self.current_session.lock().unwrap().clone()
+    }
+
+    fn set_current_session(&self, session: Option<crate::session::SessionInfo>) {
+        *self.current_session.lock().unwrap() = session;
+    }
+
+    /// Create a session: schedule the internal creation activity on the creation task
+    /// list, await the worker's signal carrying the resource-specific task list, and
+    /// return the [`SessionInfo`](crate::session::SessionInfo). Activities run with
+    /// [`execute_activity_in_session`](Self::execute_activity_in_session) then pin to
+    /// that worker. Fails if an open session already exists in this context.
+    pub async fn create_session(
+        &self,
+        base_task_list: &str,
+        options: crate::session::SessionOptions,
+    ) -> Result<crate::session::SessionInfo, DefaultWorkflowError> {
+        // Default to the workflow's own task list, so the creation activity lands on the
+        // session worker hosting this workflow (Go derives this from the activity options).
+        let base = if base_task_list.is_empty() {
+            self.workflow_info.task_list.as_str()
+        } else {
+            base_task_list
+        };
+        let creation_tasklist = crate::session::session_creation_tasklist(base);
+        self.create_session_on(&creation_tasklist, options).await
+    }
+
+    /// Recreate a session on the same worker as a previous one, from its recreate
+    /// token (Go's `RecreateSession`).
+    pub async fn recreate_session(
+        &self,
+        recreate_token: &[u8],
+        options: crate::session::SessionOptions,
+    ) -> Result<crate::session::SessionInfo, DefaultWorkflowError> {
+        let token: crate::session::RecreateToken = serde_json::from_slice(recreate_token)
+            .map_err(|e| WorkflowError::message(format!("invalid recreate token: {e}")))?;
+        self.create_session_on(&token.tasklist, options).await
+    }
+
+    async fn create_session_on(
+        &self,
+        creation_tasklist: &str,
+        options: crate::session::SessionOptions,
+    ) -> Result<crate::session::SessionInfo, DefaultWorkflowError> {
+        if let Some(existing) = self.get_session_info() {
+            if existing.state == crate::session::SessionState::Open {
+                return Err(WorkflowError::message(
+                    "found existing open session in the context",
+                ));
+            }
+        }
+
+        // SideEffect-stable session id, consistent across replay.
+        let session_id: String = self.side_effect(|| uuid::Uuid::new_v4().to_string()).await;
+
+        let creation_options = ActivityOptions {
+            task_list: creation_tasklist.to_string(),
+            schedule_to_start_timeout: options.creation_timeout,
+            start_to_close_timeout: options.execution_timeout,
+            heartbeat_timeout: options.heartbeat_timeout,
+            ..Default::default()
+        };
+
+        // The creation activity acquires a session token and returns the resource
+        // task list (the session worker picks it up on the creation task list).
+        let response_bytes = self
+            .execute_activity(
+                crate::session::SESSION_CREATION_ACTIVITY,
+                Some(session_id.clone().into_bytes()),
+                creation_options,
+            )
+            .await?;
+        let response: crate::session::SessionCreationResponse =
+            serde_json::from_slice(&response_bytes)
+                .map_err(|e| WorkflowError::message(format!("invalid session response: {e}")))?;
+
+        let info = crate::session::SessionInfo {
+            session_id,
+            host_name: response.host_name,
+            resource_id: response.resource_id,
+            tasklist: response.tasklist,
+            state: crate::session::SessionState::Open,
+        };
+        self.set_current_session(Some(info.clone()));
+        Ok(info)
+    }
+
+    /// Execute an activity within `session`, pinning it to the session's worker by
+    /// scheduling on the resource-specific task list.
+    pub async fn execute_activity_in_session(
+        &self,
+        session: &crate::session::SessionInfo,
+        activity_type: &str,
+        args: Option<Vec<u8>>,
+        mut options: ActivityOptions,
+    ) -> Result<Vec<u8>, DefaultWorkflowError> {
+        if session.state != crate::session::SessionState::Open {
+            return Err(WorkflowError::message("session has failed"));
+        }
+        options.task_list = session.tasklist.clone();
+        self.execute_activity(activity_type, args, options).await
+    }
+
+    /// Complete a session, releasing the worker's token via the internal completion
+    /// activity. A no-op if the session is not open.
+    pub async fn complete_session(&self, session: &crate::session::SessionInfo) {
+        if session.state != crate::session::SessionState::Open {
+            return;
+        }
+        let completion_options = ActivityOptions {
+            task_list: session.tasklist.clone(),
+            schedule_to_start_timeout: Duration::from_secs(3),
+            start_to_close_timeout: Duration::from_secs(3),
+            ..Default::default()
+        };
+        let _ = self
+            .execute_activity(
+                crate::session::SESSION_COMPLETION_ACTIVITY,
+                Some(session.session_id.clone().into_bytes()),
+                completion_options,
+            )
+            .await;
+        self.set_current_session(None);
     }
 
     /// Sleep for a duration (workflow-aware)

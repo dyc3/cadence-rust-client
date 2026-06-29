@@ -1,14 +1,21 @@
 //! Activity task handler for processing activity tasks.
 
-use crate::heartbeat::HeartbeatManager;
-use crate::registry::{ActivityError, Registry};
-use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, TransportError};
-use crabdance_proto::workflow_service::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tracing::{error, info, warn};
+
+use crabdance_core::{
+    CadenceError, ContextPropagator, DataConverter, InterceptorChain, InterceptorContext,
+    JsonDataConverter, Operation, Outcome, TransportError,
+};
+use crabdance_proto::workflow_service::*;
+
+use crate::heartbeat::HeartbeatManager;
+use crate::interceptor::extract_propagation;
+use crate::registry::{ActivityError, Registry};
 
 /// Activity task handler
 pub struct ActivityTaskHandler {
@@ -18,6 +25,11 @@ pub struct ActivityTaskHandler {
     identity: String,
     resources: Option<Arc<dyn std::any::Any + Send + Sync>>,
     data_converter: Arc<dyn DataConverter>,
+    interceptors: InterceptorChain,
+    context_propagators: Vec<Arc<dyn ContextPropagator>>,
+    /// Set on the session worker; handles the internal session creation/completion
+    /// activities (token acquire/release).
+    session_environment: Option<Arc<crate::session::SessionEnvironment>>,
 }
 
 struct ActivityRuntimeImpl {
@@ -51,13 +63,148 @@ impl ActivityTaskHandler {
             identity,
             resources,
             data_converter: Arc::new(JsonDataConverter),
+            interceptors: InterceptorChain::default(),
+            context_propagators: Vec::new(),
+            session_environment: None,
         }
+    }
+
+    /// Attach the session environment so this handler serves the internal session
+    /// creation/completion activities.
+    pub fn with_session_environment(
+        mut self,
+        env: Arc<crate::session::SessionEnvironment>,
+    ) -> Self {
+        self.session_environment = Some(env);
+        self
+    }
+
+    /// Serve the internal session-creation activity: acquire a concurrency token
+    /// (idempotently, keyed by session id) and return the host-specific resource task
+    /// list. Fails with "too many outstanding sessions" when the worker is full, and
+    /// rolls the token back if the response could not be encoded/sent — so a Cadence
+    /// retry neither double-acquires nor leaks the slot.
+    async fn handle_session_creation(
+        &self,
+        task: &PollForActivityTaskResponse,
+        env: &Arc<crate::session::SessionEnvironment>,
+    ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
+        let session_id =
+            String::from_utf8(task.input.clone().unwrap_or_default()).unwrap_or_default();
+
+        if !env.acquire(&session_id) {
+            let _ = self
+                .service
+                .respond_activity_task_failed(RespondActivityTaskFailedRequest {
+                    task_token: task.task_token.clone(),
+                    reason: Some("too many outstanding sessions".to_string()),
+                    details: None,
+                    identity: self.identity.clone(),
+                })
+                .await;
+            crate::metrics::incr(
+                crate::metrics::ACTIVITY_TASK_FAILED,
+                crate::metrics::TAG_ACTIVITY_TYPE,
+                crabdance_workflow::SESSION_CREATION_ACTIVITY,
+            );
+            return Err(CadenceError::Other(
+                "too many outstanding sessions".to_string(),
+            ));
+        }
+
+        let response = crabdance_workflow::session::SessionCreationResponse {
+            tasklist: env.resource_tasklist.clone(),
+            host_name: env.host.clone(),
+            resource_id: env.resource_id.clone(),
+        };
+
+        let send = serde_json::to_vec(&response)
+            .map_err(|e| CadenceError::Other(format!("encode session response: {e}")));
+        let send = match send {
+            Ok(result) => self
+                .service
+                .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
+                    task_token: task.task_token.clone(),
+                    result: Some(result),
+                    identity: self.identity.clone(),
+                })
+                .await
+                .map_err(CadenceError::from),
+            Err(e) => Err(e),
+        };
+
+        match send {
+            Ok(response) => {
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_COMPLETED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    crabdance_workflow::SESSION_CREATION_ACTIVITY,
+                );
+                Ok(response)
+            }
+            Err(e) => {
+                // The session was never confirmed to the workflow; roll the token back
+                // so the retry can re-acquire cleanly.
+                env.release(&session_id);
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    crabdance_workflow::SESSION_CREATION_ACTIVITY,
+                );
+                Err(e)
+            }
+        }
+    }
+
+    /// Serve the internal session-completion activity: release the session's token
+    /// (idempotently, keyed by session id).
+    async fn handle_session_completion(
+        &self,
+        task: &PollForActivityTaskResponse,
+        env: &Arc<crate::session::SessionEnvironment>,
+    ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
+        let session_id =
+            String::from_utf8(task.input.clone().unwrap_or_default()).unwrap_or_default();
+        env.release(&session_id);
+        crate::metrics::incr(
+            crate::metrics::ACTIVITY_TASK_COMPLETED,
+            crate::metrics::TAG_ACTIVITY_TYPE,
+            crabdance_workflow::SESSION_COMPLETION_ACTIVITY,
+        );
+        self.service
+            .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
+                task_token: task.task_token.clone(),
+                result: Some(Vec::new()),
+                identity: self.identity.clone(),
+            })
+            .await
+            .map_err(CadenceError::from)
     }
 
     /// Inject the worker's configured payload converter, threaded into every
     /// `ActivityContext` this handler builds.
     pub fn with_data_converter(mut self, converter: Arc<dyn DataConverter>) -> Self {
         self.data_converter = converter;
+        self
+    }
+
+    /// Inject the worker's around-execution interceptors. They wrap each activity
+    /// execution (before/veto + after/timing).
+    pub fn with_interceptors(
+        mut self,
+        interceptors: Vec<Arc<dyn crabdance_core::Interceptor>>,
+    ) -> Self {
+        self.interceptors = InterceptorChain::new(interceptors);
+        self
+    }
+
+    /// Inject the worker's context propagators, used to extract the propagation
+    /// context from the activity task header for interceptors.
+    pub fn with_context_propagators(
+        mut self,
+        propagators: Vec<Arc<dyn ContextPropagator>>,
+    ) -> Self {
+        self.context_propagators = propagators;
         self
     }
 
@@ -93,6 +240,65 @@ impl ActivityTaskHandler {
             &activity_type,
         );
 
+        // Internal session activities are served by the session worker, not the
+        // user registry.
+        if let Some(env) = self.session_environment.clone() {
+            if activity_type == crabdance_workflow::SESSION_CREATION_ACTIVITY {
+                return self.handle_session_creation(&task, &env).await;
+            }
+            if activity_type == crabdance_workflow::SESSION_COMPLETION_ACTIVITY {
+                return self.handle_session_completion(&task, &env).await;
+            }
+        }
+
+        // Build the interceptor context once (only when interceptors are configured).
+        let interceptor_ctx = if self.interceptors.is_empty() {
+            None
+        } else {
+            let (workflow_id, run_id) = task
+                .workflow_execution
+                .as_ref()
+                .map(|we| (we.workflow_id.clone(), we.run_id.clone()))
+                .unwrap_or_default();
+            Some(InterceptorContext {
+                operation: Operation::Activity,
+                name: activity_type.clone(),
+                workflow_id,
+                run_id,
+                is_replaying: false,
+                propagation: extract_propagation(&task.header, &self.context_propagators),
+            })
+        };
+
+        // before-hook: a veto fails the activity without executing it (policy gate /
+        // fault injection).
+        if let Some(ictx) = &interceptor_ctx {
+            if let Err(veto) = self.interceptors.before(ictx) {
+                warn!(activity_type = %activity_type, error = %veto, "activity vetoed by interceptor");
+                let _ = self
+                    .service
+                    .respond_activity_task_failed(RespondActivityTaskFailedRequest {
+                        task_token: task.task_token.clone(),
+                        reason: Some(format!("Activity vetoed by interceptor: {veto}")),
+                        details: None,
+                        identity: self.identity.clone(),
+                    })
+                    .await;
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                );
+                crate::metrics::record_latency(
+                    crate::metrics::ACTIVITY_TASK_LATENCY,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    &activity_type,
+                    activity_started_at.elapsed(),
+                );
+                return Err(veto);
+            }
+        }
+
         // Look up activity in registry
         let activity = match self.registry.get_activity(&activity_type) {
             Some(a) => a,
@@ -121,6 +327,17 @@ impl ActivityTaskHandler {
                     &activity_type,
                     activity_started_at.elapsed(),
                 );
+                // after-hook: the not-registered failure is still a terminal outcome
+                // the (already-fired) before-hook's interceptors should observe.
+                if let Some(ictx) = &interceptor_ctx {
+                    self.interceptors.after(
+                        ictx,
+                        &Outcome {
+                            duration: activity_started_at.elapsed(),
+                            success: false,
+                        },
+                    );
+                }
                 return Err(CadenceError::Other(format!(
                     "Activity '{}' not registered",
                     activity_type
@@ -210,8 +427,15 @@ impl ActivityTaskHandler {
         let context_ref = &context;
         let future = activity.execute(context_ref, input);
 
+        // Span for the activity execution. Under the `otel` feature it is parented to
+        // the remote trace carried in the task header, so the activity span joins the
+        // workflow's trace (W3C `traceparent`).
+        let exec_span = tracing::info_span!("activity.execute", activity_type = %activity_type);
+        #[cfg(feature = "otel")]
+        crate::otel::set_remote_parent(&exec_span, task.header.as_ref());
+
         // Execute with panic recovery using tokio::spawn
-        let result = tokio::spawn(future).await;
+        let result = tokio::spawn(tracing::Instrument::instrument(future, exec_span)).await;
 
         // Stop heartbeat
         let _ = cancel_heartbeat_tx.send(());
@@ -245,6 +469,17 @@ impl ActivityTaskHandler {
                 ))
             }
         };
+
+        // after-hook: report the wall-clock outcome (timing / accounting).
+        if let Some(ictx) = &interceptor_ctx {
+            self.interceptors.after(
+                ictx,
+                &Outcome {
+                    duration: activity_started_at.elapsed(),
+                    success: execution_result.is_ok(),
+                },
+            );
+        }
 
         // Send response based on result
         match execution_result {
