@@ -85,7 +85,8 @@ async fn session_workflow(
 
     ctx.complete_session(&session).await;
 
-    let result: String = serde_json::from_slice(&result_bytes).unwrap_or_default();
+    let result: String = serde_json::from_slice(&result_bytes)
+        .map_err(|e| WorkflowError::message(format!("decode session activity result: {e}")))?;
     Ok(result)
 }
 

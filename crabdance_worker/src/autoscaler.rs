@@ -1,7 +1,7 @@
 //! Poller rate limiting and auto-scaling.
 //!
 //! Two knobs that bound and adapt how aggressively a worker polls the Cadence
-//! server, ported from the Go client's `worker.Options`:
+//! server:
 //!
 //! * [`RateLimiter`] — a token bucket that paces polls to a configured
 //!   per-second rate (`WorkerActivitiesPerSecond` / `WorkerDecisionTasksPerSecond`).
@@ -15,15 +15,14 @@
 //! Neither participates in workflow determinism — both live entirely on the
 //! worker's polling side, never in replayed workflow code.
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{Mutex, Notify};
 use tokio::time::{interval, Instant};
 
-/// Rates at or above this are treated as "unlimited" (no pacing), matching the
-/// Go client's 100k/s sentinel default.
+/// Rates at or above this are treated as "unlimited" (no pacing).
 pub const UNLIMITED_RPS: f64 = 100_000.0;
 
 /// A token-bucket rate limiter. `acquire().await` returns immediately when a
@@ -44,10 +43,19 @@ impl RateLimiter {
     /// Construct a limiter pacing to `rate_per_second`. Burst capacity equals one
     /// second of tokens (at least one), so a short idle period does not let the
     /// bucket grow unbounded.
+    ///
+    /// Non-finite or non-positive rates are invalid (they would make the refill
+    /// path compute a non-finite/negative `Duration` and panic), so they are
+    /// normalized to [`UNLIMITED_RPS`] — pacing disabled.
     pub fn new(rate_per_second: f64) -> Self {
-        let burst = rate_per_second.max(1.0);
+        let rate = if rate_per_second.is_finite() && rate_per_second > 0.0 {
+            rate_per_second
+        } else {
+            UNLIMITED_RPS
+        };
+        let burst = rate.max(1.0);
         Self {
-            rate: rate_per_second,
+            rate,
             burst,
             state: Mutex::new(BucketState {
                 tokens: burst,
@@ -168,8 +176,16 @@ pub struct PollerAutoScaler {
     max: usize,
     target: Duration,
     eval_interval: Duration,
-    poll_count: AtomicU64,
-    latency_sum_micros: AtomicU64,
+    /// Accumulated poll samples for the current evaluation window. Count and
+    /// latency are guarded together so `record_poll` cannot split a sample across
+    /// a concurrent `recompute`.
+    samples: std::sync::Mutex<SampleWindow>,
+}
+
+#[derive(Default)]
+struct SampleWindow {
+    count: u64,
+    latency_sum_micros: u64,
 }
 
 impl PollerAutoScaler {
@@ -187,8 +203,7 @@ impl PollerAutoScaler {
             target: target_poll_duration.max(Duration::from_millis(1)),
             // Re-evaluate at least every 100ms, and no faster than the target.
             eval_interval: target_poll_duration.max(Duration::from_millis(100)),
-            poll_count: AtomicU64::new(0),
-            latency_sum_micros: AtomicU64::new(0),
+            samples: std::sync::Mutex::new(SampleWindow::default()),
         })
     }
 
@@ -198,15 +213,19 @@ impl PollerAutoScaler {
 
     /// Record the latency of one completed poll.
     pub fn record_poll(&self, latency: Duration) {
-        self.poll_count.fetch_add(1, Ordering::Relaxed);
-        self.latency_sum_micros
-            .fetch_add(latency.as_micros() as u64, Ordering::Relaxed);
+        let mut samples = self.samples.lock().unwrap();
+        samples.count += 1;
+        samples.latency_sum_micros += latency.as_micros() as u64;
     }
 
     /// Fold the accumulated samples into a new gate size. Resets the window.
     pub fn recompute(&self) {
-        let count = self.poll_count.swap(0, Ordering::Relaxed);
-        let sum = self.latency_sum_micros.swap(0, Ordering::Relaxed);
+        let (count, sum) = {
+            let mut samples = self.samples.lock().unwrap();
+            let window = (samples.count, samples.latency_sum_micros);
+            *samples = SampleWindow::default();
+            window
+        };
         if count == 0 {
             return;
         }
@@ -332,6 +351,20 @@ mod tests {
         // No samples → unchanged.
         scaler.recompute();
         assert_eq!(scaler.gate().limit(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_invalid_rate_is_treated_as_unlimited() {
+        // Zero, negative, and non-finite rates must not reach the refill path (which
+        // would compute a non-finite/negative Duration and panic); they disable pacing.
+        for rate in [0.0, -5.0, f64::NAN, f64::INFINITY] {
+            let limiter = RateLimiter::new(rate);
+            assert!(limiter.is_unlimited(), "rate {rate} should be unlimited");
+            // Acquiring many times never blocks or panics.
+            for _ in 0..1000 {
+                limiter.acquire().await;
+            }
+        }
     }
 
     #[tokio::test(start_paused = true)]

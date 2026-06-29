@@ -446,7 +446,12 @@ impl Worker for CadenceWorker {
         // activities) and the host-specific resource task list (for the session's
         // activities). Both use the same handler, which special-cases the internal
         // activities and runs ordinary registered activities on the resource list.
-        if let Some(env) = &session_environment {
+        // Sessions run activities, so they require the activity worker — skip when it
+        // is disabled.
+        if let Some(env) = session_environment
+            .as_ref()
+            .filter(|_| !self.options.disable_activity_worker)
+        {
             let creation_task_list = crabdance_workflow::session_creation_tasklist(&self.task_list);
             for (suffix, task_list) in [
                 ("session-creation", creation_task_list),

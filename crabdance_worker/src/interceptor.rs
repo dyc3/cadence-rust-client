@@ -8,13 +8,11 @@
 
 use std::sync::Arc;
 
-use crabdance_core::{
-    ContextPropagator, Interceptor, InterceptorContext, Outcome, PropagationCarrier,
-    PropagationContext,
-};
+use crabdance_core::{ContextPropagator, PropagationCarrier, PropagationContext};
 use crabdance_proto::shared::Header;
 
-pub use crabdance_core::{InterceptorChain, Operation};
+// Re-export the whole interceptor seam (defined in crabdance_core) for convenience.
+pub use crabdance_core::{Interceptor, InterceptorChain, InterceptorContext, Operation, Outcome};
 
 /// Reference interceptor that records the wall-clock duration of every
 /// intercepted operation through `tracing`. This is the canonical "time every

@@ -105,12 +105,17 @@ impl WorkflowCache {
         let now = self.clock.now();
         self.expire_idle(&mut inner, now);
 
+        // A zero-capacity cache stores nothing (sticky execution disabled).
+        if self.max_size == 0 {
+            return;
+        }
+
         // Remove existing if present to update order.
         if inner.map.contains_key(&key) {
             if let Some(pos) = inner.access_order.iter().position(|k| k == &key) {
                 inner.access_order.remove(pos);
             }
-        } else if inner.map.len() >= self.max_size && self.max_size > 0 {
+        } else if inner.map.len() >= self.max_size {
             // Capacity reached — evict least-recently-used.
             if let Some(oldest) = inner.access_order.pop_front() {
                 inner.map.remove(&oldest);
@@ -303,6 +308,14 @@ mod tests {
             cache.get(&key("a")).is_some(),
             "access refreshed the idle deadline"
         );
+    }
+
+    #[test]
+    fn test_zero_capacity_stores_nothing() {
+        let cache = WorkflowCache::new(0);
+        cache.insert(key("a"), dummy());
+        assert_eq!(cache.len(), 0);
+        assert!(cache.get(&key("a")).is_none());
     }
 
     #[test]

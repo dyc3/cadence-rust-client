@@ -29,7 +29,7 @@ async fn my_workflow(ctx: WorkflowContext, input: Job) -> Result<Out, WorkflowEr
   runs.
 - `create_session` fails with **"too many outstanding sessions"** when the target
   worker is at its `max_concurrent_session_execution_size`, and with **"found
-  existing open session"** if the context already holds an open one.
+  existing open session in the context"** if the context already holds an open one.
 
 ## Enabling the session worker
 

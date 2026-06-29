@@ -36,7 +36,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::error::CadenceError;
+use crate::error::CadenceResult;
 use crate::propagation::PropagationContext;
 
 /// Which execution boundary an interceptor is wrapping.
@@ -107,7 +107,7 @@ pub struct Outcome {
 /// implementation overrides only what it needs.
 pub trait Interceptor: Send + Sync {
     /// Runs before the operation. Return `Err` to veto it.
-    fn before(&self, _ctx: &InterceptorContext) -> Result<(), CadenceError> {
+    fn before(&self, _ctx: &InterceptorContext) -> CadenceResult<()> {
         Ok(())
     }
 
@@ -131,7 +131,7 @@ impl InterceptorChain {
     }
 
     /// Fire every `before` hook in order. Stops and returns the first veto.
-    pub fn before(&self, ctx: &InterceptorContext) -> Result<(), CadenceError> {
+    pub fn before(&self, ctx: &InterceptorContext) -> CadenceResult<()> {
         for interceptor in &self.interceptors {
             interceptor.before(ctx)?;
         }
@@ -157,6 +157,8 @@ impl std::fmt::Debug for InterceptorChain {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::error::CadenceError;
 
     use super::*;
 

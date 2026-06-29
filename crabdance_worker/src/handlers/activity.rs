@@ -1,18 +1,21 @@
 //! Activity task handler for processing activity tasks.
 
-use crate::heartbeat::HeartbeatManager;
-use crate::interceptor::extract_propagation;
-use crate::registry::{ActivityError, Registry};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use tokio::sync::{broadcast, oneshot, Mutex};
+use tracing::{error, info, warn};
+
 use crabdance_core::{
     CadenceError, ContextPropagator, DataConverter, InterceptorChain, InterceptorContext,
     JsonDataConverter, Operation, Outcome, TransportError,
 };
 use crabdance_proto::workflow_service::*;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, oneshot, Mutex};
-use tracing::{error, info, warn};
+
+use crate::heartbeat::HeartbeatManager;
+use crate::interceptor::extract_propagation;
+use crate::registry::{ActivityError, Registry};
 
 /// Activity task handler
 pub struct ActivityTaskHandler {
@@ -76,15 +79,20 @@ impl ActivityTaskHandler {
         self
     }
 
-    /// Serve the internal session-creation activity: acquire a concurrency token and
-    /// return the host-specific resource task list. Fails the activity with "too many
-    /// outstanding sessions" when the worker is already full.
+    /// Serve the internal session-creation activity: acquire a concurrency token
+    /// (idempotently, keyed by session id) and return the host-specific resource task
+    /// list. Fails with "too many outstanding sessions" when the worker is full, and
+    /// rolls the token back if the response could not be encoded/sent — so a Cadence
+    /// retry neither double-acquires nor leaks the slot.
     async fn handle_session_creation(
         &self,
         task: &PollForActivityTaskResponse,
         env: &Arc<crate::session::SessionEnvironment>,
     ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
-        if !env.bucket.try_acquire() {
+        let session_id =
+            String::from_utf8(task.input.clone().unwrap_or_default()).unwrap_or_default();
+
+        if !env.acquire(&session_id) {
             let _ = self
                 .service
                 .respond_activity_task_failed(RespondActivityTaskFailedRequest {
@@ -109,31 +117,55 @@ impl ActivityTaskHandler {
             host_name: env.host.clone(),
             resource_id: env.resource_id.clone(),
         };
-        let result = serde_json::to_vec(&response)
-            .map_err(|e| CadenceError::Other(format!("encode session response: {e}")))?;
 
-        crate::metrics::incr(
-            crate::metrics::ACTIVITY_TASK_COMPLETED,
-            crate::metrics::TAG_ACTIVITY_TYPE,
-            crabdance_workflow::SESSION_CREATION_ACTIVITY,
-        );
-        self.service
-            .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
-                task_token: task.task_token.clone(),
-                result: Some(result),
-                identity: self.identity.clone(),
-            })
-            .await
-            .map_err(CadenceError::from)
+        let send = serde_json::to_vec(&response)
+            .map_err(|e| CadenceError::Other(format!("encode session response: {e}")));
+        let send = match send {
+            Ok(result) => self
+                .service
+                .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
+                    task_token: task.task_token.clone(),
+                    result: Some(result),
+                    identity: self.identity.clone(),
+                })
+                .await
+                .map_err(CadenceError::from),
+            Err(e) => Err(e),
+        };
+
+        match send {
+            Ok(response) => {
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_COMPLETED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    crabdance_workflow::SESSION_CREATION_ACTIVITY,
+                );
+                Ok(response)
+            }
+            Err(e) => {
+                // The session was never confirmed to the workflow; roll the token back
+                // so the retry can re-acquire cleanly.
+                env.release(&session_id);
+                crate::metrics::incr(
+                    crate::metrics::ACTIVITY_TASK_FAILED,
+                    crate::metrics::TAG_ACTIVITY_TYPE,
+                    crabdance_workflow::SESSION_CREATION_ACTIVITY,
+                );
+                Err(e)
+            }
+        }
     }
 
-    /// Serve the internal session-completion activity: release the concurrency token.
+    /// Serve the internal session-completion activity: release the session's token
+    /// (idempotently, keyed by session id).
     async fn handle_session_completion(
         &self,
         task: &PollForActivityTaskResponse,
         env: &Arc<crate::session::SessionEnvironment>,
     ) -> Result<RespondActivityTaskCompletedResponse, CadenceError> {
-        env.bucket.release();
+        let session_id =
+            String::from_utf8(task.input.clone().unwrap_or_default()).unwrap_or_default();
+        env.release(&session_id);
         crate::metrics::incr(
             crate::metrics::ACTIVITY_TASK_COMPLETED,
             crate::metrics::TAG_ACTIVITY_TYPE,
@@ -295,6 +327,17 @@ impl ActivityTaskHandler {
                     &activity_type,
                     activity_started_at.elapsed(),
                 );
+                // after-hook: the not-registered failure is still a terminal outcome
+                // the (already-fired) before-hook's interceptors should observe.
+                if let Some(ictx) = &interceptor_ctx {
+                    self.interceptors.after(
+                        ictx,
+                        &Outcome {
+                            duration: activity_started_at.elapsed(),
+                            success: false,
+                        },
+                    );
+                }
                 return Err(CadenceError::Other(format!(
                     "Activity '{}' not registered",
                     activity_type

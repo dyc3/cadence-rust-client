@@ -54,7 +54,11 @@ impl ClientHistorySource {
 
 #[async_trait]
 impl HistorySource for ClientHistorySource {
-    async fn list_executions(&self, query: &str) -> Result<Vec<(String, String)>, CadenceError> {
+    async fn list_executions(
+        &self,
+        query: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<(String, String)>, CadenceError> {
         let mut results = Vec::new();
         let mut next_page_token = None;
 
@@ -74,6 +78,12 @@ impl HistorySource for ClientHistorySource {
 
             for info in response.executions {
                 results.push((info.execution.workflow_id, info.execution.run_id));
+            }
+
+            // Stop paging the visibility scan once we have enough.
+            if limit.is_some_and(|n| results.len() >= n) {
+                results.truncate(limit.unwrap());
+                break;
             }
 
             match response.next_page_token {

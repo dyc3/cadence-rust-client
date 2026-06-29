@@ -17,7 +17,7 @@
 //! ```ignore
 //! let mut env = WorkflowTestEnv::new();
 //! env.on_activity_fn("double", |args| {
-//!     let n: i32 = serde_json::from_slice(args.unwrap()).unwrap();
+//!     let n: i32 = serde_json::from_slice(&args.unwrap()).unwrap();
 //!     Ok(serde_json::to_vec(&(n * 2)).unwrap())
 //! }).once();
 //!
@@ -127,11 +127,18 @@ impl WorkflowTestEnv {
     /// Mock an activity to return successive results on successive invocations — the
     /// building block for retry simulation (e.g. fail once, then succeed). The last
     /// result repeats once the sequence is exhausted.
+    ///
+    /// Panics if `results` is empty (an empty sequence is a harness misconfiguration,
+    /// not a valid mock).
     pub fn on_activity_attempts(
         &mut self,
         activity_type: &str,
         results: Vec<Result<Vec<u8>, String>>,
     ) -> &mut Self {
+        assert!(
+            !results.is_empty(),
+            "on_activity_attempts requires at least one result for '{activity_type}'"
+        );
         self.register_activity(activity_type, ActivityMock::Seq(results))
     }
 

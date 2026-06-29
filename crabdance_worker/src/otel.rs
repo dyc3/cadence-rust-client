@@ -28,6 +28,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+use crabdance_core::{CadenceError, CadenceResult};
 use crabdance_proto::shared::Header;
 
 /// Install a global `tracing` subscriber that exports spans over OTLP (gRPC) to
@@ -40,13 +41,12 @@ use crabdance_proto::shared::Header;
 /// the `traceparent` of the active workflow span is injected into outbound
 /// activity / child-workflow headers and extracted on the receiving side, so
 /// activity spans join the workflow's trace.
-pub fn init_otlp(endpoint: &str, service_name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
-
+pub fn init_otlp(endpoint: &str, service_name: &str) -> CadenceResult<()> {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint)
-        .build()?;
+        .build()
+        .map_err(|e| CadenceError::Other(format!("OTLP exporter build failed: {e}")))?;
 
     let resource = Resource::new(vec![KeyValue::new(
         "service.name",
@@ -57,10 +57,10 @@ pub fn init_otlp(endpoint: &str, service_name: &str) -> Result<(), Box<dyn std::
         .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
         .with_resource(resource)
         .build();
-
     let tracer = provider.tracer(service_name.to_string());
-    opentelemetry::global::set_tracer_provider(provider);
 
+    // Install the subscriber first; only publish global OTel state once it succeeds,
+    // so a failed init does not leave a dangling global propagator/tracer provider.
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     tracing_subscriber::registry()
         .with(
@@ -68,7 +68,11 @@ pub fn init_otlp(endpoint: &str, service_name: &str) -> Result<(), Box<dyn std::
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .with(otel_layer)
-        .try_init()?;
+        .try_init()
+        .map_err(|e| CadenceError::Other(format!("tracing subscriber init failed: {e}")))?;
+
+    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+    opentelemetry::global::set_tracer_provider(provider);
 
     Ok(())
 }

@@ -16,7 +16,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use crabdance_core::{CadenceError, DataConverter, JsonDataConverter, ReplayContext};
+use crabdance_core::{
+    CadenceError, DataConverter, JsonDataConverter, NonDeterministicError, ReplayContext,
+};
 use crabdance_proto::shared::{
     EventAttributes, EventType, History, HistoryEvent, WorkflowExecution, WorkflowType,
 };
@@ -29,15 +31,33 @@ use crate::registry::Registry;
 use crate::replay_verifier::match_replay_with_history;
 use crate::worker::WorkerOptions;
 
+/// Why a history failed to replay deterministically. Preserves the underlying
+/// typed errors so callers can inspect the cause without parsing strings.
+#[derive(Debug, thiserror::Error)]
+pub enum ReplayError {
+    /// The history has no `WorkflowExecutionStarted` event / workflow type.
+    #[error("history has no WorkflowExecutionStarted event / workflow type")]
+    NoWorkflowType,
+    /// Replaying the history through the executor failed.
+    #[error("replay failed: {0}")]
+    ExecutionFailed(#[source] CadenceError),
+    /// The replayed decisions diverged from the recorded history.
+    #[error("non-deterministic: {0}")]
+    NonDeterministic(#[source] Box<NonDeterministicError>),
+    /// The shadower could not fetch the history.
+    #[error("failed to fetch history: {0}")]
+    FetchFailed(#[source] CadenceError),
+}
+
 /// The verdict of replaying one history.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ReplayReport {
     pub workflow_id: String,
     pub run_id: String,
     pub workflow_type: String,
-    /// `Ok(())` if replay was deterministic; `Err(reason)` otherwise (a
-    /// non-determinism mismatch or a replay failure).
-    pub outcome: Result<(), String>,
+    /// `Ok(())` if replay was deterministic; `Err(ReplayError)` otherwise, with the
+    /// original typed cause preserved.
+    pub outcome: Result<(), ReplayError>,
 }
 
 impl ReplayReport {
@@ -93,7 +113,7 @@ impl WorkflowReplayer {
         let run_id = run_id.into();
         let workflow_type = workflow_type_of(&history).unwrap_or_default();
 
-        let report = |outcome: Result<(), String>| ReplayReport {
+        let report = |outcome: Result<(), ReplayError>| ReplayReport {
             workflow_id: workflow_id.clone(),
             run_id: run_id.clone(),
             workflow_type: workflow_type.clone(),
@@ -101,15 +121,18 @@ impl WorkflowReplayer {
         };
 
         if workflow_type.is_empty() {
-            return report(Err(
-                "history has no WorkflowExecutionStarted event / workflow type".to_string(),
-            ));
+            return report(Err(ReplayError::NoWorkflowType));
         }
+
+        // Replay must not run around-execution interceptors (no live side effects
+        // during offline replay), so strip them from the executor's options.
+        let mut options = self.options.clone();
+        options.interceptors.clear();
 
         let executor = WorkflowExecutor::new(
             self.registry.clone(),
             Arc::new(WorkflowCache::new(1)),
-            self.options.clone(),
+            options,
             self.task_list.clone(),
             LocalActivityQueue::new(),
             None,
@@ -142,7 +165,7 @@ impl WorkflowReplayer {
         };
 
         match executor.execute_decision_task(task).await {
-            Err(e) => report(Err(format!("replay failed: {e}"))),
+            Err(e) => report(Err(ReplayError::ExecutionFailed(e))),
             Ok((decisions, _)) => {
                 let ctx = ReplayContext {
                     workflow_type: workflow_type.clone(),
@@ -153,7 +176,7 @@ impl WorkflowReplayer {
                 };
                 match match_replay_with_history(&decisions, &history, &ctx) {
                     Ok(()) => report(Ok(())),
-                    Err(e) => report(Err(format!("non-deterministic: {e}"))),
+                    Err(e) => report(Err(ReplayError::NonDeterministic(e))),
                 }
             }
         }
@@ -176,8 +199,14 @@ impl WorkflowReplayer {
 /// to stream from a live domain. The client implements this; tests provide a mock.
 #[async_trait]
 pub trait HistorySource: Send + Sync {
-    /// List `(workflow_id, run_id)` executions matching the visibility `query`.
-    async fn list_executions(&self, query: &str) -> Result<Vec<(String, String)>, CadenceError>;
+    /// List `(workflow_id, run_id)` executions matching the visibility `query`. When
+    /// `limit` is `Some(n)`, return at most `n` executions and stop paging the
+    /// visibility scan early once that many are gathered.
+    async fn list_executions(
+        &self,
+        query: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<(String, String)>, CadenceError>;
 
     /// Fetch the full history of one execution.
     async fn fetch_history(
@@ -233,18 +262,31 @@ impl WorkflowShadower {
     }
 
     /// Run the shadower: list matching executions, fetch and replay each history, and
-    /// return a report per execution. In [`ShadowMode::Continuous`] it re-sweeps until
-    /// `max_executions` reports have been collected (or a sweep finds nothing new).
+    /// return a report per execution. In [`ShadowMode::Continuous`] it re-sweeps,
+    /// skipping executions already shadowed, until `max_executions` reports have been
+    /// collected or a sweep finds nothing new.
     pub async fn run(&self) -> Result<Vec<ReplayReport>, CadenceError> {
         let mut reports = Vec::new();
+        let mut seen: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
 
         loop {
-            let executions = self.source.list_executions(&self.query).await?;
-            if executions.is_empty() {
+            let executions = self
+                .source
+                .list_executions(&self.query, self.max_executions)
+                .await?;
+
+            // Skip executions already shadowed in a previous sweep.
+            let fresh: Vec<(String, String)> = executions
+                .into_iter()
+                .filter(|exec| !seen.contains(exec))
+                .collect();
+            if fresh.is_empty() {
                 break;
             }
 
-            for (workflow_id, run_id) in executions {
+            for (workflow_id, run_id) in fresh {
+                seen.insert((workflow_id.clone(), run_id.clone()));
                 match self.source.fetch_history(&workflow_id, &run_id).await {
                     Ok(history) => {
                         reports.push(
@@ -257,7 +299,7 @@ impl WorkflowShadower {
                         workflow_id,
                         run_id,
                         workflow_type: String::new(),
-                        outcome: Err(format!("failed to fetch history: {e}")),
+                        outcome: Err(ReplayError::FetchFailed(e)),
                     }),
                 }
 
@@ -425,11 +467,7 @@ mod tests {
     async fn reports_missing_started_event() {
         let replayer = replayer_with("Noop");
         let report = replayer.replay_history("wf", "run", vec![]).await;
-        assert!(!report.is_deterministic());
-        assert!(report
-            .outcome
-            .unwrap_err()
-            .contains("WorkflowExecutionStarted"));
+        assert!(matches!(report.outcome, Err(ReplayError::NoWorkflowType)));
     }
 
     #[tokio::test]
@@ -469,8 +507,13 @@ mod tests {
         async fn list_executions(
             &self,
             _query: &str,
+            limit: Option<usize>,
         ) -> Result<Vec<(String, String)>, CadenceError> {
-            Ok(self.executions.clone())
+            let mut execs = self.executions.clone();
+            if let Some(n) = limit {
+                execs.truncate(n);
+            }
+            Ok(execs)
         }
         async fn fetch_history(
             &self,
@@ -514,10 +557,9 @@ mod tests {
         let shadower = WorkflowShadower::new(source, "q", replayer_with("Noop"));
         let reports = shadower.run().await.unwrap();
         assert_eq!(reports.len(), 1);
-        assert!(reports[0]
-            .outcome
-            .as_ref()
-            .unwrap_err()
-            .contains("fetch history"));
+        assert!(matches!(
+            reports[0].outcome,
+            Err(ReplayError::FetchFailed(_))
+        ));
     }
 }
