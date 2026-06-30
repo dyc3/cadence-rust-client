@@ -208,15 +208,19 @@ impl ActivityTaskHandler {
         let session_id =
             String::from_utf8(task.input.clone().unwrap_or_default()).unwrap_or_default();
         env.release(&session_id);
-        self.record_terminal(activity_type, started, true);
-        self.service
+        // Record the terminal metric from the RPC result (not before it), matching the
+        // session-creation path — a failed response is a failed task.
+        let send = self
+            .service
             .respond_activity_task_completed(RespondActivityTaskCompletedRequest {
                 task_token: task.task_token.clone(),
                 result: Some(Vec::new()),
                 identity: self.identity.clone(),
             })
             .await
-            .map_err(CadenceError::from)
+            .map_err(CadenceError::from);
+        self.record_terminal(activity_type, started, send.is_ok());
+        send
     }
 
     /// Inject the worker's configured payload converter, threaded into every
@@ -615,25 +619,60 @@ mod tests {
 
     #[test]
     fn failure_reason_maps_each_variant() {
-        let (reason, details) =
-            activity_failure_reason(&ActivityError::ExecutionFailed(boxed_error("boom")));
-        assert_eq!(reason, "ExecutionFailed");
-        assert!(details_string(details).contains("boom"));
+        use crabdance_proto::shared::TimeoutType;
 
+        // Variants carrying an error: reason is the tag, details carry the message.
+        for (err, reason, msg) in [
+            (
+                ActivityError::ExecutionFailed(boxed_error("boom")),
+                "ExecutionFailed",
+                "boom",
+            ),
+            (
+                ActivityError::Retryable(boxed_error("again")),
+                "Retryable",
+                "again",
+            ),
+            (
+                ActivityError::NonRetryable(boxed_error("nope")),
+                "NonRetryable",
+                "nope",
+            ),
+            (
+                ActivityError::Application(boxed_error("app")),
+                "ApplicationError",
+                "app",
+            ),
+            (
+                ActivityError::RetryableWithDelay(boxed_error("later"), 5),
+                "RetryableWithDelay",
+                "later",
+            ),
+        ] {
+            let (got_reason, details) = activity_failure_reason(&err);
+            assert_eq!(got_reason, reason);
+            assert!(details_string(details).contains(msg));
+        }
+
+        // Panic prefixes the message.
         let (reason, details) =
             activity_failure_reason(&ActivityError::Panic(boxed_error("kaboom")));
         assert_eq!(reason, "Panic");
         let d = details_string(details);
         assert!(d.contains("Activity panicked") && d.contains("kaboom"));
 
-        let (reason, details) =
-            activity_failure_reason(&ActivityError::NonRetryable(boxed_error("nope")));
-        assert_eq!(reason, "NonRetryable");
-        assert!(details_string(details).contains("nope"));
-
-        // Control-flow variants carry no details.
+        // Variants without an error payload carry no details.
         let (reason, details) = activity_failure_reason(&ActivityError::Cancelled);
         assert_eq!(reason, "Cancelled");
+        assert!(details.is_none());
+
+        let (reason, details) =
+            activity_failure_reason(&ActivityError::Timeout(TimeoutType::Heartbeat));
+        assert!(reason.starts_with("Timeout"));
+        assert!(details.is_none());
+
+        let (reason, details) = activity_failure_reason(&ActivityError::ResultPending);
+        assert_eq!(reason, "ResultPending");
         assert!(details.is_none());
     }
 }
