@@ -27,6 +27,10 @@ pub const DECISION_TASK_FAILED: &str = "cadence_decision_task_failed_total";
 pub const ACTIVITY_TASK_STARTED: &str = "cadence_activity_task_started_total";
 pub const ACTIVITY_TASK_COMPLETED: &str = "cadence_activity_task_completed_total";
 pub const ACTIVITY_TASK_FAILED: &str = "cadence_activity_task_failed_total";
+/// Activities that handed off to async/external completion — counted so
+/// `started ≈ completed + failed + async_pending` reconciles (the worker does not
+/// finish these; the result arrives out of band).
+pub const ACTIVITY_TASK_ASYNC_PENDING: &str = "cadence_activity_task_async_pending_total";
 pub const WORKFLOW_PANIC: &str = "cadence_workflow_panic_total";
 pub const POLLER_START: &str = "cadence_poller_start_total";
 

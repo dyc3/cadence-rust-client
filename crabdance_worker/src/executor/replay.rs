@@ -44,6 +44,24 @@ impl ReplayEngine {
         }
     }
 
+    /// Produce the [`ReplayState`](crabdance_workflow::ReplayState) seed for a
+    /// `WorkflowContext` from this engine's reconstructed caches and flags. The
+    /// deterministic clock (`current_time_nanos`) is supplied by the caller, which
+    /// reconciles engine timestamps with the decision task. The local-activity Arc is
+    /// shared (cloned), so completions are visible to both engine and context.
+    pub fn to_replay_state(&self, current_time_nanos: i64) -> crabdance_workflow::ReplayState {
+        crabdance_workflow::ReplayState {
+            signals: self.signals.clone(),
+            side_effect_results: self.side_effect_results.clone(),
+            mutable_side_effects: self.mutable_side_effects.clone(),
+            change_versions: self.change_versions.clone(),
+            local_activity_results: self.local_activity_results.clone(),
+            is_replay: self.is_replay,
+            cancel_requested: self.cancel_requested,
+            current_time_nanos,
+        }
+    }
+
     pub fn replay_history(&mut self, events: &[HistoryEvent]) -> CadenceResult<()> {
         for event in events {
             // Only process events we haven't seen before

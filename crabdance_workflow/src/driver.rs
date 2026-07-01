@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use crabdance_core::WorkflowInfo;
 
 use crate::commands::{StartTimerCommand, WorkflowCommand};
-use crate::context::{CommandSink, WorkflowContext, WorkflowContextBuilder};
+use crate::context::{CommandSink, ReplayState, WorkflowContext};
 use crate::dispatcher::{WorkflowDispatcher, WorkflowTask};
 use crate::future::DefaultWorkflowError;
 
@@ -381,10 +381,12 @@ impl WorkflowDriver {
         let start_nanos = workflow_info.start_time.timestamp_nanos_opt().unwrap_or(0);
         let sink = Arc::new(InMemoryCommandSink::new(start_nanos, resolver));
 
-        let context =
-            WorkflowContextBuilder::new(workflow_info, sink.clone() as Arc<dyn CommandSink>)
-                .build();
-        context.set_current_time_nanos(start_nanos);
+        let context = WorkflowContext::with_replay_state(
+            workflow_info,
+            sink.clone() as Arc<dyn CommandSink>,
+            ReplayState::empty(start_nanos),
+            None,
+        );
 
         let dispatcher = Arc::new(Mutex::new(WorkflowDispatcher::new()));
         context.set_dispatcher(dispatcher.clone());
